@@ -45,7 +45,6 @@ message AppendEntriesResponse {
 message State {
   required int32 id           = 1;
   required int32 current_term = 2; 
-  optional int32 voted_for    = 3; 
 
   repeated LogEntry log       = 4; 
   required int32 commit_index = 5; 
@@ -70,6 +69,7 @@ message CandidateState {
 }
 
 message FollowerState {
+  optional int32 voted_for = 3; 
 }
 
 message ServerIndex {

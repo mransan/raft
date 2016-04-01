@@ -110,6 +110,14 @@ and candidate_state_mutable = {
   mutable election_deadline : float;
 }
 
+type follower_state = {
+  voted_for : int option;
+}
+
+and follower_state_mutable = {
+  mutable voted_for : int option;
+}
+
 type configuration = {
   nb_of_server : int;
   election_timeout : float;
@@ -123,12 +131,11 @@ and configuration_mutable = {
 type state_role =
   | Leader of leader_state
   | Candidate of candidate_state
-  | Follower
+  | Follower of follower_state
 
 and state = {
   id : int;
   current_term : int;
-  voted_for : int option;
   log : log_entry list;
   commit_index : int;
   last_applied : int;
@@ -139,7 +146,6 @@ and state = {
 and state_mutable = {
   mutable id : int;
   mutable current_term : int;
-  mutable voted_for : int option;
   mutable log : log_entry list;
   mutable commit_index : int;
   mutable last_applied : int;
@@ -268,6 +274,14 @@ and default_candidate_state_mutable () : candidate_state_mutable = {
   election_deadline = 0.;
 }
 
+let rec default_follower_state () : follower_state = {
+  voted_for = None;
+}
+
+and default_follower_state_mutable () : follower_state_mutable = {
+  voted_for = None;
+}
+
 let rec default_configuration () : configuration = {
   nb_of_server = 0;
   election_timeout = 0.;
@@ -282,7 +296,6 @@ and default_configuration_mutable () : configuration_mutable = {
 let rec default_state () : state = {
   id = 0;
   current_term = 0;
-  voted_for = None;
   log = [];
   commit_index = 0;
   last_applied = 0;
@@ -293,7 +306,6 @@ let rec default_state () : state = {
 and default_state_mutable () : state_mutable = {
   id = 0;
   current_term = 0;
-  voted_for = None;
   log = [];
   commit_index = 0;
   last_applied = 0;
@@ -450,6 +462,19 @@ let rec decode_candidate_state d =
   let v:candidate_state = Obj.magic v in
   v
 
+let rec decode_follower_state d =
+  let v = default_follower_state_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+    )
+    | Some (3, Pbrt.Varint) -> v.voted_for <- Some (Pbrt.Decoder.int_as_varint d); loop ()
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:follower_state = Obj.magic v in
+  v
+
 let rec decode_configuration d =
   let v = default_configuration_mutable () in
   let rec loop () = 
@@ -474,13 +499,12 @@ let rec decode_state d =
     )
     | Some (1, Pbrt.Varint) -> v.id <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (2, Pbrt.Varint) -> v.current_term <- (Pbrt.Decoder.int_as_varint d); loop ()
-    | Some (3, Pbrt.Varint) -> v.voted_for <- Some (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (4, Pbrt.Bytes) -> v.log <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.log; loop ()
     | Some (5, Pbrt.Varint) -> v.commit_index <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (6, Pbrt.Varint) -> v.last_applied <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (7, Pbrt.Bytes) -> v.role <- Leader (decode_leader_state (Pbrt.Decoder.nested d)) ; loop ()
     | Some (8, Pbrt.Bytes) -> v.role <- Candidate (decode_candidate_state (Pbrt.Decoder.nested d)) ; loop ()
-    | Some (9, Pbrt.Bytes) -> v.role <- Follower; Pbrt.Decoder.empty_nested d ; loop ()
+    | Some (9, Pbrt.Bytes) -> v.role <- Follower (decode_follower_state (Pbrt.Decoder.nested d)) ; loop ()
     | Some (10, Pbrt.Bytes) -> v.configuration <- (decode_configuration (Pbrt.Decoder.nested d)); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -612,6 +636,15 @@ let rec encode_candidate_state (v:candidate_state) encoder =
   Pbrt.Encoder.float_as_bits64 v.election_deadline encoder;
   ()
 
+let rec encode_follower_state (v:follower_state) encoder = 
+  (match v.voted_for with 
+  | Some x -> (
+    Pbrt.Encoder.key (3, Pbrt.Varint) encoder; 
+    Pbrt.Encoder.int_as_varint x encoder;
+  )
+  | None -> ());
+  ()
+
 let rec encode_configuration (v:configuration) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.nb_of_server encoder;
@@ -625,12 +658,6 @@ let rec encode_state (v:state) encoder =
   Pbrt.Encoder.int_as_varint v.id encoder;
   Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.current_term encoder;
-  (match v.voted_for with 
-  | Some x -> (
-    Pbrt.Encoder.key (3, Pbrt.Varint) encoder; 
-    Pbrt.Encoder.int_as_varint x encoder;
-  )
-  | None -> ());
   List.iter (fun x -> 
     Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.nested (encode_log_entry x) encoder;
@@ -648,9 +675,9 @@ let rec encode_state (v:state) encoder =
     Pbrt.Encoder.key (8, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.nested (encode_candidate_state x) encoder;
   )
-  | Follower -> (
+  | Follower x -> (
     Pbrt.Encoder.key (9, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.empty_nested encoder;
+    Pbrt.Encoder.nested (encode_follower_state x) encoder;
   )
   );
   Pbrt.Encoder.key (10, Pbrt.Bytes) encoder; 
@@ -775,6 +802,14 @@ let rec pp_candidate_state fmt (v:candidate_state) =
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
+let rec pp_follower_state fmt (v:follower_state) = 
+  let pp_i fmt () =
+    Format.pp_open_vbox fmt 1;
+    Pbrt.Pp.pp_record_field "voted_for" (Pbrt.Pp.pp_option Pbrt.Pp.pp_int) fmt v.voted_for;
+    Format.pp_close_box fmt ()
+  in
+  Pbrt.Pp.pp_brk pp_i fmt ()
+
 let rec pp_configuration fmt (v:configuration) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
@@ -788,14 +823,13 @@ let rec pp_state_role fmt (v:state_role) =
   match v with
   | Leader x -> Format.fprintf fmt "@[Leader(%a)@]" pp_leader_state x
   | Candidate x -> Format.fprintf fmt "@[Candidate(%a)@]" pp_candidate_state x
-  | Follower  -> Format.fprintf fmt "Follower"
+  | Follower x -> Format.fprintf fmt "@[Follower(%a)@]" pp_follower_state x
 
 and pp_state fmt (v:state) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "id" Pbrt.Pp.pp_int fmt v.id;
     Pbrt.Pp.pp_record_field "current_term" Pbrt.Pp.pp_int fmt v.current_term;
-    Pbrt.Pp.pp_record_field "voted_for" (Pbrt.Pp.pp_option Pbrt.Pp.pp_int) fmt v.voted_for;
     Pbrt.Pp.pp_record_field "log" (Pbrt.Pp.pp_list pp_log_entry) fmt v.log;
     Pbrt.Pp.pp_record_field "commit_index" Pbrt.Pp.pp_int fmt v.commit_index;
     Pbrt.Pp.pp_record_field "last_applied" Pbrt.Pp.pp_int fmt v.last_applied;

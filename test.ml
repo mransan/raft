@@ -15,11 +15,10 @@ let default_configuration ()  = {
 let initial_state ?configuration:(configuration = default_configuration ()) id = {
   id;
   current_term = 0; 
-  voted_for = None; 
   log = []; 
   commit_index = 1234;
   last_applied = 1234;
-  role = Follower;
+  role = Follower {voted_for = None} ;
   configuration; 
 }
   

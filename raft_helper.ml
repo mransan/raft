@@ -3,7 +3,7 @@ open Raft_pb
 module Follower = struct 
 
   let make state term = 
-    {state with role = Follower; current_term = term; voted_for = None;}
+    {state with role = Follower {voted_for = None} ; current_term = term; }
 
 end 
 
