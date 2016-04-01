@@ -59,6 +59,10 @@ type candidate_state = {
   election_deadline : float;
 }
 
+type follower_state = {
+  voted_for : int option;
+}
+
 type configuration = {
   nb_of_server : int;
   election_timeout : float;
@@ -67,12 +71,11 @@ type configuration = {
 type state_role =
   | Leader of leader_state
   | Candidate of candidate_state
-  | Follower
+  | Follower of follower_state
 
 and state = {
   id : int;
   current_term : int;
-  voted_for : int option;
   log : log_entry list;
   commit_index : int;
   last_applied : int;
@@ -121,6 +124,9 @@ val default_leader_state : unit -> leader_state
 val default_candidate_state : unit -> candidate_state
 (** [default_candidate_state ()] is the default value for type [candidate_state] *)
 
+val default_follower_state : unit -> follower_state
+(** [default_follower_state ()] is the default value for type [follower_state] *)
+
 val default_configuration : unit -> configuration
 (** [default_configuration ()] is the default value for type [configuration] *)
 
@@ -165,6 +171,9 @@ val decode_leader_state : Pbrt.Decoder.t -> leader_state
 val decode_candidate_state : Pbrt.Decoder.t -> candidate_state
 (** [decode_candidate_state decoder] decodes a [candidate_state] value from [decoder] *)
 
+val decode_follower_state : Pbrt.Decoder.t -> follower_state
+(** [decode_follower_state decoder] decodes a [follower_state] value from [decoder] *)
+
 val decode_configuration : Pbrt.Decoder.t -> configuration
 (** [decode_configuration decoder] decodes a [configuration] value from [decoder] *)
 
@@ -208,6 +217,9 @@ val encode_leader_state : leader_state -> Pbrt.Encoder.t -> unit
 
 val encode_candidate_state : candidate_state -> Pbrt.Encoder.t -> unit
 (** [encode_candidate_state v encoder] encodes [v] with the given [encoder] *)
+
+val encode_follower_state : follower_state -> Pbrt.Encoder.t -> unit
+(** [encode_follower_state v encoder] encodes [v] with the given [encoder] *)
 
 val encode_configuration : configuration -> Pbrt.Encoder.t -> unit
 (** [encode_configuration v encoder] encodes [v] with the given [encoder] *)
@@ -254,6 +266,9 @@ val pp_leader_state : Format.formatter -> leader_state -> unit
 
 val pp_candidate_state : Format.formatter -> candidate_state -> unit 
 (** [pp_candidate_state v] formats v] *)
+
+val pp_follower_state : Format.formatter -> follower_state -> unit 
+(** [pp_follower_state v] formats v] *)
 
 val pp_configuration : Format.formatter -> configuration -> unit 
 (** [pp_configuration v] formats v] *)

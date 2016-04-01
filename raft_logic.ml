@@ -30,17 +30,19 @@ module Request_vote = struct
         then Follower.make state candidate_term  
         else state
       in
-      match state.voted_for with
-      | None ->
+      let role = state.role in 
+      match role with
+      | Follower {voted_for = None} ->
         (* This server has never voted before, candidate is getting the vote
          *)
-        ({state with voted_for = Some candidate_id}, make_response state true) 
-      | Some id when id = candidate_id -> 
+        ({state with role = Follower {voted_for = Some candidate_id}}, make_response state true) 
+      | Follower {voted_for = Some id} when id = candidate_id -> 
         (* This server has already voted for that candidate ... reminding him
          *)
         (state, make_response state true)
-      | Some _ -> 
-        (* Server has previously voted for another candidate
+      | _ -> 
+        (* Server has previously voted for another candidate or 
+           itself
          *)
         (state, make_response state false) 
   
