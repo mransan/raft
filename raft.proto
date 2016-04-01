@@ -28,15 +28,16 @@ message AppendEntriesRequest {
 message AppendEntriesResponse {
     required int32 receiver_id      = 1; 
     required int32 receiver_term    = 2; 
+    
+    oneof result {
+      NoData failure      = 3; 
+      SuccessData success = 4; 
+    }
 
     message NoData {}
     message SuccessData {
       required int32 receiver_last_log_index = 1; 
     } 
-    oneof result {
-      NoData failure      = 3; 
-      SuccessData success = 4; 
-    }
 }
 
 // State
@@ -45,17 +46,17 @@ message AppendEntriesResponse {
 message State {
   required int32 id           = 1;
   required int32 current_term = 2; 
+  repeated LogEntry log       = 3; 
+  required int32 commit_index = 4; 
+  required int32 last_applied = 5; 
 
-  repeated LogEntry log       = 4; 
-  required int32 commit_index = 5; 
-  required int32 last_applied = 6; 
   oneof role {
-    LeaderState    leader    = 7;
-    CandidateState candidate = 8;
-    FollowerState  follower  = 9;
+    LeaderState    leader    = 6;
+    CandidateState candidate = 7;
+    FollowerState  follower  = 8;
   }
 
-  required Configuration configuration = 10;
+  required Configuration configuration = 9;
 }
 
 message LeaderState {
@@ -69,7 +70,7 @@ message CandidateState {
 }
 
 message FollowerState {
-  optional int32 voted_for = 3; 
+  optional int32 voted_for = 1; 
 }
 
 message ServerIndex {
