@@ -4,7 +4,6 @@ module Candidate = Raft_helper.Candidate
 module Follower  = Raft_helper.Follower
 module Leader    = Raft_helper.Leader 
 
-module Request   = Raft_helper.Request 
 module Logic     = Raft_logic  
 
 let default_configuration ()  = {
@@ -30,7 +29,7 @@ let () =
   let follower1  = initial_state 1 in 
   
   let (candidate0', follow_up_action), follower1' = 
-    let request_vote = Request.make_request_vote candidate0 in 
+    let request_vote = Logic.Request_vote.make candidate0 in 
     let follower1', response = Logic.Request_vote.handle_request follower1 request_vote in 
     Logic.Request_vote.handle_response candidate0 response, follower1' 
   in 
@@ -50,7 +49,7 @@ let () =
   let follower1 = initial_state 1 in 
 
   let (leader0, follow_up_action), follower1, response =
-    let request = Request.make_append_entries leader0 1 in
+    let request = Logic.Append_entries.make leader0 1 in
     match request with
     | Some request -> 
       let follower1, response = Logic.Append_entries.handle_request follower1 request in  

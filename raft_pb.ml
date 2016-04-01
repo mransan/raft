@@ -468,7 +468,7 @@ let rec decode_follower_state d =
     match Pbrt.Decoder.key d with
     | None -> (
     )
-    | Some (3, Pbrt.Varint) -> v.voted_for <- Some (Pbrt.Decoder.int_as_varint d); loop ()
+    | Some (1, Pbrt.Varint) -> v.voted_for <- Some (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -499,13 +499,13 @@ let rec decode_state d =
     )
     | Some (1, Pbrt.Varint) -> v.id <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (2, Pbrt.Varint) -> v.current_term <- (Pbrt.Decoder.int_as_varint d); loop ()
-    | Some (4, Pbrt.Bytes) -> v.log <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.log; loop ()
-    | Some (5, Pbrt.Varint) -> v.commit_index <- (Pbrt.Decoder.int_as_varint d); loop ()
-    | Some (6, Pbrt.Varint) -> v.last_applied <- (Pbrt.Decoder.int_as_varint d); loop ()
-    | Some (7, Pbrt.Bytes) -> v.role <- Leader (decode_leader_state (Pbrt.Decoder.nested d)) ; loop ()
-    | Some (8, Pbrt.Bytes) -> v.role <- Candidate (decode_candidate_state (Pbrt.Decoder.nested d)) ; loop ()
-    | Some (9, Pbrt.Bytes) -> v.role <- Follower (decode_follower_state (Pbrt.Decoder.nested d)) ; loop ()
-    | Some (10, Pbrt.Bytes) -> v.configuration <- (decode_configuration (Pbrt.Decoder.nested d)); loop ()
+    | Some (3, Pbrt.Bytes) -> v.log <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.log; loop ()
+    | Some (4, Pbrt.Varint) -> v.commit_index <- (Pbrt.Decoder.int_as_varint d); loop ()
+    | Some (5, Pbrt.Varint) -> v.last_applied <- (Pbrt.Decoder.int_as_varint d); loop ()
+    | Some (6, Pbrt.Bytes) -> v.role <- Leader (decode_leader_state (Pbrt.Decoder.nested d)) ; loop ()
+    | Some (7, Pbrt.Bytes) -> v.role <- Candidate (decode_candidate_state (Pbrt.Decoder.nested d)) ; loop ()
+    | Some (8, Pbrt.Bytes) -> v.role <- Follower (decode_follower_state (Pbrt.Decoder.nested d)) ; loop ()
+    | Some (9, Pbrt.Bytes) -> v.configuration <- (decode_configuration (Pbrt.Decoder.nested d)); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -639,7 +639,7 @@ let rec encode_candidate_state (v:candidate_state) encoder =
 let rec encode_follower_state (v:follower_state) encoder = 
   (match v.voted_for with 
   | Some x -> (
-    Pbrt.Encoder.key (3, Pbrt.Varint) encoder; 
+    Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
     Pbrt.Encoder.int_as_varint x encoder;
   )
   | None -> ());
@@ -659,28 +659,28 @@ let rec encode_state (v:state) encoder =
   Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.current_term encoder;
   List.iter (fun x -> 
-    Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.nested (encode_log_entry x) encoder;
   ) v.log;
-  Pbrt.Encoder.key (5, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (4, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.commit_index encoder;
-  Pbrt.Encoder.key (6, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (5, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.last_applied encoder;
   (match v.role with
   | Leader x -> (
-    Pbrt.Encoder.key (7, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.key (6, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.nested (encode_leader_state x) encoder;
   )
   | Candidate x -> (
-    Pbrt.Encoder.key (8, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.key (7, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.nested (encode_candidate_state x) encoder;
   )
   | Follower x -> (
-    Pbrt.Encoder.key (9, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.key (8, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.nested (encode_follower_state x) encoder;
   )
   );
-  Pbrt.Encoder.key (10, Pbrt.Bytes) encoder; 
+  Pbrt.Encoder.key (9, Pbrt.Bytes) encoder; 
   Pbrt.Encoder.nested (encode_configuration v.configuration) encoder;
   ()
 

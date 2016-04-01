@@ -9,6 +9,18 @@ module Leader    = Raft_helper.Leader
 (** {2 Request Vote} *) 
 
 module Request_vote = struct 
+  
+  let make state = 
+    let last_log_index, last_log_term = match state.log with
+      | {index; term; data = _}::_ -> (index, term)
+      | [] -> (-1, -1)
+    in 
+    {
+      candidate_term = state.current_term; 
+      candidate_id = state.id; 
+      last_log_index;
+      last_log_term;
+    }
 
   let handle_request state {candidate_id; candidate_term} = 
   
@@ -87,6 +99,40 @@ end (* Request_vote *)
 (** {2 Append Entries} *) 
 
 module Append_entries = struct 
+  
+  let make state receiver_id = 
+
+    match state.role with
+    | Leader {next_index; match_index = _ } -> ( 
+      let {server_log_index = next_log_index;_ } = List.nth next_index receiver_id in 
+      let prev_log_index  = next_log_index - 1 in 
+
+      let (prev_log_term, log_entries) = 
+        let rec aux log_entries = function
+           | [] -> 
+             if prev_log_index = -1 
+             then (-1, List.rev log_entries) 
+             else failwith @@ Printf.sprintf 
+               "Invalid next index for receiver(%i) in server(%i), prev_log_index(%i)" receiver_id state.id prev_log_index
+
+           | ({index;term;data = _ } as entry)::tl -> 
+             if index = prev_log_index
+             then (term, List.rev log_entries)
+             else aux (entry::log_entries) tl  
+        in 
+        aux [] state.log
+      in
+
+      Some {
+        leader_term = state.current_term;
+        leader_id = state.id;
+        prev_log_index; 
+        prev_log_term;
+        log_entries;
+        leader_commit = 1234;
+      }
+    )
+    | _ -> None 
 
   let handle_request state request = 
     
