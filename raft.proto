@@ -1,0 +1,102 @@
+option (int32_type) = int_t;
+
+// Messages 
+// --------
+
+message RequestVoteRequest {
+    required int32 candidate_term = 1 ;
+    required int32 candidate_id   = 2 ;
+    required int32 last_log_index = 3 ; 
+    required int32 last_log_term  = 4 ;
+}
+
+message RequestVoteResponse {
+    required int32 voter_id     = 1; 
+    required int32 voter_term   = 2; 
+    required bool  vote_granted = 3; 
+}
+
+message AppendEntriesRequest {
+    required int32 leader_term     = 1; 
+    required int32 leader_id       = 2; 
+    required int32 prev_log_index  = 3; 
+    required int32 prev_log_term   = 4; 
+    repeated LogEntry log_entries  = 5;
+    required int32 leader_commit   = 6; 
+}
+
+message AppendEntriesResponse {
+    required int32 receiver_id      = 1; 
+    required int32 receiver_term    = 2; 
+
+    message NoData {}
+    message SuccessData {
+      required int32 receiver_last_log_index = 1; 
+    } 
+    oneof result {
+      NoData failure      = 3; 
+      SuccessData success = 4; 
+    }
+}
+
+// State
+// -----
+
+message State {
+  required int32 id           = 1;
+  required int32 current_term = 2; 
+  optional int32 voted_for    = 3; 
+
+  repeated LogEntry log       = 4; 
+  required int32 commit_index = 5; 
+  required int32 last_applied = 6; 
+  oneof role {
+    LeaderState    leader    = 7;
+    CandidateState candidate = 8;
+    FollowerState  follower  = 9;
+  }
+
+  required Configuration configuration = 10;
+}
+
+message LeaderState {
+  repeated ServerIndex next_index  = 1;  
+  repeated ServerIndex match_index = 2;  
+}
+
+message CandidateState {
+  required int32 vote_count         = 1;
+  required double election_deadline = 2;
+}
+
+message FollowerState {
+}
+
+message ServerIndex {
+  required int32 server_id        = 1; 
+  required int32 server_log_index = 2; 
+}
+
+message LogEntry {
+  required int32 index = 1; 
+  required int32 term  = 2;
+  required bytes data  = 3; 
+}
+
+message FollowUpAction {
+  message NoData { }
+  message RetryAppendData {
+    required int32 server_id = 1; 
+  }
+  oneof t {
+    NoData          act_as_new_leader  = 1;
+    NoData          start_new_election = 2; 
+    NoData          nothing_to_do      = 3;
+    RetryAppendData retry_append       = 4;
+  }
+}
+
+message Configuration {
+  required int32  nb_of_server     = 1;
+  required double election_timeout = 2;  
+}
