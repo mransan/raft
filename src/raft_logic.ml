@@ -30,7 +30,8 @@ module Request_vote = struct
   
     if candidate_term < state.current_term 
     then 
-      (* This request is coming from a candidate lagging behind ... no vote for him.
+      (* This request is coming from a candidate lagging behind ... 
+         no vote for him.
        *)
       (state, make_response state false)
     else 
@@ -47,11 +48,16 @@ module Request_vote = struct
       | Follower {voted_for = None} ->
         (* This server has never voted before, candidate is getting the vote
          *)
-        ({state with role = Follower {voted_for = Some candidate_id}}, make_response state true) 
+        let state ={state with 
+          role = Follower {voted_for = Some candidate_id} 
+        } in  
+        (state, make_response state true) 
+
       | Follower {voted_for = Some id} when id = candidate_id -> 
         (* This server has already voted for that candidate ... reminding him
          *)
         (state, make_response state true)
+
       | _ -> 
         (* Server has previously voted for another candidate or 
            itself
@@ -104,8 +110,8 @@ module Append_entries = struct
 
     match state.role with
     | Leader {next_index; match_index = _ } -> ( 
-      let {server_log_index = next_log_index;_ } = List.nth next_index receiver_id in 
-      let prev_log_index  = next_log_index - 1 in 
+      let server_index = List.nth next_index receiver_id in 
+      let prev_log_index = server_index.server_log_index - 1 in 
 
       let (prev_log_term, log_entries) = 
         let rec aux log_entries = function
@@ -113,7 +119,8 @@ module Append_entries = struct
              if prev_log_index = -1 
              then (-1, List.rev log_entries) 
              else failwith @@ Printf.sprintf 
-               "Invalid next index for receiver(%i) in server(%i), prev_log_index(%i)" receiver_id state.id prev_log_index
+               ("Invalid next index for receiver(%i) in server(%i), " ^^ 
+                "prev_log_index(%i)") receiver_id state.id prev_log_index
 
            | ({index;term;data = _ } as entry)::tl -> 
              if index = prev_log_index
@@ -137,7 +144,7 @@ module Append_entries = struct
   let handle_request state request = 
     
     let make_response state result = 
-      {receiver_term = state.current_term; receiver_id = state.id; result; }
+      {receiver_term = state.current_term; receiver_id = state.id; result;}
     in 
     
     if request.leader_term < state.current_term 
@@ -179,23 +186,25 @@ module Append_entries = struct
              *)
             Helper.insert_log_entries state []
           else 
-            (* [case 1] The prev_log_index is not found in the state log. This server is lagging
-               behind. 
+            (* [case 1] The prev_log_index is not found in the state log. 
+               This server is lagging behind. 
              *)
             (state, make_response state Failure) 
   
-        | ({index; term; _ }::tl as log) when index = prev_log_index && term = prev_log_term -> 
-          (* [case 2] The prev_log_index matches the leader, all is good, let's append all the 
-             new logs. 
+        | ({index; term; _ }::tl as log) when index = prev_log_index && 
+                                               term = prev_log_term -> 
+          (* [case 2] The prev_log_index matches the leader, all is good, 
+             let's append all the new logs. 
            *)
            (* TODO implement the [leaderCommit] logic (item 5)
             *)
           Helper.insert_log_entries state log 
   
         | {index; _ }::log when index = prev_log_index -> 
-          (* [case 3] The prev_log_index is inconstent with the leader. This conflict is resolved
-             by discarding it along with all following log entries. As far as the leader is concerned
-             it's like [case 1] now. 
+          (* [case 3] The prev_log_index is inconstent with the leader. 
+             This conflict is resolved by discarding it along with all 
+             following log entries. 
+             As far as the leader is concerned it's like [case 1] now. 
            *)
           let new_state = {state with log} in 
           (new_state, make_response state Failure)
@@ -218,15 +227,17 @@ module Append_entries = struct
     else 
       match result with
       | Success {receiver_last_log_index} -> 
-        (* Log entries were successfully inserted by the receiver... let's update
-           our leader state about that receiver
+        (* Log entries were successfully inserted by the receiver... 
+           let's update our leader state about that receiver
          *)
-        let new_state = Leader.update_receiver_last_log_index state receiver_id receiver_last_log_index in
+        let new_state = Leader.update_receiver_last_log_index 
+          state receiver_id receiver_last_log_index in
         (new_state, Nothing_to_do)
   
       | Failure ->
-        (* The receiver log is not matching this server current belief. As a leader
-           this server should decrement the next log index and retry the append. 
+        (* The receiver log is not matching this server current belief. 
+           If a leader this server should decrement the next 
+           log index and retry the append. 
          *)
         let new_state = Leader.decrement_next_index state receiver_id in 
         let next_action = 
@@ -235,4 +246,5 @@ module Append_entries = struct
           else Nothing_to_do
         in 
         (new_state, next_action)
+
 end (* Append_entries *)

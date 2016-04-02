@@ -2,8 +2,10 @@ open Raft_pb
 
 module Follower = struct 
 
-  let make state term = 
-    {state with role = Follower {voted_for = None} ; current_term = term; }
+  let make state term = { state with 
+    role = Follower {voted_for = None} ; 
+    current_term = term; 
+  }
 
 end 
 
@@ -15,7 +17,10 @@ module Candidate = struct
       vote_count = 1; 
       election_deadline = now +. election_timeout
     } in 
-    {state with role = Candidate candidate_state; current_term = state.current_term + 1; } 
+    {state with 
+     role = Candidate candidate_state; 
+     current_term = state.current_term + 1; 
+    } 
 
   let increment_vote_count ({vote_count; _ } as candidate_state) = 
     {candidate_state with vote_count = vote_count + 1}
@@ -36,7 +41,7 @@ module Leader = struct
     let rec aux ((next_index, match_index) as acc) = function
       | (-1) -> acc
       |  i   -> 
-         let next   = {server_id = i; server_log_index = last_log_index + 1} in 
+         let next   = {server_id = i; server_log_index = last_log_index + 1} in
          let match_ = {server_id = i; server_log_index = 0 } in 
          aux (next::next_index, match_::match_index) (i -1)
     in 
