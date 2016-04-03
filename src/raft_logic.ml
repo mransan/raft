@@ -1,29 +1,30 @@
 
 open Raft_pb
 
+module State     = Raft_helper.State
 module Follower  = Raft_helper.Follower
 module Candidate = Raft_helper.Candidate
 module Leader    = Raft_helper.Leader
-
+module Configuration = Raft_helper.Configuration
 
 (** {2 Request Vote} *) 
 
 module Request_vote = struct 
   
   let make state = 
-    let last_log_index, last_log_term = match state.log with
-      | {index; term; data = _}::_ -> (index, term)
-      | [] -> (-1, -1)
-    in 
+    let index, term  = State.last_log_index_and_term state 
+    in
     {
       candidate_term = state.current_term; 
       candidate_id = state.id; 
-      last_log_index;
-      last_log_term;
+      candidate_last_log_index = index;
+      candidate_last_log_term = term;
     }
 
-  let handle_request state {candidate_id; candidate_term} = 
+  let handle_request state request =
   
+    let {candidate_id; candidate_term; candidate_last_log_index;_} = request in 
+
     let make_response state vote_granted = 
       {voter_term = state.current_term; voter_id = state.id ; vote_granted; }
     in 
@@ -43,26 +44,35 @@ module Request_vote = struct
         then Follower.make state candidate_term  
         else state
       in
-      let role = state.role in 
-      match role with
-      | Follower {voted_for = None} ->
-        (* This server has never voted before, candidate is getting the vote
+      let last_log_index = State.last_log_index state in 
+      if candidate_last_log_index < last_log_index
+      then 
+        (* Enforce the safety constraint by denying vote if this server
+           last log is more recent than the candidate one.
          *)
-        let state ={state with 
-          role = Follower {voted_for = Some candidate_id} 
-        } in  
-        (state, make_response state true) 
+        (state, make_response state false)
+      else
+        let role = state.role in 
+        match role with
+        | Follower {voted_for = None} ->
+          (* This server has never voted before, candidate is getting the vote
+           *)
+          
+          let state ={state with 
+            role = Follower {voted_for = Some candidate_id} 
+          } in  
+          (state, make_response state true) 
 
-      | Follower {voted_for = Some id} when id = candidate_id -> 
-        (* This server has already voted for that candidate ... reminding him
-         *)
-        (state, make_response state true)
+        | Follower {voted_for = Some id} when id = candidate_id -> 
+          (* This server has already voted for that candidate ... reminding him
+           *)
+          (state, make_response state true)
 
-      | _ -> 
-        (* Server has previously voted for another candidate or 
-           itself
-         *)
-        (state, make_response state false) 
+        | _ -> 
+          (* Server has previously voted for another candidate or 
+             itself
+           *)
+          (state, make_response state false) 
   
   let handle_response state response = 
   
@@ -116,8 +126,8 @@ module Append_entries = struct
       let (prev_log_term, log_entries) = 
         let rec aux log_entries = function
            | [] -> 
-             if prev_log_index = -1 
-             then (-1, List.rev log_entries) 
+             if prev_log_index = 0
+             then (0, List.rev log_entries) 
              else failwith @@ Printf.sprintf 
                ("Invalid next index for receiver(%i) in server(%i), " ^^ 
                 "prev_log_index(%i)") receiver_id state.id prev_log_index
@@ -136,18 +146,20 @@ module Append_entries = struct
         prev_log_index; 
         prev_log_term;
         log_entries;
-        leader_commit = 1234;
+        leader_commit = state.commit_index;
       }
     )
     | _ -> None 
 
   let handle_request state request = 
     
+    let {leader_term; leader_commit} = request in  
+    
     let make_response state result = 
       {receiver_term = state.current_term; receiver_id = state.id; result;}
     in 
     
-    if request.leader_term < state.current_term 
+    if leader_term < state.current_term 
     then 
       (* This request is coming from a leader lagging behind...
        *)
@@ -157,22 +169,32 @@ module Append_entries = struct
       (* This request is coming from a legetimate leader, 
          let's ensure that this server is a follower.
        *)
-      let state = Follower.make state request.leader_term in  
+      let state = Follower.make state leader_term in  
   
       (* Next step is to handle the log entries from the leader.
          
-         The algorithm search for the [prev log entry] tha the leader 
+         The algorithm search for the [prev log entry] that the leader 
          sent. 
        *)
-      let {prev_log_index; prev_log_term; log_entries; _} = request in 
+      let {prev_log_index; prev_log_term; log_entries; leader_commit} = request in 
   
       let module Helper = struct 
         
         let insert_log_entries state old =  
           let state = {state with log = log_entries @ old } in  
-          let receiver_last_log_index = match state.log with
-            | [] -> (-1) 
-            | {index; _ }::_ -> index 
+          let receiver_last_log_index = State.last_log_index state in 
+          let state = 
+            (* Update this server commit index based on value sent from 
+               the leader. 
+               Note that it is not guaranteed that the leader has sent
+               all the log until it commit index so the min value 
+               is taken.
+             *)
+            if leader_commit > state.commit_index
+            then {state with
+              commit_index = min leader_commit receiver_last_log_index 
+            } 
+            else state   
           in 
           (state, make_response state (Success {receiver_last_log_index}))
   
@@ -180,7 +202,7 @@ module Append_entries = struct
   
       let rec aux = function 
         | [] -> 
-          if prev_log_index = -1
+          if prev_log_index = 0
           then 
             (* [case 0] No previous log were ever inserted
              *)
@@ -230,10 +252,27 @@ module Append_entries = struct
         (* Log entries were successfully inserted by the receiver... 
            let's update our leader state about that receiver
          *)
-        let new_state = Leader.update_receiver_last_log_index 
-          state receiver_id receiver_last_log_index in
-        (new_state, Nothing_to_do)
-  
+        begin match state.role with
+        | Leader leader_state ->
+          let leader_state, nb = Leader.update_receiver_last_log_index 
+            leader_state receiver_id receiver_last_log_index 
+          in
+          let commit_index = 
+            (* Check if the received log entry from has reached 
+               a majority of server. 
+               Note that we need to add `+1` simply to count this 
+               server (ie leader) which does not update its next/match
+             *)
+            if Configuration.is_majority state.configuration (nb + 1)
+            then receiver_last_log_index
+            else state.commit_index
+          in  
+          
+          ({state with commit_index; role = Leader leader_state}, Nothing_to_do)
+
+        | _ -> (state, Nothing_to_do)
+        end
+
       | Failure ->
         (* The receiver log is not matching this server current belief. 
            If a leader this server should decrement the next 
@@ -241,7 +280,7 @@ module Append_entries = struct
          *)
         let new_state = Leader.decrement_next_index state receiver_id in 
         let next_action = 
-          if Leader.is_leader state
+          if State.is_leader state
           then Retry_append {server_id  = receiver_id} 
           else Nothing_to_do
         in 
