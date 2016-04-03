@@ -8,7 +8,7 @@ all:
 	$(OCB) test.native
 
 test: all
-	./test.native 
+	time ./test.native 
 
 gen:
 	ocaml-protoc -ml_out src src/raft.proto

@@ -120,8 +120,8 @@ module Append_entries = struct
 
     match state.role with
     | Leader {next_index; match_index = _ } -> ( 
-      let server_index = List.nth next_index receiver_id in 
-      let prev_log_index = server_index.server_log_index - 1 in 
+      let {server_log_index;_ } = List.nth next_index receiver_id in 
+      let prev_log_index = server_log_index - 1 in 
 
       let (prev_log_term, log_entries) = 
         let rec aux log_entries = function
