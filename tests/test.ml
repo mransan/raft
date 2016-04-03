@@ -27,6 +27,11 @@ let initial_state
 }
   
 let now = 0.
+  
+let vote_communication ~from ~to_ () = 
+  let request_vote  = Logic.Request_vote.make from in 
+  let to_, response = Logic.Request_vote.handle_request to_ request_vote in 
+  Logic.Request_vote.handle_response from response, to_
 
 let () = 
   (* 
@@ -46,11 +51,17 @@ let () =
     | Candidate {vote_count; election_deadline} -> (
       assert(1 = vote_count); 
       assert(0.1 = election_deadline);
+       (* When converting to candidate, the server automatically 
+        * vote for itself.
+        *)
     )
     | _ -> assert(false)
   end; 
   assert (State.is_candidate candidate0);
   assert (1 = candidate0.current_term);
+    (* Make sure that any new election increments the 
+     * current term by 1.
+     *)
   assert (0 = candidate0.id);
 
   let follower1  = initial_state 1 in 
@@ -69,11 +80,8 @@ let () =
    * Convert from Candidate to Follower after getting majority
    *)
   
-  let (candidate0, follow_up_action), follower1 = 
-    let request_vote = Logic.Request_vote.make candidate0 in 
-    let follower1, response = Logic.Request_vote.handle_request follower1 request_vote in 
-    Logic.Request_vote.handle_response candidate0 response, follower1 
-  in 
+  let (candidate0, follow_up_action), follower1 
+    = vote_communication ~from:candidate0 ~to_:follower1 () in 
   
   assert (State.is_follower follower1);
   begin match follower1.role with
@@ -82,22 +90,32 @@ let () =
   end;
   assert (1 = follower1.id);
   assert (1 = follower1.current_term);
+    (* Make sure that the follower has correctly updated
+     * its current term to the one of the candidate since
+     * the latter one is larger.
+     *)
   assert ([] = follower1.log);
   
   begin match candidate0.role with
-  | Leader {next_index; match_index} ->(
+  | Leader {next_index; match_index} -> (
     assert(3 = List.length next_index); 
     List.iter (fun {server_log_index; _ } -> 
       assert (1 = server_log_index); 
+        (* The initial value for all server next log index 
+         * should be equal to the last log index + 1. 
+         *)
     ) next_index;
     assert(3 = List.length match_index); 
     List.iter (fun {server_log_index; _ } -> 
       assert (0 = server_log_index); 
     ) match_index;
-    )
+  )
   | _ -> assert(false)
   end; 
   assert (1 = candidate0.current_term);
+    (* Becoming a leader should not alter 
+     * the term. 
+     *)
   assert (0 = candidate0.id);
 
   assert (Act_as_new_leader = follow_up_action);
@@ -105,6 +123,53 @@ let () =
   Format.printf "candidate0': %a\n" pp_state candidate0; 
   Format.printf "follower1' : %a\n" pp_state follower1; 
   Format.printf "followup action: %a\n" pp_follow_up_action follow_up_action; 
+  ()
+
+let () = 
+
+  (* 
+   * This test verifies that when a follower has previously voted 
+   * for a candidate it correctly denies its vote to a subsequent
+   * candidate within that same term. 
+   *)
+
+  let follower0  = initial_state 0 in 
+  let candidate1 = Candidate.make (initial_state 1) now in
+  let candidate2 = Candidate.make (initial_state 2) now in
+
+  assert(1 = candidate1.id);
+  assert(2 = candidate2.id); 
+  assert(candidate1.current_term = candidate2.current_term);
+
+  let (candidate1, follow_up_action1), follower0 
+    = vote_communication ~from:candidate1 ~to_:follower0 () in 
+
+  begin match follower0.role with
+    | Follower {voted_for = Some 1} -> () 
+    | _ -> assert(false)
+  end;
+  
+  let (candidate2, follow_up_action2), follower0 
+    = vote_communication ~from:candidate2 ~to_:follower0 () in 
+
+  assert(State.is_leader candidate1);
+    (* Candidate 1 was the first and therefore got the 
+     * follower0 vote which in our configuration of 3 
+     * is a majority to become leader.
+     *)
+  assert(Act_as_new_leader = follow_up_action1);
+
+  assert(not (State.is_leader candidate2));
+    (* Candidate2 was second and therefore did not
+       get the vote. 
+     *)
+  assert(Nothing_to_do = follow_up_action2);
+    (* TODO ... here really it means wait until 
+     * next message or election timeout. 
+     * 
+     * Need to confirm if we need a dedicated follow up 
+     * action.
+     *) 
   ()
 
 let foo = Bytes.of_string "Foo"
