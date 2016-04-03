@@ -5,8 +5,8 @@
 type request_vote_request = {
   candidate_term : int;
   candidate_id : int;
-  last_log_index : int;
-  last_log_term : int;
+  candidate_last_log_index : int;
+  candidate_last_log_term : int;
 }
 
 type request_vote_response = {

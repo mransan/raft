@@ -3,15 +3,15 @@
 type request_vote_request = {
   candidate_term : int;
   candidate_id : int;
-  last_log_index : int;
-  last_log_term : int;
+  candidate_last_log_index : int;
+  candidate_last_log_term : int;
 }
 
 and request_vote_request_mutable = {
   mutable candidate_term : int;
   mutable candidate_id : int;
-  mutable last_log_index : int;
-  mutable last_log_term : int;
+  mutable candidate_last_log_index : int;
+  mutable candidate_last_log_term : int;
 }
 
 type request_vote_response = {
@@ -170,15 +170,15 @@ type follow_up_action =
 let rec default_request_vote_request () : request_vote_request = {
   candidate_term = 0;
   candidate_id = 0;
-  last_log_index = 0;
-  last_log_term = 0;
+  candidate_last_log_index = 0;
+  candidate_last_log_term = 0;
 }
 
 and default_request_vote_request_mutable () : request_vote_request_mutable = {
   candidate_term = 0;
   candidate_id = 0;
-  last_log_index = 0;
-  last_log_term = 0;
+  candidate_last_log_index = 0;
+  candidate_last_log_term = 0;
 }
 
 let rec default_request_vote_response () : request_vote_response = {
@@ -331,8 +331,8 @@ let rec decode_request_vote_request d =
     )
     | Some (1, Pbrt.Varint) -> v.candidate_term <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (2, Pbrt.Varint) -> v.candidate_id <- (Pbrt.Decoder.int_as_varint d); loop ()
-    | Some (3, Pbrt.Varint) -> v.last_log_index <- (Pbrt.Decoder.int_as_varint d); loop ()
-    | Some (4, Pbrt.Varint) -> v.last_log_term <- (Pbrt.Decoder.int_as_varint d); loop ()
+    | Some (3, Pbrt.Varint) -> v.candidate_last_log_index <- (Pbrt.Decoder.int_as_varint d); loop ()
+    | Some (4, Pbrt.Varint) -> v.candidate_last_log_term <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -548,9 +548,9 @@ let rec encode_request_vote_request (v:request_vote_request) encoder =
   Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.candidate_id encoder;
   Pbrt.Encoder.key (3, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.last_log_index encoder;
+  Pbrt.Encoder.int_as_varint v.candidate_last_log_index encoder;
   Pbrt.Encoder.key (4, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.last_log_term encoder;
+  Pbrt.Encoder.int_as_varint v.candidate_last_log_term encoder;
   ()
 
 let rec encode_request_vote_response (v:request_vote_response) encoder = 
@@ -713,8 +713,8 @@ let rec pp_request_vote_request fmt (v:request_vote_request) =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "candidate_term" Pbrt.Pp.pp_int fmt v.candidate_term;
     Pbrt.Pp.pp_record_field "candidate_id" Pbrt.Pp.pp_int fmt v.candidate_id;
-    Pbrt.Pp.pp_record_field "last_log_index" Pbrt.Pp.pp_int fmt v.last_log_index;
-    Pbrt.Pp.pp_record_field "last_log_term" Pbrt.Pp.pp_int fmt v.last_log_term;
+    Pbrt.Pp.pp_record_field "candidate_last_log_index" Pbrt.Pp.pp_int fmt v.candidate_last_log_index;
+    Pbrt.Pp.pp_record_field "candidate_last_log_term" Pbrt.Pp.pp_int fmt v.candidate_last_log_term;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
