@@ -1,4 +1,20 @@
-(** Raft protocol functional implementation *)
+(** Raft Protocol Functional implementation *)
+
+(** The Raft protocol defines 2 type of communication between servers: 
+  {ul 
+  {li Request Vote}
+  {li Append Entry}
+  } 
+
+  This module implements the RAFT protocol logic in a functional way and 
+  agnostic of any transport mechanism (TCP/UDP/HTTP). It focuses on the following:
+  {ul
+  {li Create the request value based on the server state}
+  {li Create the new server state and response when receiving a request}
+  {li Create the new server state and follow up action when receiving a response}
+  }
+
+ *)
 
 (** {2 Request_vote} *)
 

@@ -57,7 +57,7 @@ let () =
    * Convert follower to candidate 
    *)
 
-  let candidate0 = Candidate.make (initial_state 0) now in 
+  let candidate0 = Candidate.make ~now (initial_state 0)  in 
   
   begin match candidate0.role with
     | Candidate {vote_count; election_deadline} -> (
@@ -146,8 +146,8 @@ let () =
    *)
 
   let follower0  = initial_state 0 in 
-  let candidate1 = Candidate.make (initial_state 1) now in
-  let candidate2 = Candidate.make (initial_state 2) now in
+  let candidate1 = Candidate.make ~now (initial_state 1) in
+  let candidate2 = Candidate.make ~now (initial_state 2) in
 
   assert(1 = candidate1.id);
   assert(2 = candidate2.id); 
@@ -544,7 +544,7 @@ let () =
      * become leader.
      *)
     let current_term = 10 in 
-    Candidate.make (initial_state ~current_term 2) now
+    Candidate.make ~now (initial_state ~current_term 2)
   in  
 
   (* verify initial properties
@@ -619,7 +619,7 @@ let () =
    * We'll assume follower1 initiate first.
    *)
 
-  let follower1 = Candidate.make follower1 now in
+  let follower1 = Candidate.make ~now follower1 in
   assert(12 = follower1.current_term); 
 
   let (follower1, follow_up_action), leader0 = 
