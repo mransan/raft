@@ -59,7 +59,10 @@ module Request_vote = struct
            *)
           
           let state ={state with 
-            role = Follower {voted_for = Some candidate_id} 
+            role = Follower {
+              voted_for = Some candidate_id; 
+              current_leader = None;
+            } 
           } in  
           (state, make_response state true) 
 
@@ -153,7 +156,7 @@ module Append_entries = struct
 
   let handle_request state request = 
     
-    let {leader_term; leader_commit} = request in  
+    let {leader_term; leader_commit; leader_id;} = request in  
     
     let make_response state result = 
       {receiver_term = state.current_term; receiver_id = state.id; result;}
@@ -169,7 +172,7 @@ module Append_entries = struct
       (* This request is coming from a legetimate leader, 
          let's ensure that this server is a follower.
        *)
-      let state = Follower.make state leader_term in  
+      let state = Follower.make ~current_leader:leader_id state leader_term in  
   
       (* Next step is to handle the log entries from the leader.
          

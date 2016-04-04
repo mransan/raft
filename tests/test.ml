@@ -13,7 +13,7 @@ let default_configuration ()  = {
 }
 
 let initial_state  
-  ?role:(role = Follower {voted_for = None}) 
+  ?role:(role = Follower {voted_for = None; current_leader = None;}) 
   ?log:(log = [])
   ?commit_index:(commit_index = 0)
   ?configuration:(configuration = default_configuration ())
@@ -23,9 +23,20 @@ let initial_state
   log;
   commit_index;
   last_applied = 0;
-  role = Follower {voted_for = None} ;
+  role;
   configuration; 
 }
+
+let assert_current_leader state expected_leader = 
+  match state.role with
+  | Follower {current_leader = Some id; _ } -> assert(id = expected_leader)
+  | _ -> assert(false) 
+
+let assert_no_current_leader state = 
+  match state.role with
+  | Follower {current_leader = None; _ } -> ()
+  | _ -> assert(false) 
+
   
 let now = 0.
   
@@ -236,6 +247,7 @@ let () =
   assert(1 = follower1.id);
   assert(0 = follower1.current_term);
   assert(0 = List.length follower1.log);
+  assert_no_current_leader follower1;
 
   
   let (leader0, follow_up_action), follower1, _ = 
@@ -260,6 +272,7 @@ let () =
   let check_follower1 ~commit_index follower1 = 
     assert(1 = follower1.id);
     assert(1 = follower1.current_term);
+    assert_current_leader follower1 0;
     assert(2 = List.length follower1.log);
       (* The 2 leader logs were inserted
        *)
@@ -320,6 +333,7 @@ let () =
   let check_follower1 ~commit_index follower1 = 
     assert(1 = follower1.id);
     assert(1 = follower1.current_term);
+    assert_current_leader follower1 0;
     assert(3 = List.length follower1.log);
       (* The third log [bim] should have been inserted as part 
          of the append entry request.
@@ -392,6 +406,7 @@ let () =
   assert(3 = leader0.commit_index);
 
   assert(1 = follower1.id); 
+  assert_current_leader follower1 0;
   begin match follower1.role with
     | Follower {voted_for = None; } -> ()
     | _ -> assert(false)
@@ -506,7 +521,10 @@ let () =
      * details.
      *)
     let current_term = 1 in 
-    let role = Follower {voted_for = Some 0} in 
+    let role = Follower {
+      voted_for = Some 0; 
+      current_leader = Some 0;
+    } in 
     initial_state ~commit_index:3 ~role ~log:leader_log_version_0 ~current_term 1 
   in 
 
@@ -546,6 +564,8 @@ let () =
   assert(3 = leader0.commit_index);
   assert(3 = follower1.commit_index);
   assert(0 = follower2.commit_index);
+
+  assert_current_leader follower1 0;
 
   (*
    * First vote communication for term 11 between Follower2 (candidate)

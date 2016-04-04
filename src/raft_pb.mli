@@ -61,6 +61,7 @@ type candidate_state = {
 
 type follower_state = {
   voted_for : int option;
+  current_leader : int option;
 }
 
 type configuration = {

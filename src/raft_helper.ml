@@ -29,8 +29,11 @@ end
 
 module Follower = struct 
 
-  let make state term = { state with 
-    role = Follower {voted_for = None} ; 
+  let make ?current_leader state term = { state with 
+    role = Follower {
+      voted_for = None; 
+      current_leader; 
+    }; 
     current_term = term; 
   }
 
