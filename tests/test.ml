@@ -57,7 +57,7 @@ let () =
    * Convert follower to candidate 
    *)
 
-  let candidate0 = Candidate.make ~now (initial_state 0)  in 
+  let candidate0 = Candidate.become ~now (initial_state 0)  in 
   
   begin match candidate0.role with
     | Candidate {vote_count; election_deadline} -> (
@@ -146,8 +146,8 @@ let () =
    *)
 
   let follower0  = initial_state 0 in 
-  let candidate1 = Candidate.make ~now (initial_state 1) in
-  let candidate2 = Candidate.make ~now (initial_state 2) in
+  let candidate1 = Candidate.become ~now (initial_state 1) in
+  let candidate2 = Candidate.become ~now (initial_state 2) in
 
   assert(1 = candidate1.id);
   assert(2 = candidate2.id); 
@@ -213,7 +213,7 @@ let () =
    *)
 
   let leader0   = 
-    Leader.make (initial_state ~current_term:1 0) 
+    Leader.become (initial_state ~current_term:1 0) 
     |> Leader.add_log foo
     |> Leader.add_log bar
   in 
@@ -379,7 +379,7 @@ let () =
   let leader0 = 
     let current_term = 2 in 
     let log = leader_log_version_0 in 
-    Leader.make (initial_state ~commit_index:3 ~log ~current_term 0) 
+    Leader.become (initial_state ~commit_index:3 ~log ~current_term 0) 
   in  
 
   let follower1 = 
@@ -509,7 +509,7 @@ let () =
   let leader0 = 
     let current_term = 1 in 
     let log = leader_log_version_0 in 
-    Leader.make (initial_state ~commit_index:3 ~log ~current_term 0) 
+    Leader.become (initial_state ~commit_index:3 ~log ~current_term 0) 
   in  
 
   let follower1 = 
@@ -544,7 +544,7 @@ let () =
      * become leader.
      *)
     let current_term = 10 in 
-    Candidate.make ~now (initial_state ~current_term 2)
+    Candidate.become ~now (initial_state ~current_term 2)
   in  
 
   (* verify initial properties
@@ -619,7 +619,7 @@ let () =
    * We'll assume follower1 initiate first.
    *)
 
-  let follower1 = Candidate.make ~now follower1 in
+  let follower1 = Candidate.become ~now follower1 in
   assert(12 = follower1.current_term); 
 
   let (follower1, follow_up_action), leader0 = 
@@ -638,3 +638,56 @@ let () =
   assert(12 = leader0.current_term);
 
   ()
+
+let () = 
+  (* Example *)
+  
+  (* Create a 3 server configuration. 
+   *) 
+  let configuration = Raft_pb.( {
+    nb_of_server     = 3;
+    election_timeout = 0.1;
+  }) in 
+
+  (* Create a leader state by simulating a (rigged) election
+   *)
+  let leader_0 = 
+    Raft_helper.Follower.create ~configuration ~id:0 () 
+    |> Raft_helper.Candidate.become ~now:0.0 
+    |> Raft_helper.Leader.become 
+    |> Raft_helper.Leader.add_log (Bytes.of_string "Foo") 
+  in 
+  
+  (* Create a follower
+   *)
+  let follower_1 = 
+    Raft_helper.Follower.create ~configuration ~id:1 () 
+  in 
+
+  (* First create an 'Append Entries' request from the 
+     leader to server 1.
+   *) 
+  match Raft_logic.Append_entries.make leader_0 1 with
+  | Some request -> (
+
+    (* 'Update' server 1 (ie follower) by applying the request. This returns
+       the response to send to the leader. 
+     *)
+    let follower_1, response = Raft_logic.Append_entries.handle_request follower_1 request in 
+
+    (* 'Update' server 0 (ie leader) by applying the response. This returns
+       the new state as well as a follow up action to take. 
+     *)
+    let leader_0, action = Raft_logic.Append_entries.handle_response leader_0 response in 
+
+    (* Check that the follower has successfully replicated the leader single
+       log
+     *)
+    match follower_1.log with
+    | {data; _ } :: [] -> 
+      if "Foo" = Bytes.to_string data
+      then print_endline "Log successfully replicated in follower"
+      else print_endline "Log replication was corrupted"
+    | _ -> print_endline "Log replication failure"
+  )
+  | None -> () 

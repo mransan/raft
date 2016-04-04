@@ -41,7 +41,7 @@ module Request_vote = struct
            it must convert to a follower and update to that term.
          *)
         if candidate_term > state.current_term
-        then Follower.make ~term:candidate_term state 
+        then Follower.become ~term:candidate_term state 
         else state
       in
       let last_log_index = State.last_log_index state in 
@@ -87,7 +87,7 @@ module Request_vote = struct
       (* Enforce invariant that if this server is lagging behind 
          it must convert to a follower and update to the latest term.
        *)
-      (Follower.make ~term:voter_term state, Nothing_to_do) 
+      (Follower.become ~term:voter_term state, Nothing_to_do) 
     else 
   
       match role, vote_granted  with
@@ -97,7 +97,7 @@ module Request_vote = struct
         then 
           (* Candidate is the new leader
            *)
-          (Leader.make state, Act_as_new_leader)  
+          (Leader.become state, Act_as_new_leader)  
         else 
           (* Candidate has a new vote but not yet reached the majority
            *)
@@ -172,7 +172,7 @@ module Append_entries = struct
       (* This request is coming from a legetimate leader, 
          let's ensure that this server is a follower.
        *)
-      let state = Follower.make ~current_leader:leader_id ~term:leader_term state in  
+      let state = Follower.become ~current_leader:leader_id ~term:leader_term state in  
   
       (* Next step is to handle the log entries from the leader.
          
@@ -247,7 +247,7 @@ module Append_entries = struct
       (* Enforce invariant that if the server is lagging behind 
          it must convert to a follower and update to that term.
        *)
-      (Follower.make ~term:receiver_term state, Nothing_to_do) 
+      (Follower.become ~term:receiver_term state, Nothing_to_do) 
   
     else 
       match result with
