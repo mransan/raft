@@ -2,10 +2,10 @@
 
 > This repo implements the [Raft consensus protocol](https://raft.github.io/) 
 > in a functional way using the OCaml language. 
->
-> The library solely implements the pure logical part of the protocol. It is 
-> **agnostic** of the transport mechanism, server identification and 
-> payload (ie log data) format. 
+
+The library solely implements the pure logical part of the protocol. It is 
+**agnostic** of the transport mechanism, server identification and 
+payload (ie log data) format. 
 
 ## Project structure ##
 
