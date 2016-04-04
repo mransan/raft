@@ -112,10 +112,12 @@ and candidate_state_mutable = {
 
 type follower_state = {
   voted_for : int option;
+  current_leader : int option;
 }
 
 and follower_state_mutable = {
   mutable voted_for : int option;
+  mutable current_leader : int option;
 }
 
 type configuration = {
@@ -276,10 +278,12 @@ and default_candidate_state_mutable () : candidate_state_mutable = {
 
 let rec default_follower_state () : follower_state = {
   voted_for = None;
+  current_leader = None;
 }
 
 and default_follower_state_mutable () : follower_state_mutable = {
   voted_for = None;
+  current_leader = None;
 }
 
 let rec default_configuration () : configuration = {
@@ -469,6 +473,7 @@ let rec decode_follower_state d =
     | None -> (
     )
     | Some (1, Pbrt.Varint) -> v.voted_for <- Some (Pbrt.Decoder.int_as_varint d); loop ()
+    | Some (2, Pbrt.Varint) -> v.current_leader <- Some (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -643,6 +648,12 @@ let rec encode_follower_state (v:follower_state) encoder =
     Pbrt.Encoder.int_as_varint x encoder;
   )
   | None -> ());
+  (match v.current_leader with 
+  | Some x -> (
+    Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
+    Pbrt.Encoder.int_as_varint x encoder;
+  )
+  | None -> ());
   ()
 
 let rec encode_configuration (v:configuration) encoder = 
@@ -806,6 +817,7 @@ let rec pp_follower_state fmt (v:follower_state) =
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "voted_for" (Pbrt.Pp.pp_option Pbrt.Pp.pp_int) fmt v.voted_for;
+    Pbrt.Pp.pp_record_field "current_leader" (Pbrt.Pp.pp_option Pbrt.Pp.pp_int) fmt v.current_leader;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
