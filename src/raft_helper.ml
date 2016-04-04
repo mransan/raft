@@ -29,7 +29,18 @@ end
 
 module Follower = struct 
 
-  let make ?current_leader ~term state = { state with 
+  let create ?current_leader ?current_term:(current_term = 0) ?voted_for ?log:(log = []) ~configuration ~id () = 
+    {
+      id; 
+      current_term; 
+      log;
+      commit_index = 0; 
+      last_applied = 0; 
+      role = Follower {voted_for; current_leader};  
+      configuration; 
+    }
+
+  let become ?current_leader ~term state = { state with 
     role = Follower {
       voted_for = None; 
       current_leader; 
@@ -41,7 +52,7 @@ end
 
 module Candidate = struct 
 
-  let make ~now state = 
+  let become ~now state = 
     let {election_timeout; _ } = state.configuration in 
     let candidate_state = {
       vote_count = 1; 
@@ -59,7 +70,7 @@ end
 
 module Leader = struct 
 
-  let make state  = 
+  let become state  = 
 
     let last_log_index = State.last_log_index state in
     

@@ -27,14 +27,27 @@ module State : sig
   (** [is_leader state] returns [true] if [state] role is a leader, [false]
       otherwise. 
     *)
-  
+
 end (* State *) 
 
 
 module Follower : sig 
 
-  val make : ?current_leader:int -> term:int -> Raft_pb.state -> Raft_pb.state
-  (** [make ~current_leader state term] return the new follower state. 
+  val create : 
+    ?current_leader:int -> 
+    ?current_term:int -> 
+    ?voted_for:int -> 
+    ?log:Raft_pb.log_entry list ->
+    configuration:Raft_pb.configuration -> 
+    id:int -> 
+    unit -> 
+    Raft_pb.state 
+  (** [create ~current_leader ~current_term ~voted_for ~log ~configuration ~id ()] creates an initial 
+      follower state. 
+    *)
+
+  val become : ?current_leader:int -> term:int -> Raft_pb.state -> Raft_pb.state
+  (** [become ~current_leader state term] return the new follower state. 
       
       {ul
       {li [voted_for] is [None]}
@@ -47,8 +60,8 @@ end
 
 module Candidate : sig
 
-  val make : now:float ->  Raft_pb.state -> Raft_pb.state
-  (** [make state now] returns the new state with Candidate role. [current_term] is 
+  val become : now:float ->  Raft_pb.state -> Raft_pb.state
+  (** [become state now] returns the new state with Candidate role. [current_term] is 
       incremented and [vote_count] initialized to 1. (ie we assume the candidate
       votes for itself.
 
@@ -68,8 +81,8 @@ end (* Candidate *)
 
 module Leader : sig
 
-  val make : Raft_pb.state -> Raft_pb.state 
-  (** [make state] returns the new state with a Leader role. 
+  val become : Raft_pb.state -> Raft_pb.state 
+  (** [become state] returns the new state with a Leader role. 
       
        While only candidate with a majority are allowed by the protocol to 
        become a leader, this function does not perform any checks but simply 
