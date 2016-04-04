@@ -29,7 +29,7 @@ end
 
 module Follower = struct 
 
-  let make ?current_leader state term = { state with 
+  let make ?current_leader ~term state = { state with 
     role = Follower {
       voted_for = None; 
       current_leader; 
@@ -41,7 +41,7 @@ end
 
 module Candidate = struct 
 
-  let make state now = 
+  let make ~now state = 
     let {election_timeout; _ } = state.configuration in 
     let candidate_state = {
       vote_count = 1; 
@@ -79,10 +79,13 @@ module Leader = struct
   let next_index_for_receiver {role; _ } receiver_id = 
     match role with
     | Leader {next_index; _ } -> 
-        let {server_log_index; _ } = List.find (fun ({server_id; _ }:server_index) -> 
+        let is_server = fun ({server_id; _ }:server_index) -> 
           server_id = receiver_id
-        ) next_index in 
-        Some server_log_index
+        in 
+        begin match List.find is_server next_index with
+        | {server_log_index; _ } -> Some server_log_index
+        | exception Not_found -> None 
+        end 
     | _ -> None 
 
   let add_log data state = 
@@ -95,8 +98,9 @@ module Leader = struct
       }::state.log
     }
    
-  let update_receiver_last_log_index leader_state receiver_id last_log_index = 
-    if last_log_index = 0
+  let update_receiver_last_log_index ~server_id ~log_index leader_state = 
+    let receiver_id = server_id in 
+    if log_index = 0
     then (leader_state, 0)
     else 
       let {next_index; match_index; } = leader_state in 
@@ -108,14 +112,14 @@ module Leader = struct
         ) server_index 
       in 
 
-      let next_index = update_server_index_value next_index (last_log_index + 1) in 
-      let match_index = update_server_index_value match_index last_log_index in 
+      let next_index = update_server_index_value next_index (log_index + 1) in 
+      let match_index = update_server_index_value match_index log_index in 
 
       (* Calculate the number of server which also have replicated that 
          log entry
        *)
       let nb = List.fold_left (fun nb {server_log_index; _ } -> 
-        if server_log_index >= last_log_index
+        if server_log_index >= log_index 
         then nb + 1 
         else nb
       ) 0 match_index in 
