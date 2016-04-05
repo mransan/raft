@@ -135,4 +135,13 @@ module Configuration : sig
   (** [is_majority configuration nb] returns true if [nb] is a majority
    *)
 
+
 end (* Configuration *)
+
+module Follow_up_action : sig
+
+  val wait_for_rpc : Raft_pb.state -> float -> Raft_pb.follow_up_action
+
+  val default : Raft_pb.state -> float -> Raft_pb.follow_up_action 
+
+end (* Follow_up_action *)

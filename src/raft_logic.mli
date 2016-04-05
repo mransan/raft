@@ -16,6 +16,8 @@
 
  *)
 
+type time = float 
+
 (** {2 Request_vote} *)
 
 module Request_vote : sig 
@@ -27,7 +29,8 @@ module Request_vote : sig
   val handle_request : 
     Raft_pb.state -> 
     Raft_pb.request_vote_request ->
-    (Raft_pb.state * Raft_pb.request_vote_response) 
+    time ->  
+    (Raft_pb.state * Raft_pb.request_vote_response * Raft_pb.follow_up_action) 
   (** [handle_request state request] returns the updated 
       state and the response to be sent back. 
     *)
@@ -35,6 +38,7 @@ module Request_vote : sig
   val handle_response : 
     Raft_pb.state -> 
     Raft_pb.request_vote_response -> 
+    time -> 
     (Raft_pb.state * Raft_pb.follow_up_action)
   (** [handle_response state response] returns the updated
       state along with the expected follow up action to 
@@ -58,7 +62,8 @@ module Append_entries : sig
   val handle_request : 
     Raft_pb.state -> 
     Raft_pb.append_entries_request ->
-    (Raft_pb.state * Raft_pb.append_entries_response) 
+    time -> 
+    (Raft_pb.state * Raft_pb.append_entries_response * Raft_pb.follow_up_action) 
   (** [handle_request state request] returns the updated 
       state and the response to be sent back. 
     *)
@@ -66,6 +71,7 @@ module Append_entries : sig
   val handle_response : 
     Raft_pb.state -> 
     Raft_pb.append_entries_response -> 
+    time ->
     (Raft_pb.state * Raft_pb.follow_up_action)
   (** [handle_response state response] returns the updated
       state along with the expected follow up action to 

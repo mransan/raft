@@ -40,10 +40,10 @@ let assert_no_current_leader state =
   
 let now = 0.
   
-let vote_communication ~from ~to_ () = 
+let vote_communication ~from ~to_ ~now () = 
   let request_vote  = Logic.Request_vote.make from in 
-  let to_, response = Logic.Request_vote.handle_request to_ request_vote in 
-  Logic.Request_vote.handle_response from response, to_
+  let to_, response, _ = Logic.Request_vote.handle_request to_ request_vote now in 
+  Logic.Request_vote.handle_response from response now, to_
 
 let () = 
   (* 
@@ -93,7 +93,7 @@ let () =
    *)
   
   let (candidate0, follow_up_action), follower1 
-    = vote_communication ~from:candidate0 ~to_:follower1 () in 
+    = vote_communication ~from:candidate0 ~to_:follower1 ~now () in 
   
   assert (State.is_follower follower1);
   begin match follower1.role with
@@ -154,7 +154,7 @@ let () =
   assert(candidate1.current_term = candidate2.current_term);
 
   let (candidate1, follow_up_action1), follower0 
-    = vote_communication ~from:candidate1 ~to_:follower0 () in 
+    = vote_communication ~from:candidate1 ~to_:follower0 ~now () in 
 
   begin match follower0.role with
     | Follower {voted_for = Some 1} -> () 
@@ -162,7 +162,7 @@ let () =
   end;
   
   let (candidate2, follow_up_action2), follower0 
-    = vote_communication ~from:candidate2 ~to_:follower0 () in 
+    = vote_communication ~from:candidate2 ~to_:follower0 ~now () in 
 
   assert(State.is_leader candidate1);
     (* Candidate 1 was the first and therefore got the 
@@ -175,7 +175,7 @@ let () =
     (* Candidate2 was second and therefore did not
        get the vote. 
      *)
-  assert(Nothing_to_do = follow_up_action2);
+  assert(Wait_for_rpc {election_deadline = 0.1; } = follow_up_action2);
     (* TODO ... here really it means wait until 
      * next message or election timeout. 
      * 
@@ -188,12 +188,12 @@ let foo = Bytes.of_string "Foo"
 let bar = Bytes.of_string "Bar"
 let bim = Bytes.of_string "Bim" 
   
-let append_entry_communication ~from ~to_ () = 
+let append_entry_communication ~from ~to_ ~now () = 
   let request = Logic.Append_entries.make from 1 in
   match request with
   | Some request -> 
-    let to_, response = Logic.Append_entries.handle_request to_ request in  
-    Logic.Append_entries.handle_response from response, to_, response  
+    let to_, response, _ = Logic.Append_entries.handle_request to_ request now in  
+    Logic.Append_entries.handle_response from response now, to_, response  
   | None -> failwith "request expected"
 
 let () = 
@@ -251,7 +251,7 @@ let () =
 
   
   let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 () in 
+    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in 
 
   (* Check leader state after request/response communication
    *)
@@ -296,7 +296,7 @@ let () =
      *)
   
   let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 () in 
+    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in 
   check_leader0 leader0;
     (* The leader should have been unchanged since no new log entries
        were added and they had all been send to the receiver 1 
@@ -316,7 +316,7 @@ let () =
   in
 
   let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 () in 
+    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in 
 
   let check_leader0 leader0 = 
     let log_version_1 = {index=3;term=1;data=bim;}::log_version_0 in
@@ -348,7 +348,7 @@ let () =
   check_follower1 ~commit_index:2 follower1;
   
   let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 () in 
+    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in 
     (* Since no new log were inserted, this should have send 
        an empty append entry request but with a leader commit index = 3 which
        should be reflected in the commit index of the follower.
@@ -398,7 +398,7 @@ let () =
      *)
 
   let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 () in
+    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in
 
   assert(0 = leader0.id);
   assert(2 = leader0.current_term); 
@@ -445,7 +445,7 @@ let () =
      *)
   
   let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 () in
+    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in
   assert((Some 2) = Leader.next_index_for_receiver leader0 1);
   assert(Retry_append {server_id = 1} = follow_up_action); 
     (* The follower1 is lagging by 3 log and will therefore 3 
@@ -453,7 +453,7 @@ let () =
      *) 
   
   let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 () in
+    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in
   assert((Some 1) = Leader.next_index_for_receiver leader0 1);
   assert(Retry_append {server_id = 1} = follow_up_action); 
      (* Now the leader has the correct believe of what should 
@@ -462,7 +462,7 @@ let () =
       *)
 
   let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 () in
+    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in
   assert(3 = List.length follower1.log); 
   assert(3 = follower1.commit_index); 
     (* The follower1 has successfully appended the 3 log it 
@@ -573,7 +573,7 @@ let () =
    *)
 
   let (follower2, follow_up_action), follower1 =
-    vote_communication ~from:follower2 ~to_:follower1 () in
+    vote_communication ~from:follower2 ~to_:follower1 ~now () in
 
   assert(State.is_candidate follower2); 
     (* The vote was not granted due to the fact 
@@ -584,7 +584,7 @@ let () =
     (* Follower 1 updated its term to match 
      * the one from Follower2 since its is greater. 
      *)
-  assert(Nothing_to_do = follow_up_action);
+  assert(Wait_for_rpc {election_deadline = 0.1} = follow_up_action);
 
   (*
    * First vote communication for term 11 between Follower2 (candidate)
@@ -592,7 +592,7 @@ let () =
    *)
 
   let (follower2, follow_up_action), leader0 =
-    vote_communication ~from:follower2 ~to_:leader0 () in
+    vote_communication ~from:follower2 ~to_:leader0 ~now () in
   
   assert(State.is_candidate follower2); 
     (* The vote was not granted due to the fact 
@@ -623,7 +623,7 @@ let () =
   assert(12 = follower1.current_term); 
 
   let (follower1, follow_up_action), leader0 = 
-    vote_communication ~from:follower1 ~to_:leader0 () in 
+    vote_communication ~from:follower1 ~to_:leader0 ~now () in 
 
   assert(State.is_leader follower1); 
     (* Leader0 current log is at the same stage as 
@@ -673,12 +673,12 @@ let () =
     (* 'Update' server 1 (ie follower) by applying the request. This returns
        the response to send to the leader. 
      *)
-    let follower_1, response = Raft_logic.Append_entries.handle_request follower_1 request in 
+    let follower_1, response, _ = Raft_logic.Append_entries.handle_request follower_1 request now in 
 
     (* 'Update' server 0 (ie leader) by applying the response. This returns
        the new state as well as a follow up action to take. 
      *)
-    let leader_0, action = Raft_logic.Append_entries.handle_response leader_0 response in 
+    let leader0 , _ = Raft_logic.Append_entries.handle_response leader_0 response now in 
 
     (* Check that the follower has successfully replicated the leader single
        log

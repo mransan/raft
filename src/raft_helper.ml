@@ -154,5 +154,19 @@ module Configuration = struct
 
   let is_majority {nb_of_server; _} nb = 
     nb > (nb_of_server / 2) 
+  
+
+end 
+
+module Follow_up_action = struct
+
+  let wait_for_rpc state now = 
+    Wait_for_rpc {election_deadline = now +. state.configuration.election_timeout; } 
+
+  let default state now  = 
+    match state.role with
+    | Leader _ -> Nothing_to_do 
+    | Candidate {election_deadline; } -> Wait_for_rpc {election_deadline; } 
+    | Follower _ -> wait_for_rpc state now 
 
 end 
