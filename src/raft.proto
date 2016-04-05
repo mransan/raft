@@ -90,11 +90,14 @@ message FollowUpAction {
   message RetryAppendData {
     required int32 server_id = 1; 
   }
+  message WaitForNextRpc {
+    required double election_deadline = 1;
+  }
   oneof t {
     NoData          act_as_new_leader  = 1;
-    NoData          start_new_election = 2; 
     NoData          nothing_to_do      = 3;
     RetryAppendData retry_append       = 4;
+    WaitForNextRpc  wait_for_rpc       = 5;
   }
 }
 

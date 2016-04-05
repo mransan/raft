@@ -88,11 +88,15 @@ type follow_up_action_retry_append_data = {
   server_id : int;
 }
 
+type follow_up_action_wait_for_next_rpc = {
+  election_deadline : float;
+}
+
 type follow_up_action =
   | Act_as_new_leader
-  | Start_new_election
   | Nothing_to_do
   | Retry_append of follow_up_action_retry_append_data
+  | Wait_for_rpc of follow_up_action_wait_for_next_rpc
 
 
 (** {2 Default values} *)
@@ -137,6 +141,9 @@ val default_state : unit -> state
 
 val default_follow_up_action_retry_append_data : unit -> follow_up_action_retry_append_data
 (** [default_follow_up_action_retry_append_data ()] is the default value for type [follow_up_action_retry_append_data] *)
+
+val default_follow_up_action_wait_for_next_rpc : unit -> follow_up_action_wait_for_next_rpc
+(** [default_follow_up_action_wait_for_next_rpc ()] is the default value for type [follow_up_action_wait_for_next_rpc] *)
 
 val default_follow_up_action : unit -> follow_up_action
 (** [default_follow_up_action ()] is the default value for type [follow_up_action] *)
@@ -185,6 +192,9 @@ val decode_state : Pbrt.Decoder.t -> state
 val decode_follow_up_action_retry_append_data : Pbrt.Decoder.t -> follow_up_action_retry_append_data
 (** [decode_follow_up_action_retry_append_data decoder] decodes a [follow_up_action_retry_append_data] value from [decoder] *)
 
+val decode_follow_up_action_wait_for_next_rpc : Pbrt.Decoder.t -> follow_up_action_wait_for_next_rpc
+(** [decode_follow_up_action_wait_for_next_rpc decoder] decodes a [follow_up_action_wait_for_next_rpc] value from [decoder] *)
+
 val decode_follow_up_action : Pbrt.Decoder.t -> follow_up_action
 (** [decode_follow_up_action decoder] decodes a [follow_up_action] value from [decoder] *)
 
@@ -231,6 +241,9 @@ val encode_state : state -> Pbrt.Encoder.t -> unit
 
 val encode_follow_up_action_retry_append_data : follow_up_action_retry_append_data -> Pbrt.Encoder.t -> unit
 (** [encode_follow_up_action_retry_append_data v encoder] encodes [v] with the given [encoder] *)
+
+val encode_follow_up_action_wait_for_next_rpc : follow_up_action_wait_for_next_rpc -> Pbrt.Encoder.t -> unit
+(** [encode_follow_up_action_wait_for_next_rpc v encoder] encodes [v] with the given [encoder] *)
 
 val encode_follow_up_action : follow_up_action -> Pbrt.Encoder.t -> unit
 (** [encode_follow_up_action v encoder] encodes [v] with the given [encoder] *)
@@ -282,6 +295,9 @@ val pp_state : Format.formatter -> state -> unit
 
 val pp_follow_up_action_retry_append_data : Format.formatter -> follow_up_action_retry_append_data -> unit 
 (** [pp_follow_up_action_retry_append_data v] formats v] *)
+
+val pp_follow_up_action_wait_for_next_rpc : Format.formatter -> follow_up_action_wait_for_next_rpc -> unit 
+(** [pp_follow_up_action_wait_for_next_rpc v] formats v] *)
 
 val pp_follow_up_action : Format.formatter -> follow_up_action -> unit 
 (** [pp_follow_up_action v] formats v] *)

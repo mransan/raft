@@ -163,11 +163,19 @@ and follow_up_action_retry_append_data_mutable = {
   mutable server_id : int;
 }
 
+type follow_up_action_wait_for_next_rpc = {
+  election_deadline : float;
+}
+
+and follow_up_action_wait_for_next_rpc_mutable = {
+  mutable election_deadline : float;
+}
+
 type follow_up_action =
   | Act_as_new_leader
-  | Start_new_election
   | Nothing_to_do
   | Retry_append of follow_up_action_retry_append_data
+  | Wait_for_rpc of follow_up_action_wait_for_next_rpc
 
 let rec default_request_vote_request () : request_vote_request = {
   candidate_term = 0;
@@ -323,6 +331,14 @@ let rec default_follow_up_action_retry_append_data () : follow_up_action_retry_a
 
 and default_follow_up_action_retry_append_data_mutable () : follow_up_action_retry_append_data_mutable = {
   server_id = 0;
+}
+
+let rec default_follow_up_action_wait_for_next_rpc () : follow_up_action_wait_for_next_rpc = {
+  election_deadline = 0.;
+}
+
+and default_follow_up_action_wait_for_next_rpc_mutable () : follow_up_action_wait_for_next_rpc_mutable = {
+  election_deadline = 0.;
 }
 
 let rec default_follow_up_action () : follow_up_action = Act_as_new_leader
@@ -530,14 +546,27 @@ let rec decode_follow_up_action_retry_append_data d =
   let v:follow_up_action_retry_append_data = Obj.magic v in
   v
 
+let rec decode_follow_up_action_wait_for_next_rpc d =
+  let v = default_follow_up_action_wait_for_next_rpc_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+    )
+    | Some (1, Pbrt.Bits64) -> v.election_deadline <- (Pbrt.Decoder.float_as_bits64 d); loop ()
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:follow_up_action_wait_for_next_rpc = Obj.magic v in
+  v
+
 let rec decode_follow_up_action d = 
   let rec loop () = 
     let ret:follow_up_action = match Pbrt.Decoder.key d with
       | None -> failwith "None of the known key is found"
       | Some (1, _) -> (Pbrt.Decoder.empty_nested d ; Act_as_new_leader)
-      | Some (2, _) -> (Pbrt.Decoder.empty_nested d ; Start_new_election)
       | Some (3, _) -> (Pbrt.Decoder.empty_nested d ; Nothing_to_do)
       | Some (4, _) -> Retry_append (decode_follow_up_action_retry_append_data (Pbrt.Decoder.nested d))
+      | Some (5, _) -> Wait_for_rpc (decode_follow_up_action_wait_for_next_rpc (Pbrt.Decoder.nested d))
       | Some (n, payload_kind) -> (
         Pbrt.Decoder.skip d payload_kind; 
         loop () 
@@ -700,14 +729,15 @@ let rec encode_follow_up_action_retry_append_data (v:follow_up_action_retry_appe
   Pbrt.Encoder.int_as_varint v.server_id encoder;
   ()
 
+let rec encode_follow_up_action_wait_for_next_rpc (v:follow_up_action_wait_for_next_rpc) encoder = 
+  Pbrt.Encoder.key (1, Pbrt.Bits64) encoder; 
+  Pbrt.Encoder.float_as_bits64 v.election_deadline encoder;
+  ()
+
 let rec encode_follow_up_action (v:follow_up_action) encoder = 
   match v with
   | Act_as_new_leader -> (
     Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.empty_nested encoder;
-  )
-  | Start_new_election -> (
-    Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.empty_nested encoder;
   )
   | Nothing_to_do -> (
@@ -717,6 +747,10 @@ let rec encode_follow_up_action (v:follow_up_action) encoder =
   | Retry_append x -> (
     Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.nested (encode_follow_up_action_retry_append_data x) encoder;
+  )
+  | Wait_for_rpc x -> (
+    Pbrt.Encoder.key (5, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_follow_up_action_wait_for_next_rpc x) encoder;
   )
 
 let rec pp_request_vote_request fmt (v:request_vote_request) = 
@@ -859,9 +893,17 @@ let rec pp_follow_up_action_retry_append_data fmt (v:follow_up_action_retry_appe
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
+let rec pp_follow_up_action_wait_for_next_rpc fmt (v:follow_up_action_wait_for_next_rpc) = 
+  let pp_i fmt () =
+    Format.pp_open_vbox fmt 1;
+    Pbrt.Pp.pp_record_field "election_deadline" Pbrt.Pp.pp_float fmt v.election_deadline;
+    Format.pp_close_box fmt ()
+  in
+  Pbrt.Pp.pp_brk pp_i fmt ()
+
 let rec pp_follow_up_action fmt (v:follow_up_action) =
   match v with
   | Act_as_new_leader  -> Format.fprintf fmt "Act_as_new_leader"
-  | Start_new_election  -> Format.fprintf fmt "Start_new_election"
   | Nothing_to_do  -> Format.fprintf fmt "Nothing_to_do"
   | Retry_append x -> Format.fprintf fmt "@[Retry_append(%a)@]" pp_follow_up_action_retry_append_data x
+  | Wait_for_rpc x -> Format.fprintf fmt "@[Wait_for_rpc(%a)@]" pp_follow_up_action_wait_for_next_rpc x
