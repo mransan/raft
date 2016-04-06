@@ -70,33 +70,46 @@ end
 
 module Leader = struct 
 
-  let become state  = 
+  let become state now = 
 
     let last_log_index = State.last_log_index state in
     
-    let {nb_of_server; _ } =  state.configuration in 
+    let {nb_of_server; hearbeat_timeout} = state.configuration in 
   
-    let rec aux ((next_index, match_index) as acc) = function
+    let rec aux ((next_index, match_index, receiver_heartbeats) as acc) = function
       | (-1) -> acc
       |  i   -> 
-         let next   = {server_id = i; server_log_index = last_log_index + 1} in
-         let match_ = {server_id = i; server_log_index = 0 } in 
-         aux (next::next_index, match_::match_index) (i - 1)
+        if i = state.id
+        then 
+          aux (next_index, match_index, receiver_heartbeats) (i -1)
+        else 
+          let next      = {server_id = i; server_log_index = last_log_index + 1} in
+          let match_    = {server_id = i; server_log_index = 0 } in 
+          let heartbeat = {server_id = i; heartbeat_deadline = now +. hearbeat_timeout} in 
+          aux (next::next_index, match_::match_index, heartbeat::receiver_heartbeats) (i - 1)
     in 
-    let next_index, match_index = aux ([], []) (nb_of_server - 1) in 
+    let next_index, match_index, receiver_heartbeats = aux ([], [], []) (nb_of_server - 1) in 
     
-    {state with role = Leader {next_index; match_index}}
+    {state with role = Leader {next_index; match_index; receiver_heartbeats}}
+
+
+  let find_server_log_index server_index receiver_id = 
+    let is_server = fun ({server_id; _ }:server_index) -> 
+      server_id = receiver_id
+    in 
+    begin match List.find is_server server_index with
+    | {server_log_index; _ } -> Some server_log_index
+    | exception Not_found -> None 
+    end 
 
   let next_index_for_receiver {role; _ } receiver_id = 
     match role with
-    | Leader {next_index; _ } -> 
-        let is_server = fun ({server_id; _ }:server_index) -> 
-          server_id = receiver_id
-        in 
-        begin match List.find is_server next_index with
-        | {server_log_index; _ } -> Some server_log_index
-        | exception Not_found -> None 
-        end 
+    | Leader {next_index; _ } -> find_server_log_index next_index receiver_id 
+    | _ -> None 
+  
+  let match_index_for_receiver {role; _ } receiver_id = 
+    match role with
+    | Leader {match_index; _ } -> find_server_log_index match_index receiver_id 
     | _ -> None 
 
   let add_log data state = 
@@ -129,25 +142,58 @@ module Leader = struct
       (* Calculate the number of server which also have replicated that 
          log entry
        *)
-      let nb = List.fold_left (fun nb {server_log_index; _ } -> 
+      let nb_of_replications = List.fold_left (fun n {server_log_index; _ } -> 
         if server_log_index >= log_index 
-        then nb + 1 
-        else nb
+        then n + 1 
+        else n
       ) 0 match_index in 
       
-      ({next_index; match_index}, nb) 
-  
-  let decrement_next_index state receiver_id = 
-    match state.role with
-    | Leader {next_index; match_index} -> 
-      let next_index = List.map (fun ({server_id; server_log_index; } as s) -> 
+      ({leader_state with next_index; match_index}, nb_of_replications) 
+
+  let update_receiver_deadline ~server_id ~now ~configuration leader_state = 
+
+    let {receiver_heartbeats;_ } = leader_state in 
+    let receiver_id = server_id in 
+
+    let (receiver_heartbeats, min_deadline) = List.fold_left (fun  acc receiver_heartbeat -> 
+
+      let receiver_heartbeats, min_deadline = acc in 
+      let {heartbeat_deadline; server_id}  = receiver_heartbeat in 
+
+      let receiver_heartbeat = 
         if server_id = receiver_id
-        then {s with server_log_index = server_log_index - 1} 
-        else s
-      ) next_index in
-      {state with role = Leader {next_index; match_index}}
-    | _ -> 
-      state
+        then {receiver_heartbeat with heartbeat_deadline = configuration.hearbeat_timeout +. now} 
+        else  receiver_heartbeat 
+      in 
+      
+      let min_deadline = min min_deadline receiver_heartbeat.heartbeat_deadline in 
+
+      (receiver_heartbeat::receiver_heartbeats, min_deadline) 
+
+    ) ([], max_float) receiver_heartbeats in 
+
+    ({leader_state with receiver_heartbeats}, (min_deadline -. now)) 
+
+
+  let min_heartbeat_timout ~now {receiver_heartbeats; _ } = 
+
+    let min_heartbeat_deadline = List.fold_left (fun min_deadline {heartbeat_deadline; _ } -> 
+        if heartbeat_deadline < min_deadline
+        then heartbeat_deadline
+        else min_deadline
+      ) max_float receiver_heartbeats
+    in 
+    min_heartbeat_deadline -. now 
+
+  let decrement_next_index ~server_id ({next_index; _ } as leader_state) = 
+    let receiver_id = server_id in 
+    let next_index = List.map (fun ({server_id; server_log_index; } as s) -> 
+      if server_id = receiver_id
+      then {s with server_log_index = server_log_index - 1} 
+      else s
+    ) next_index in
+    {leader_state with next_index }
+
 end 
 
 module Configuration = struct
@@ -160,13 +206,30 @@ end
 
 module Follow_up_action = struct
 
-  let wait_for_rpc state now = 
-    Wait_for_rpc {election_deadline = now +. state.configuration.election_timeout; } 
+  let new_election_wait state = 
+    Wait_for_rpc {
+      timeout      = state.configuration.election_timeout; 
+      timeout_type = New_leader_election; 
+    } 
 
-  let default state now  = 
+  let existing_election_wait election_deadline now = 
+    Wait_for_rpc {
+      timeout      = election_deadline -. now; 
+      timeout_type = New_leader_election; 
+    }
+  
+  let make_heartbeat_wait timeout = 
+    Wait_for_rpc {
+      timeout = timeout; 
+      timeout_type = Heartbeat;
+    }
+
+  let default state now = 
     match state.role with
-    | Leader _ -> Nothing_to_do 
-    | Candidate {election_deadline; } -> Wait_for_rpc {election_deadline; } 
-    | Follower _ -> wait_for_rpc state now 
+    | Follower _ -> new_election_wait state 
+    | Leader leader_state -> 
+      make_heartbeat_wait (Leader.min_heartbeat_timout ~now leader_state)
+    | Candidate {election_deadline; _ } -> 
+      existing_election_wait election_deadline  now  
 
 end 

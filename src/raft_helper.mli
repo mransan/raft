@@ -81,7 +81,7 @@ end (* Candidate *)
 
 module Leader : sig
 
-  val become : Raft_pb.state -> Raft_pb.state 
+  val become : Raft_pb.state -> float -> Raft_pb.state 
   (** [become state] returns the new state with a Leader role. 
       
        While only candidate with a majority are allowed by the protocol to 
@@ -94,6 +94,14 @@ module Leader : sig
 
   val next_index_for_receiver : Raft_pb.state -> int -> int option
   (** [next_index_for_receiver state receiver_id] returns the next index 
+      for the given receiver id. 
+
+      If [state] role is not a leader or if [receiver_id] is not valid, 
+      then [None] is returned. 
+    *)
+  
+  val match_index_for_receiver : Raft_pb.state -> int -> int option
+  (** [match_index_for_receiver state receiver_id] returns the match index 
       for the given receiver id. 
 
       If [state] role is not a leader or if [receiver_id] is not valid, 
@@ -121,7 +129,18 @@ module Leader : sig
       determine if it can be considered commited. 
     *)
 
-  val decrement_next_index : Raft_pb.state -> int -> Raft_pb.state 
+  val update_receiver_deadline : 
+    server_id:int -> 
+    now:float -> 
+    configuration:Raft_pb.configuration ->
+    Raft_pb.leader_state -> 
+    (Raft_pb.leader_state * float) 
+  (** [update_receiver_deadline ~server_id ~now ~configuration leader_state] returns 
+      the new leader state with the [server_id] heartbeat deadline updated. Additionally
+      it returns the min heartbeat timeout of any of the receiver.
+    *)
+
+  val decrement_next_index : server_id:int -> Raft_pb.leader_state -> Raft_pb.leader_state 
   (** [decrement_next_index state receiver_id] decrement the next index for [receiver_id]. 
        
       This function is usally called upon an append entry failure response. 
@@ -140,7 +159,20 @@ end (* Configuration *)
 
 module Follow_up_action : sig
 
-  val wait_for_rpc : Raft_pb.state -> float -> Raft_pb.follow_up_action
+  val new_election_wait : Raft_pb.state -> Raft_pb.follow_up_action
+  (** [new_election_wait state] returns a [Wait_for_rpc] follow action for 
+      a new election. 
+    *)
+  
+  val existing_election_wait : float -> float -> Raft_pb.follow_up_action 
+  (** [existing_election_wait election_deadline now] returns [Wait_for_rpc] follow up 
+      action for an existing election. 
+    *)
+
+  val make_heartbeat_wait : float -> Raft_pb.follow_up_action 
+  (** [make_heartbeat_wait timeout] creates a [Wait_for_rpc] 
+      follow up action of type type heartbeat. 
+    *)
 
   val default : Raft_pb.state -> float -> Raft_pb.follow_up_action 
 

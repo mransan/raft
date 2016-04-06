@@ -49,9 +49,15 @@ type server_index = {
   server_log_index : int;
 }
 
+type receiver_heartbeat = {
+  server_id : int;
+  heartbeat_deadline : float;
+}
+
 type leader_state = {
   next_index : server_index list;
   match_index : server_index list;
+  receiver_heartbeats : receiver_heartbeat list;
 }
 
 type candidate_state = {
@@ -67,6 +73,7 @@ type follower_state = {
 type configuration = {
   nb_of_server : int;
   election_timeout : float;
+  hearbeat_timeout : float;
 }
 
 type state_role =
@@ -88,61 +95,145 @@ type follow_up_action_retry_append_data = {
   server_id : int;
 }
 
+type follow_up_action_wait_for_next_rpc_time_out_type =
+  | New_leader_election 
+  | Heartbeat 
+
 type follow_up_action_wait_for_next_rpc = {
-  election_deadline : float;
+  timeout : float;
+  timeout_type : follow_up_action_wait_for_next_rpc_time_out_type;
 }
 
 type follow_up_action =
   | Act_as_new_leader
-  | Nothing_to_do
   | Retry_append of follow_up_action_retry_append_data
   | Wait_for_rpc of follow_up_action_wait_for_next_rpc
 
 
 (** {2 Default values} *)
 
-val default_request_vote_request : unit -> request_vote_request
+val default_request_vote_request : 
+  ?candidate_term:int ->
+  ?candidate_id:int ->
+  ?candidate_last_log_index:int ->
+  ?candidate_last_log_term:int ->
+  unit ->
+  request_vote_request
 (** [default_request_vote_request ()] is the default value for type [request_vote_request] *)
 
-val default_request_vote_response : unit -> request_vote_response
+val default_request_vote_response : 
+  ?voter_id:int ->
+  ?voter_term:int ->
+  ?vote_granted:bool ->
+  unit ->
+  request_vote_response
 (** [default_request_vote_response ()] is the default value for type [request_vote_response] *)
 
-val default_log_entry : unit -> log_entry
+val default_log_entry : 
+  ?index:int ->
+  ?term:int ->
+  ?data:bytes ->
+  unit ->
+  log_entry
 (** [default_log_entry ()] is the default value for type [log_entry] *)
 
-val default_append_entries_request : unit -> append_entries_request
+val default_append_entries_request : 
+  ?leader_term:int ->
+  ?leader_id:int ->
+  ?prev_log_index:int ->
+  ?prev_log_term:int ->
+  ?log_entries:log_entry list ->
+  ?leader_commit:int ->
+  unit ->
+  append_entries_request
 (** [default_append_entries_request ()] is the default value for type [append_entries_request] *)
 
-val default_append_entries_response_success_data : unit -> append_entries_response_success_data
+val default_append_entries_response_success_data : 
+  ?receiver_last_log_index:int ->
+  unit ->
+  append_entries_response_success_data
 (** [default_append_entries_response_success_data ()] is the default value for type [append_entries_response_success_data] *)
 
 
-val default_append_entries_response : unit -> append_entries_response
+val default_append_entries_response : 
+  ?receiver_id:int ->
+  ?receiver_term:int ->
+  ?result:append_entries_response_result ->
+  unit ->
+  append_entries_response
 (** [default_append_entries_response ()] is the default value for type [append_entries_response] *)
 
-val default_server_index : unit -> server_index
+val default_server_index : 
+  ?server_id:int ->
+  ?server_log_index:int ->
+  unit ->
+  server_index
 (** [default_server_index ()] is the default value for type [server_index] *)
 
-val default_leader_state : unit -> leader_state
+val default_receiver_heartbeat : 
+  ?server_id:int ->
+  ?heartbeat_deadline:float ->
+  unit ->
+  receiver_heartbeat
+(** [default_receiver_heartbeat ()] is the default value for type [receiver_heartbeat] *)
+
+val default_leader_state : 
+  ?next_index:server_index list ->
+  ?match_index:server_index list ->
+  ?receiver_heartbeats:receiver_heartbeat list ->
+  unit ->
+  leader_state
 (** [default_leader_state ()] is the default value for type [leader_state] *)
 
-val default_candidate_state : unit -> candidate_state
+val default_candidate_state : 
+  ?vote_count:int ->
+  ?election_deadline:float ->
+  unit ->
+  candidate_state
 (** [default_candidate_state ()] is the default value for type [candidate_state] *)
 
-val default_follower_state : unit -> follower_state
+val default_follower_state : 
+  ?voted_for:int option ->
+  ?current_leader:int option ->
+  unit ->
+  follower_state
 (** [default_follower_state ()] is the default value for type [follower_state] *)
 
-val default_configuration : unit -> configuration
+val default_configuration : 
+  ?nb_of_server:int ->
+  ?election_timeout:float ->
+  ?hearbeat_timeout:float ->
+  unit ->
+  configuration
 (** [default_configuration ()] is the default value for type [configuration] *)
 
 
-val default_state : unit -> state
+val default_state : 
+  ?id:int ->
+  ?current_term:int ->
+  ?log:log_entry list ->
+  ?commit_index:int ->
+  ?last_applied:int ->
+  ?role:state_role ->
+  ?configuration:configuration ->
+  unit ->
+  state
 (** [default_state ()] is the default value for type [state] *)
 
-val default_follow_up_action_retry_append_data : unit -> follow_up_action_retry_append_data
+val default_follow_up_action_retry_append_data : 
+  ?server_id:int ->
+  unit ->
+  follow_up_action_retry_append_data
 (** [default_follow_up_action_retry_append_data ()] is the default value for type [follow_up_action_retry_append_data] *)
 
-val default_follow_up_action_wait_for_next_rpc : unit -> follow_up_action_wait_for_next_rpc
+val default_follow_up_action_wait_for_next_rpc_time_out_type : unit -> follow_up_action_wait_for_next_rpc_time_out_type
+(** [default_follow_up_action_wait_for_next_rpc_time_out_type ()] is the default value for type [follow_up_action_wait_for_next_rpc_time_out_type] *)
+
+val default_follow_up_action_wait_for_next_rpc : 
+  ?timeout:float ->
+  ?timeout_type:follow_up_action_wait_for_next_rpc_time_out_type ->
+  unit ->
+  follow_up_action_wait_for_next_rpc
 (** [default_follow_up_action_wait_for_next_rpc ()] is the default value for type [follow_up_action_wait_for_next_rpc] *)
 
 val default_follow_up_action : unit -> follow_up_action
@@ -173,6 +264,9 @@ val decode_append_entries_response : Pbrt.Decoder.t -> append_entries_response
 val decode_server_index : Pbrt.Decoder.t -> server_index
 (** [decode_server_index decoder] decodes a [server_index] value from [decoder] *)
 
+val decode_receiver_heartbeat : Pbrt.Decoder.t -> receiver_heartbeat
+(** [decode_receiver_heartbeat decoder] decodes a [receiver_heartbeat] value from [decoder] *)
+
 val decode_leader_state : Pbrt.Decoder.t -> leader_state
 (** [decode_leader_state decoder] decodes a [leader_state] value from [decoder] *)
 
@@ -192,6 +286,9 @@ val decode_state : Pbrt.Decoder.t -> state
 val decode_follow_up_action_retry_append_data : Pbrt.Decoder.t -> follow_up_action_retry_append_data
 (** [decode_follow_up_action_retry_append_data decoder] decodes a [follow_up_action_retry_append_data] value from [decoder] *)
 
+val decode_follow_up_action_wait_for_next_rpc_time_out_type : Pbrt.Decoder.t -> follow_up_action_wait_for_next_rpc_time_out_type
+(** [decode_follow_up_action_wait_for_next_rpc_time_out_type decoder] decodes a [follow_up_action_wait_for_next_rpc_time_out_type] value from [decoder] *)
+
 val decode_follow_up_action_wait_for_next_rpc : Pbrt.Decoder.t -> follow_up_action_wait_for_next_rpc
 (** [decode_follow_up_action_wait_for_next_rpc decoder] decodes a [follow_up_action_wait_for_next_rpc] value from [decoder] *)
 
@@ -199,7 +296,7 @@ val decode_follow_up_action : Pbrt.Decoder.t -> follow_up_action
 (** [decode_follow_up_action decoder] decodes a [follow_up_action] value from [decoder] *)
 
 
-(** {2 Protobuf Encoding} *)
+(** {2 Protobuf Toding} *)
 
 val encode_request_vote_request : request_vote_request -> Pbrt.Encoder.t -> unit
 (** [encode_request_vote_request v encoder] encodes [v] with the given [encoder] *)
@@ -223,6 +320,9 @@ val encode_append_entries_response : append_entries_response -> Pbrt.Encoder.t -
 val encode_server_index : server_index -> Pbrt.Encoder.t -> unit
 (** [encode_server_index v encoder] encodes [v] with the given [encoder] *)
 
+val encode_receiver_heartbeat : receiver_heartbeat -> Pbrt.Encoder.t -> unit
+(** [encode_receiver_heartbeat v encoder] encodes [v] with the given [encoder] *)
+
 val encode_leader_state : leader_state -> Pbrt.Encoder.t -> unit
 (** [encode_leader_state v encoder] encodes [v] with the given [encoder] *)
 
@@ -241,6 +341,9 @@ val encode_state : state -> Pbrt.Encoder.t -> unit
 
 val encode_follow_up_action_retry_append_data : follow_up_action_retry_append_data -> Pbrt.Encoder.t -> unit
 (** [encode_follow_up_action_retry_append_data v encoder] encodes [v] with the given [encoder] *)
+
+val encode_follow_up_action_wait_for_next_rpc_time_out_type : follow_up_action_wait_for_next_rpc_time_out_type -> Pbrt.Encoder.t -> unit
+(** [encode_follow_up_action_wait_for_next_rpc_time_out_type v encoder] encodes [v] with the given [encoder] *)
 
 val encode_follow_up_action_wait_for_next_rpc : follow_up_action_wait_for_next_rpc -> Pbrt.Encoder.t -> unit
 (** [encode_follow_up_action_wait_for_next_rpc v encoder] encodes [v] with the given [encoder] *)
@@ -275,6 +378,9 @@ val pp_append_entries_response : Format.formatter -> append_entries_response -> 
 val pp_server_index : Format.formatter -> server_index -> unit 
 (** [pp_server_index v] formats v] *)
 
+val pp_receiver_heartbeat : Format.formatter -> receiver_heartbeat -> unit 
+(** [pp_receiver_heartbeat v] formats v] *)
+
 val pp_leader_state : Format.formatter -> leader_state -> unit 
 (** [pp_leader_state v] formats v] *)
 
@@ -295,6 +401,9 @@ val pp_state : Format.formatter -> state -> unit
 
 val pp_follow_up_action_retry_append_data : Format.formatter -> follow_up_action_retry_append_data -> unit 
 (** [pp_follow_up_action_retry_append_data v] formats v] *)
+
+val pp_follow_up_action_wait_for_next_rpc_time_out_type : Format.formatter -> follow_up_action_wait_for_next_rpc_time_out_type -> unit 
+(** [pp_follow_up_action_wait_for_next_rpc_time_out_type v] formats v] *)
 
 val pp_follow_up_action_wait_for_next_rpc : Format.formatter -> follow_up_action_wait_for_next_rpc -> unit 
 (** [pp_follow_up_action_wait_for_next_rpc v] formats v] *)

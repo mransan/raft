@@ -66,8 +66,9 @@ message LogEntry {
 }
 
 message LeaderState {
-  repeated ServerIndex next_index  = 1;  
-  repeated ServerIndex match_index = 2;  
+  repeated ServerIndex       next_index          = 1;  
+  repeated ServerIndex       match_index         = 2;  
+  repeated ReceiverHeartbeat receiver_heartbeats = 3;
 }
 
 message CandidateState {
@@ -78,6 +79,16 @@ message CandidateState {
 message FollowerState {
   optional int32 voted_for = 1; 
   optional int32 current_leader = 2;
+}
+
+// This message keeps track of when a heartbeat 
+// should be sent to a server by a leader. The 
+// leader must ensure that frequent enough heartbeat 
+// messages are sent to the receiver in order to prevent
+// a new election. 
+message ReceiverHeartbeat {
+  required int32 server_id           = 1; 
+  required float heartbeat_deadline  = 2; 
 }
 
 message ServerIndex {
@@ -91,11 +102,15 @@ message FollowUpAction {
     required int32 server_id = 1; 
   }
   message WaitForNextRpc {
-    required double election_deadline = 1;
+    enum TimeOutType {
+      NEW_LEADER_ELECTION = 1;
+      HEARTBEAT           = 2; 
+    }
+    required double      timeout = 1;
+    required TimeOutType timeout_type = 2;
   }
   oneof t {
     NoData          act_as_new_leader  = 1;
-    NoData          nothing_to_do      = 3;
     RetryAppendData retry_append       = 4;
     WaitForNextRpc  wait_for_rpc       = 5;
   }
@@ -104,4 +119,5 @@ message FollowUpAction {
 message Configuration {
   required int32  nb_of_server     = 1;
   required double election_timeout = 2;  
+  required double hearbeat_timeout = 3; 
 }

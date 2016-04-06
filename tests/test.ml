@@ -4,19 +4,21 @@ module State     = Raft_helper.State
 module Candidate = Raft_helper.Candidate
 module Follower  = Raft_helper.Follower
 module Leader    = Raft_helper.Leader 
+module Follow_up_action = Raft_helper.Follow_up_action 
 
 module Logic     = Raft_logic  
 
-let default_configuration ()  = {
+let default_configuration = {
   nb_of_server = 3; 
   election_timeout = 0.1;
+  hearbeat_timeout = 0.02;
 }
 
 let initial_state  
   ?role:(role = Follower {voted_for = None; current_leader = None;}) 
   ?log:(log = [])
   ?commit_index:(commit_index = 0)
-  ?configuration:(configuration = default_configuration ())
+  ?configuration:(configuration = default_configuration)
   ?current_term:(current_term = 0) id = {
   id;
   current_term;
@@ -38,12 +40,16 @@ let assert_no_current_leader state =
   | _ -> assert(false) 
 
   
+let ipc_time = 0.001 (* 1 ms *) 
+
 let now = 0.
   
 let vote_communication ~from ~to_ ~now () = 
   let request_vote  = Logic.Request_vote.make from in 
+  let now = now +. ipc_time in 
   let to_, response, _ = Logic.Request_vote.handle_request to_ request_vote now in 
-  Logic.Request_vote.handle_response from response now, to_
+  let now = now +. ipc_time in 
+  Logic.Request_vote.handle_response from response now, to_, now 
 
 let () = 
   (* 
@@ -76,48 +82,50 @@ let () =
      *)
   assert (0 = candidate0.id);
 
-  let follower1  = initial_state 1 in 
+  let server1  = initial_state 1 in 
 
-  assert (State.is_follower follower1);
-  begin match follower1.role with
+  assert (State.is_follower server1);
+  begin match server1.role with
     | Follower {voted_for = None} -> ()
     | _ -> assert(false)
   end;
-  assert (1 = follower1.id);
-  assert (0 = follower1.current_term);
-  assert ([] = follower1.log);
+  assert (1 = server1.id);
+  assert (0 = server1.current_term);
+  assert ([] = server1.log);
   
   (* 
    * Vote for the Candidate
-   * Convert from Candidate to Follower after getting majority
+   * Convert from Candidate to Leader after getting majority
    *)
   
-  let (candidate0, follow_up_action), follower1 
-    = vote_communication ~from:candidate0 ~to_:follower1 ~now () in 
+  let (candidate0, follow_up_action), server1, now 
+    = vote_communication ~from:candidate0 ~to_:server1 ~now () in 
+
+  assert(now = 0.002);
   
-  assert (State.is_follower follower1);
-  begin match follower1.role with
+  assert (State.is_follower server1);
+  begin match server1.role with
     | Follower {voted_for = Some 0} -> ()
     | _ -> assert(false)
   end;
-  assert (1 = follower1.id);
-  assert (1 = follower1.current_term);
+  assert (1 = server1.id);
+  assert (1 = server1.current_term);
     (* Make sure that the follower has correctly updated
      * its current term to the one of the candidate since
      * the latter one is larger.
      *)
-  assert ([] = follower1.log);
+  assert ([] = server1.log);
   
   begin match candidate0.role with
   | Leader {next_index; match_index} -> (
-    assert(3 = List.length next_index); 
+    assert(2 = List.length next_index); 
     List.iter (fun {server_log_index; _ } -> 
       assert (1 = server_log_index); 
         (* The initial value for all server next log index 
          * should be equal to the last log index + 1. 
          *)
     ) next_index;
-    assert(3 = List.length match_index); 
+    assert(2 = List.length match_index); 
     List.iter (fun {server_log_index; _ } -> 
       assert (0 = server_log_index); 
     ) match_index;
@@ -132,9 +140,33 @@ let () =
 
   assert (Act_as_new_leader = follow_up_action);
 
+  (* 
+   * Let's assume here that the new leader i s
+   * correctly sending Append Query request
+   * to all the server and that this operation
+   * takes 1ms
+   *)
+  
+  let now = now +. 0.001 in 
+  assert(now = 0.003); 
+
+  (*
+   * We now check that the default next action
+   * is to wait on Rpc with the heartbeat timeout 
+   * set to the value in the configuration - 1ms elapsed
+   * since becoming a leader.
+   *)
+  
+  let next_action = Follow_up_action.default candidate0  now in 
+  assert(Wait_for_rpc {
+    timeout = default_configuration.hearbeat_timeout -. 0.001; 
+    timeout_type = Heartbeat} = next_action); 
+
+  (* 
   Format.printf "candidate0': %a\n" pp_state candidate0; 
-  Format.printf "follower1' : %a\n" pp_state follower1; 
+  Format.printf "server1' : %a\n" pp_state server1; 
   Format.printf "followup action: %a\n" pp_follow_up_action follow_up_action; 
+  *)
   ()
 
 let () = 
@@ -145,7 +177,7 @@ let () =
    * candidate within that same term. 
    *)
 
-  let follower0  = initial_state 0 in 
+  let server0  = initial_state 0 in 
   let candidate1 = Candidate.become ~now (initial_state 1) in
   let candidate2 = Candidate.become ~now (initial_state 2) in
 
@@ -153,35 +185,67 @@ let () =
   assert(2 = candidate2.id); 
   assert(candidate1.current_term = candidate2.current_term);
 
-  let (candidate1, follow_up_action1), follower0 
-    = vote_communication ~from:candidate1 ~to_:follower0 ~now () in 
+  (*
+   * Let's perform the vote request from canidate 1 to 
+   * server0 first. Since server0 has not 
+   * voted before and canidate1 is a valid candidate, 
+   * server0 must grant its vote. 
+   *)
 
-  begin match follower0.role with
+  let (candidate1, follow_up_action1), server0, now  
+    = vote_communication ~from:candidate1 ~to_:server0 ~now () in 
+
+  assert(now = 0.002); 
+
+  (* 
+   * Let's make sure that the server0 has correctly 
+   * voted for server 1. 
+   *)
+
+  begin match server0.role with
     | Follower {voted_for = Some 1} -> () 
     | _ -> assert(false)
   end;
   
-  let (candidate2, follow_up_action2), follower0 
-    = vote_communication ~from:candidate2 ~to_:follower0 ~now () in 
-
+  (* 
+   * Because we're in a 3 server cluster configuration, 
+   * that one vote is enough for candidate1 to become
+   * a leader.
+   *)
+  
   assert(State.is_leader candidate1);
-    (* Candidate 1 was the first and therefore got the 
-     * follower0 vote which in our configuration of 3 
-     * is a majority to become leader.
-     *)
   assert(Act_as_new_leader = follow_up_action1);
 
+  (* 
+   * Let's perform the second vote request which is 
+   * now coming from candidate2 to the same server0. 
+   *
+   * Because server0 has already granted its vote, it should
+   * not grant it again to candidate2. 
+   *)
+  
+  let (candidate2, follow_up_action2), server0, now 
+    = vote_communication ~from:candidate2 ~to_:server0 ~now () in 
+
+  assert(now = 0.004);
   assert(not (State.is_leader candidate2));
     (* Candidate2 was second and therefore did not
        get the vote. 
      *)
-  assert(Wait_for_rpc {election_deadline = 0.1; } = follow_up_action2);
-    (* TODO ... here really it means wait until 
-     * next message or election timeout. 
-     * 
-     * Need to confirm if we need a dedicated follow up 
-     * action.
-     *) 
+
+  (* 
+   * Because 4 ms had alreadly elapsed between the time
+   * candidate2 initiated the election and the response received 
+   * from server0, the timeout is therefore 
+   * (election_timeout - 0.004) 
+   *)
+  let () = 
+    let action = Wait_for_rpc {
+      timeout = default_configuration.election_timeout -. 0.004; 
+      timeout_type = New_leader_election;
+    } in 
+    assert(action = follow_up_action2)
+  in
   ()
 
 let foo = Bytes.of_string "Foo"
@@ -192,15 +256,21 @@ let append_entry_communication ~from ~to_ ~now () =
   let request = Logic.Append_entries.make from 1 in
   match request with
   | Some request -> 
+    (* Format.printf "[append entry] request: %a\n" pp_append_entries_request request; 
+     *)
+    let now = now +. 0.001 in 
     let to_, response, _ = Logic.Append_entries.handle_request to_ request now in  
-    Logic.Append_entries.handle_response from response now, to_, response  
+    (* Format.printf "[append entry] response: %a\n" pp_append_entries_response response; 
+     *)
+    let now = now +. 0.001 in 
+    Logic.Append_entries.handle_response from response now, to_, response, now 
   | None -> failwith "request expected"
 
 let () = 
 
   (*
    * In this test we look at the normal mode of replication of logs
-   * between an freshly elected leader and one of the follower
+   * between a freshly elected leader and one of the follower
    *
    * We ensure that: 
    * 1) Logs are correctly inserted for the first time 
@@ -212,8 +282,8 @@ let () =
    *    previously inserted.
    *)
 
-  let leader0   = 
-    Leader.become (initial_state ~current_term:1 0) 
+  let server0   = 
+    Leader.become (initial_state ~current_term:1 0) now 
     |> Leader.add_log foo
     |> Leader.add_log bar
   in 
@@ -225,65 +295,81 @@ let () =
 
   (* Check initial leader state. 
    *)
-  assert (0 = leader0.id);
-  assert (1 = leader0.current_term);
-  begin match leader0.log with
+  assert (0 = server0.id);
+  assert (1 = server0.current_term);
+  begin match server0.log with
     | {index = 2; term = 1; data = bar} :: 
       {index = 1; term = 1; data = foo} :: [] ->
       ()
     | _ -> assert(false)
   end; 
-  begin match leader0.role with
+  begin match server0.role with
     | Leader {next_index; match_index} -> (
-      assert(3 = List.length next_index);
-      assert(3 = List.length match_index);
+      assert(2 = List.length next_index);
+      assert(2 = List.length match_index);
     )
     | _ -> assert(false)
   end;
 
   (* Check initial follower state.
    *)
-  let follower1 = initial_state 1 in 
-  assert(1 = follower1.id);
-  assert(0 = follower1.current_term);
-  assert(0 = List.length follower1.log);
-  assert_no_current_leader follower1;
+  let server1 = initial_state 1 in 
+  assert(1 = server1.id);
+  assert(0 = server1.current_term);
+  assert(0 = List.length server1.log);
+  assert_no_current_leader server1;
 
   
-  let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in 
+  let (server0, follow_up_action), server1, _, now = 
+    append_entry_communication ~from:server0 ~to_:server1 ~now () in 
+
 
   (* Check leader state after request/response communication
    *)
-  let check_leader0 leader0 = 
-    assert (0 = leader0.id);
-    assert (1 = leader0.current_term);
-    assert (log_version_0 = leader0.log); 
-    assert (State.is_leader leader0); 
-    assert ((Some 3) = Leader.next_index_for_receiver leader0 1); 
-    assert ((Some 1) = Leader.next_index_for_receiver leader0 2); 
-    assert (2 = leader0.commit_index);
+  let check_server0 server0 = 
+    assert (0 = server0.id);
+    assert (1 = server0.current_term);
+    assert (log_version_0 = server0.log); 
+    assert (State.is_leader server0); 
+    assert ((Some 3) = Leader.next_index_for_receiver server0 1); 
+    assert ((Some 1) = Leader.next_index_for_receiver server0 2); 
+    assert (2 = server0.commit_index);
   in
 
-  check_leader0 leader0;
+  check_server0 server0;
+  
+  assert (now = 0.002);
 
+  (* 
+   * The leader has not sent any requests since time 0 when 
+   * it became leader to the server 2. Therefore 
+   * the min timeout is (hearbeat_timeout -. 0.002). 
+   *)
+  let () = 
+    let action = Wait_for_rpc {
+      timeout_type = Heartbeat;
+      timeout = default_configuration.hearbeat_timeout -. 0.002; 
+    } in 
+    assert(action = follow_up_action); 
+  in
+  
   (* Check the follower state after request/request communication
    *)
-  let check_follower1 ~commit_index follower1 = 
-    assert(1 = follower1.id);
-    assert(1 = follower1.current_term);
-    assert_current_leader follower1 0;
-    assert(2 = List.length follower1.log);
+  let check_server1 ~commit_index server1 = 
+    assert(1 = server1.id);
+    assert(1 = server1.current_term);
+    assert_current_leader server1 0;
+    assert(2 = List.length server1.log);
       (* The 2 leader logs were inserted
        *)
-    begin match follower1.role with
+    begin match server1.role with
     | Follower {voted_for = None} -> ()
     | _ -> assert(false)
     end; 
-    assert(commit_index = follower1.commit_index);
+    assert(commit_index = server1.commit_index);
   in
 
-  check_follower1 ~commit_index:0 follower1;
+  check_server1 ~commit_index:0 server1;
     (* None of the new entry are yet commited since 
        for that to happen the leader would have needed 
        to receive a mojority of successful append logs
@@ -295,70 +381,84 @@ let () =
        commit_index updated to 2.
      *)
   
-  let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in 
-  check_leader0 leader0;
+  let (server0, follow_up_action), server1, _, now = 
+    append_entry_communication ~from:server0 ~to_:server1 ~now () in 
+  assert(now = 0.004); 
+  check_server0 server0;
     (* The leader should have been unchanged since no new log entries
        were added and they had all been send to the receiver 1 
        in the first request. 
      *)
-  check_follower1 ~commit_index:2 follower1;
-    (* The follower1 has the exact same state as before the 
+  check_server1 ~commit_index:2 server1;
+    (* The server1 has the exact same state as before the 
        second request except for the commit index. (see above). 
        
        Since the request contained no new log entries, all
        other state variables have not changed.
      *)
 
-  let leader0 = 
-    leader0
+  (* server0 has still not send any request to server 2 
+   * and therefore the timeout will be hearbeat_timeout - now. 
+   *) 
+  let () = 
+    let action = Wait_for_rpc {
+      timeout = default_configuration.hearbeat_timeout -. now;
+      timeout_type = Heartbeat;
+    } in 
+    assert(action = follow_up_action)
+  in 
+
+  let server0 = 
+    server0
     |> Leader.add_log bim
   in
 
-  let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in 
+  let (server0, follow_up_action), server1, _, now = 
+    append_entry_communication ~from:server0 ~to_:server1 ~now () in 
 
-  let check_leader0 leader0 = 
+  let check_server0 server0 = 
     let log_version_1 = {index=3;term=1;data=bim;}::log_version_0 in
-    assert (0 = leader0.id);
-    assert (1 = leader0.current_term);
-    assert (log_version_1 = leader0.log); 
-    assert (State.is_leader leader0); 
-    assert ((Some 4) = Leader.next_index_for_receiver leader0 1); 
-    assert ((Some 1) = Leader.next_index_for_receiver leader0 2); 
-    assert (3 = leader0.commit_index);
+    assert (0 = server0.id);
+    assert (1 = server0.current_term);
+    assert (log_version_1 = server0.log); 
+    assert (State.is_leader server0); 
+    assert ((Some 4) = Leader.next_index_for_receiver server0 1); 
+    assert ((Some 1) = Leader.next_index_for_receiver server0 2); 
+    assert (3 = server0.commit_index);
   in
-  check_leader0 leader0;
+  check_server0 server0;
 
-  let check_follower1 ~commit_index follower1 = 
-    assert(1 = follower1.id);
-    assert(1 = follower1.current_term);
-    assert_current_leader follower1 0;
-    assert(3 = List.length follower1.log);
+  let check_server1 ~commit_index server1 = 
+    assert(1 = server1.id);
+    assert(1 = server1.current_term);
+    assert_current_leader server1 0;
+    assert(3 = List.length server1.log);
       (* The third log [bim] should have been inserted as part 
          of the append entry request.
        *)
-    begin match follower1.role with
+    begin match server1.role with
     | Follower {voted_for = None} -> ()
     | _ -> assert(false)
     end; 
-    assert(commit_index = follower1.commit_index);
+    assert(commit_index = server1.commit_index);
   in
 
-  check_follower1 ~commit_index:2 follower1;
+  check_server1 ~commit_index:2 server1;
   
-  let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in 
+  let (server0, follow_up_action), server1, _, now = 
+    append_entry_communication ~from:server0 ~to_:server1 ~now () in 
     (* Since no new log were inserted, this should have send 
        an empty append entry request but with a leader commit index = 3 which
        should be reflected in the commit index of the follower.
      *)
-  check_leader0 leader0;
-  check_follower1 ~commit_index:3 follower1;
+  check_server0 server0;
+  check_server1 ~commit_index:3 server1;
 
-  Format.printf "leader0: %a\n" pp_state leader0; 
-  Format.printf "follower1' : %a\n" pp_state follower1; 
+  (* 
+  Format.printf "server0: %a\n" pp_state server0; 
+  Format.printf "server1' : %a\n" pp_state server1; 
   Format.printf "followup action: %a\n" pp_follow_up_action follow_up_action; 
+  *)
   ()
 
 let () =
@@ -376,52 +476,53 @@ let () =
     {index = 1; term = 1; data = foo} :: [] 
   in
 
-  let leader0 = 
+  let server0 = 
     let current_term = 2 in 
     let log = leader_log_version_0 in 
-    Leader.become (initial_state ~commit_index:3 ~log ~current_term 0) 
+    Leader.become (initial_state ~commit_index:3 ~log ~current_term 0) now  
   in  
 
-  let follower1 = 
+  let server1 = 
     let current_term = 0 in 
     initial_state ~current_term 1 
   in 
   
-  assert((Some 4) = Leader.next_index_for_receiver leader0 1);
+  assert((Some 4) = Leader.next_index_for_receiver server0 1);
     (* Initially the leader belief of the next index for
      * a follower is set to its last log index  + 1. 
      *
      * This belief is indeed incorrect in our test case... 
-     * (see above the lof of the follower1 is empty), but 
+     * (see above the lof of the server1 is empty), but 
      * the next `append entry` communication will inform 
      * the leader about it.
      *)
 
-  let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in
+  let (server0, follow_up_action), server1, _, now = 
+    append_entry_communication ~from:server0 ~to_:server1 ~now () in
 
-  assert(0 = leader0.id);
-  assert(2 = leader0.current_term); 
-  assert(leader_log_version_0 = leader0.log);
-  assert(3 = leader0.commit_index);
+  assert(now = 0.002); 
+  assert(0 = server0.id);
+  assert(2 = server0.current_term); 
+  assert(leader_log_version_0 = server0.log);
+  assert(3 = server0.commit_index);
 
-  assert(1 = follower1.id); 
-  assert_current_leader follower1 0;
-  begin match follower1.role with
+  assert(1 = server1.id); 
+  assert_current_leader server1 0;
+  begin match server1.role with
     | Follower {voted_for = None; } -> ()
     | _ -> assert(false)
   end;
-  assert(2 = follower1.current_term); 
-    (* follower1 term was lower than the leader and should
+  assert(2 = server1.current_term); 
+    (* server1 term was lower than the leader and should
      * therefore have updated its current term to match.
      *)
-  assert(0 = List.length follower1.log);
+  assert(0 = List.length server1.log);
     (* The append entry should have been rejected by the 
      * follower and consequently none of the log
      * entries should have been appended by the 
      * follower
      *)
-  assert(0 = follower1.commit_index); 
+  assert(0 = server1.commit_index); 
     (* No new entries and therefore even if the 
        leader commit index is larger than the follower 
        commit index, the new commit index is following 
@@ -432,52 +533,67 @@ let () =
                last_log_index = 0
          and therefore commit_index = 0
      *)
-  assert((Some 3) = Leader.next_index_for_receiver leader0 1);
+  assert((Some 3) = Leader.next_index_for_receiver server0 1);
     (* 
-     * Because the follower1 denied the append entry, 
+     * Because the server1 denied the append entry, 
      * the leader is supposed to decrement its belief of 
      * what the next log index is for that follower. 
      *)
   assert(Retry_append {server_id = 1} = follow_up_action); 
-    (* Another concequence of the follower1 denying the 
+    (* Another concequence of the server1 denying the 
      * append entry request, is that the leader should 
      * send another append query. 
      *)
   
-  let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in
-  assert((Some 2) = Leader.next_index_for_receiver leader0 1);
+  let (server0, follow_up_action), server1, _, now = 
+    append_entry_communication ~from:server0 ~to_:server1 ~now () in
+  assert(now = 0.004); 
+  assert((Some 2) = Leader.next_index_for_receiver server0 1);
   assert(Retry_append {server_id = 1} = follow_up_action); 
-    (* The follower1 is lagging by 3 log and will therefore 3 
+    (* The server1 is lagging by 3 log and will therefore 3 
      * append entry iteration for a successful handling.
      *) 
   
-  let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in
-  assert((Some 1) = Leader.next_index_for_receiver leader0 1);
+  let (server0, follow_up_action), server1, _, now = 
+    append_entry_communication ~from:server0 ~to_:server1 ~now () in
+  assert(now = 0.006); 
+  assert((Some 1) = Leader.next_index_for_receiver server0 1);
   assert(Retry_append {server_id = 1} = follow_up_action); 
      (* Now the leader has the correct believe of what should 
-      * be the next log index for the follower1, next roundtrip
+      * be the next log index for the server1, next roundtrip
       * should be successful.
       *)
 
-  let (leader0, follow_up_action), follower1, _ = 
-    append_entry_communication ~from:leader0 ~to_:follower1 ~now () in
-  assert(3 = List.length follower1.log); 
-  assert(3 = follower1.commit_index); 
-    (* The follower1 has successfully appended the 3 log it 
+  let (server0, follow_up_action), server1, _, now = 
+    append_entry_communication ~from:server0 ~to_:server1 ~now () in
+  assert(now = 0.008); 
+  assert(3 = List.length server1.log); 
+  assert(3 = server1.commit_index); 
+    (* The server1 has successfully appended the 3 log it 
        was missing
 
        Because the leader had a commit index of 3, the follower 
        having inserted up to index 3 will also have its 
        commit index set to 3.
      *)
-  assert((Some 4) = Leader.next_index_for_receiver leader0 1);
-  assert(Nothing_to_do = follow_up_action); 
-    (* As a concequence of the follower1 successfully inserting
+  assert((Some 4) = Leader.next_index_for_receiver server0 1);
+  assert((Some 3) = Leader.match_index_for_receiver server0 1);
+    (* As a concequence of the server1 successfully inserting
        the 3 log entries of the leader, the leader is updating
        its next log index to [3 + 1] for that follower. 
      *)
+
+  let () = 
+    (* The leader has solely interacted with server 1 (server1) 
+     * and therefore the leader is expected to send a heart beat in
+     * hearbeat_timeout - now
+     *)
+    let action = Wait_for_rpc {
+      timeout_type = Heartbeat; 
+      timeout = default_configuration.hearbeat_timeout -. now; 
+    } in 
+    assert(action = follow_up_action)
+  in
   ()
 
 let () = 
@@ -506,13 +622,13 @@ let () =
     {index = 1; term = 1; data = foo} :: [] 
   in
 
-  let leader0 = 
+  let server0 = 
     let current_term = 1 in 
     let log = leader_log_version_0 in 
-    Leader.become (initial_state ~commit_index:3 ~log ~current_term 0) 
+    Leader.become (initial_state ~commit_index:3 ~log ~current_term 0) now 
   in  
 
-  let follower1 = 
+  let server1 = 
     (* Follower1 is the server which has both 
      * voted for server 0 in the election term 1 and 
      * has also replicated the leader 3 logs. 
@@ -528,14 +644,14 @@ let () =
     initial_state ~commit_index:3 ~role ~log:leader_log_version_0 ~current_term 1 
   in 
 
-  let follower2 = 
-    (* Follower2 is the server which was 'disconnected' 
-     * during term1 of leader0. 
+  let server2 = 
+    (* server2 is the server which was 'disconnected' 
+     * during term1 of server0. 
      *
      * Therefore it never received any append entries
-     * query from leader0. 
+     * query from server0. 
      *
-     * Because follower2 is now aware of any leaders it will
+     * Because server2 is now aware of any leaders it will
      * continuously call for new election and increment 
      * its current term each time. 
      * 
@@ -549,62 +665,84 @@ let () =
 
   (* verify initial properties
    *)
-  assert(State.is_leader leader0);
-  assert(State.is_follower follower1);
-  assert(State.is_candidate follower2);
+  assert(State.is_leader server0);
+  assert(State.is_follower server1);
+  assert(State.is_candidate server2);
 
-  assert(leader0.current_term = 1);
-  assert(follower1.current_term = 1);
-  assert(follower2.current_term = 11);
+  assert(server0.current_term = 1);
+  assert(server1.current_term = 1);
+  assert(server2.current_term = 11);
 
-  assert(3 = List.length leader0.log);
-  assert(3 = List.length follower1.log);
-  assert(0 = List.length follower2.log);
+  assert(3 = List.length server0.log);
+  assert(3 = List.length server1.log);
+  assert(0 = List.length server2.log);
   
-  assert(3 = leader0.commit_index);
-  assert(3 = follower1.commit_index);
-  assert(0 = follower2.commit_index);
+  assert(3 = server0.commit_index);
+  assert(3 = server1.commit_index);
+  assert(0 = server2.commit_index);
 
-  assert_current_leader follower1 0;
+  assert_current_leader server1 0;
 
   (*
-   * First vote communication for term 11 between Follower2 (candidate)
-   * and Follower1
+   * First vote communication for term 11 between server2 (candidate)
+   * and server1 (follower of the server0 leader)
    *)
 
-  let (follower2, follow_up_action), follower1 =
-    vote_communication ~from:follower2 ~to_:follower1 ~now () in
+  let (server2, follow_up_action), server1, now =
+    vote_communication ~from:server2 ~to_:server1 ~now () in
+  assert(now = 0.002);
 
-  assert(State.is_candidate follower2); 
-    (* The vote was not granted due to the fact 
-       that follower1 log was more up to date. 
-     *)
-  assert(State.is_follower follower1); 
-  assert(11 = follower1.current_term); 
+  assert(State.is_candidate server2); 
+  (* Despite not being granted the vote, server2 is 
+     still a candidate
+   *)
+
+  (* The vote was not granted due to the fact 
+     that server1 log was more up to date. 
+   *)
+  assert(State.is_follower server1); 
+  assert(11 = server1.current_term); 
     (* Follower 1 updated its term to match 
      * the one from Follower2 since its is greater. 
      *)
-  assert(Wait_for_rpc {election_deadline = 0.1} = follow_up_action);
+  
+  let () = 
+    let action = Wait_for_rpc {
+      timeout = default_configuration.election_timeout -. now; 
+      timeout_type = New_leader_election; 
+    } in 
+    assert(action = follow_up_action)
+  in 
 
   (*
    * First vote communication for term 11 between Follower2 (candidate)
-   * and leader0
+   * and server0
    *)
 
-  let (follower2, follow_up_action), leader0 =
-    vote_communication ~from:follower2 ~to_:leader0 ~now () in
+  let (server2, follow_up_action), server0, now =
+    vote_communication ~from:server2 ~to_:server0 ~now () in
+  assert(now = 0.004);
   
-  assert(State.is_candidate follower2); 
+  assert(State.is_candidate server2); 
     (* The vote was not granted due to the fact 
-       that leader0 log was more up to date. 
+       that server0 log was more up to date. 
      *)
-  assert(State.is_follower leader0); 
-  assert(11 = leader0.current_term); 
-    (* Because follower1 current term is greated, leader0 
+
+  assert(State.is_follower server0); 
+  assert(11 = server0.current_term); 
+    (* Because server1 current term is greated, server0 
      * had to step down from its leader role to become 
      * a follower and update its current term to 
-     * match followe2 (candidate).
+     * match server2 (candidate).
      *)
+
+  let () = 
+    let action = Wait_for_rpc {
+      timeout_type = New_leader_election; 
+      timeout = default_configuration.election_timeout -. now; 
+    } in 
+    assert(action = follow_up_action)
+  in 
   
   (*
    * At this time there are no leader in term 11. 
@@ -612,30 +750,32 @@ let () =
    * both Leader0 and Follower1 are now followers. 
    *
    * This situation will continue for as many new 
-   * term initiated by Follower2. Because of random
-   * election time out eventually either leader0 
-   * or follower1 will initiate a new election term. 
+   * term initiated by server2. Because of random
+   * election time out eventually either server0 
+   * or server1 will initiate a new election term. 
    *
-   * We'll assume follower1 initiate first.
+   * We'll assume server1 initiate first.
    *)
 
-  let follower1 = Candidate.become ~now follower1 in
-  assert(12 = follower1.current_term); 
+  let server1 = Candidate.become ~now server1 in
+  assert(12 = server1.current_term); 
 
-  let (follower1, follow_up_action), leader0 = 
-    vote_communication ~from:follower1 ~to_:leader0 ~now () in 
+  let (server1, follow_up_action), server0, now = 
+    vote_communication ~from:server1 ~to_:server0 ~now () in 
 
-  assert(State.is_leader follower1); 
-    (* Leader0 current log is at the same stage as 
-     * follower1... hence it grants its vote to follower1. In 
+  assert(State.is_leader server1); 
+  assert(Act_as_new_leader = follow_up_action);
+    (* server0 current log is at the same stage as 
+     * server1... hence it grants its vote to server1. In 
      * a configuration of 3 server this is sufficient for a
-     * majority and follower1 become leader. 
+     * majority and server1 become leader. 
      *) 
-  begin match leader0.role with
+
+  begin match server0.role with
     | Follower {voted_for = Some 1} -> () 
     | _ -> assert(false)
   end;
-  assert(12 = leader0.current_term);
+  assert(12 = server0.current_term);
 
   ()
 
@@ -647,6 +787,7 @@ let () =
   let configuration = Raft_pb.( {
     nb_of_server     = 3;
     election_timeout = 0.1;
+    hearbeat_timeout = 0.02;
   }) in 
 
   (* Create a leader state by simulating a (rigged) election
@@ -654,7 +795,7 @@ let () =
   let leader_0 = 
     Raft_helper.Follower.create ~configuration ~id:0 () 
     |> Raft_helper.Candidate.become ~now:0.0 
-    |> Raft_helper.Leader.become 
+    |> (fun s -> Raft_helper.Leader.become s now) 
     |> Raft_helper.Leader.add_log (Bytes.of_string "Foo") 
   in 
   
@@ -678,7 +819,7 @@ let () =
     (* 'Update' server 0 (ie leader) by applying the response. This returns
        the new state as well as a follow up action to take. 
      *)
-    let leader0 , _ = Raft_logic.Append_entries.handle_response leader_0 response now in 
+    let _ , _ = Raft_logic.Append_entries.handle_response leader_0 response now in 
 
     (* Check that the follower has successfully replicated the leader single
        log

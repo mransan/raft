@@ -90,14 +90,26 @@ and server_index_mutable = {
   mutable server_log_index : int;
 }
 
+type receiver_heartbeat = {
+  server_id : int;
+  heartbeat_deadline : float;
+}
+
+and receiver_heartbeat_mutable = {
+  mutable server_id : int;
+  mutable heartbeat_deadline : float;
+}
+
 type leader_state = {
   next_index : server_index list;
   match_index : server_index list;
+  receiver_heartbeats : receiver_heartbeat list;
 }
 
 and leader_state_mutable = {
   mutable next_index : server_index list;
   mutable match_index : server_index list;
+  mutable receiver_heartbeats : receiver_heartbeat list;
 }
 
 type candidate_state = {
@@ -123,11 +135,13 @@ and follower_state_mutable = {
 type configuration = {
   nb_of_server : int;
   election_timeout : float;
+  hearbeat_timeout : float;
 }
 
 and configuration_mutable = {
   mutable nb_of_server : int;
   mutable election_timeout : float;
+  mutable hearbeat_timeout : float;
 }
 
 type state_role =
@@ -163,25 +177,35 @@ and follow_up_action_retry_append_data_mutable = {
   mutable server_id : int;
 }
 
+type follow_up_action_wait_for_next_rpc_time_out_type =
+  | New_leader_election 
+  | Heartbeat 
+
 type follow_up_action_wait_for_next_rpc = {
-  election_deadline : float;
+  timeout : float;
+  timeout_type : follow_up_action_wait_for_next_rpc_time_out_type;
 }
 
 and follow_up_action_wait_for_next_rpc_mutable = {
-  mutable election_deadline : float;
+  mutable timeout : float;
+  mutable timeout_type : follow_up_action_wait_for_next_rpc_time_out_type;
 }
 
 type follow_up_action =
   | Act_as_new_leader
-  | Nothing_to_do
   | Retry_append of follow_up_action_retry_append_data
   | Wait_for_rpc of follow_up_action_wait_for_next_rpc
 
-let rec default_request_vote_request () : request_vote_request = {
-  candidate_term = 0;
-  candidate_id = 0;
-  candidate_last_log_index = 0;
-  candidate_last_log_term = 0;
+let rec default_request_vote_request 
+  ?candidate_term:((candidate_term:int) = 0)
+  ?candidate_id:((candidate_id:int) = 0)
+  ?candidate_last_log_index:((candidate_last_log_index:int) = 0)
+  ?candidate_last_log_term:((candidate_last_log_term:int) = 0)
+  () : request_vote_request  = {
+  candidate_term;
+  candidate_id;
+  candidate_last_log_index;
+  candidate_last_log_term;
 }
 
 and default_request_vote_request_mutable () : request_vote_request_mutable = {
@@ -191,10 +215,14 @@ and default_request_vote_request_mutable () : request_vote_request_mutable = {
   candidate_last_log_term = 0;
 }
 
-let rec default_request_vote_response () : request_vote_response = {
-  voter_id = 0;
-  voter_term = 0;
-  vote_granted = false;
+let rec default_request_vote_response 
+  ?voter_id:((voter_id:int) = 0)
+  ?voter_term:((voter_term:int) = 0)
+  ?vote_granted:((vote_granted:bool) = false)
+  () : request_vote_response  = {
+  voter_id;
+  voter_term;
+  vote_granted;
 }
 
 and default_request_vote_response_mutable () : request_vote_response_mutable = {
@@ -203,10 +231,14 @@ and default_request_vote_response_mutable () : request_vote_response_mutable = {
   vote_granted = false;
 }
 
-let rec default_log_entry () : log_entry = {
-  index = 0;
-  term = 0;
-  data = Bytes.create 64;
+let rec default_log_entry 
+  ?index:((index:int) = 0)
+  ?term:((term:int) = 0)
+  ?data:((data:bytes) = Bytes.create 64)
+  () : log_entry  = {
+  index;
+  term;
+  data;
 }
 
 and default_log_entry_mutable () : log_entry_mutable = {
@@ -215,13 +247,20 @@ and default_log_entry_mutable () : log_entry_mutable = {
   data = Bytes.create 64;
 }
 
-let rec default_append_entries_request () : append_entries_request = {
-  leader_term = 0;
-  leader_id = 0;
-  prev_log_index = 0;
-  prev_log_term = 0;
-  log_entries = [];
-  leader_commit = 0;
+let rec default_append_entries_request 
+  ?leader_term:((leader_term:int) = 0)
+  ?leader_id:((leader_id:int) = 0)
+  ?prev_log_index:((prev_log_index:int) = 0)
+  ?prev_log_term:((prev_log_term:int) = 0)
+  ?log_entries:((log_entries:log_entry list) = [])
+  ?leader_commit:((leader_commit:int) = 0)
+  () : append_entries_request  = {
+  leader_term;
+  leader_id;
+  prev_log_index;
+  prev_log_term;
+  log_entries;
+  leader_commit;
 }
 
 and default_append_entries_request_mutable () : append_entries_request_mutable = {
@@ -233,8 +272,10 @@ and default_append_entries_request_mutable () : append_entries_request_mutable =
   leader_commit = 0;
 }
 
-let rec default_append_entries_response_success_data () : append_entries_response_success_data = {
-  receiver_last_log_index = 0;
+let rec default_append_entries_response_success_data 
+  ?receiver_last_log_index:((receiver_last_log_index:int) = 0)
+  () : append_entries_response_success_data  = {
+  receiver_last_log_index;
 }
 
 and default_append_entries_response_success_data_mutable () : append_entries_response_success_data_mutable = {
@@ -242,10 +283,14 @@ and default_append_entries_response_success_data_mutable () : append_entries_res
 }
 
 
-let rec default_append_entries_response () : append_entries_response = {
-  receiver_id = 0;
-  receiver_term = 0;
-  result = Failure;
+let rec default_append_entries_response 
+  ?receiver_id:((receiver_id:int) = 0)
+  ?receiver_term:((receiver_term:int) = 0)
+  ?result:((result:append_entries_response_result) = Failure)
+  () : append_entries_response  = {
+  receiver_id;
+  receiver_term;
+  result;
 }
 
 and default_append_entries_response_mutable () : append_entries_response_mutable = {
@@ -254,9 +299,12 @@ and default_append_entries_response_mutable () : append_entries_response_mutable
   result = Failure;
 }
 
-let rec default_server_index () : server_index = {
-  server_id = 0;
-  server_log_index = 0;
+let rec default_server_index 
+  ?server_id:((server_id:int) = 0)
+  ?server_log_index:((server_log_index:int) = 0)
+  () : server_index  = {
+  server_id;
+  server_log_index;
 }
 
 and default_server_index_mutable () : server_index_mutable = {
@@ -264,19 +312,41 @@ and default_server_index_mutable () : server_index_mutable = {
   server_log_index = 0;
 }
 
-let rec default_leader_state () : leader_state = {
-  next_index = [];
-  match_index = [];
+let rec default_receiver_heartbeat 
+  ?server_id:((server_id:int) = 0)
+  ?heartbeat_deadline:((heartbeat_deadline:float) = 0.)
+  () : receiver_heartbeat  = {
+  server_id;
+  heartbeat_deadline;
+}
+
+and default_receiver_heartbeat_mutable () : receiver_heartbeat_mutable = {
+  server_id = 0;
+  heartbeat_deadline = 0.;
+}
+
+let rec default_leader_state 
+  ?next_index:((next_index:server_index list) = [])
+  ?match_index:((match_index:server_index list) = [])
+  ?receiver_heartbeats:((receiver_heartbeats:receiver_heartbeat list) = [])
+  () : leader_state  = {
+  next_index;
+  match_index;
+  receiver_heartbeats;
 }
 
 and default_leader_state_mutable () : leader_state_mutable = {
   next_index = [];
   match_index = [];
+  receiver_heartbeats = [];
 }
 
-let rec default_candidate_state () : candidate_state = {
-  vote_count = 0;
-  election_deadline = 0.;
+let rec default_candidate_state 
+  ?vote_count:((vote_count:int) = 0)
+  ?election_deadline:((election_deadline:float) = 0.)
+  () : candidate_state  = {
+  vote_count;
+  election_deadline;
 }
 
 and default_candidate_state_mutable () : candidate_state_mutable = {
@@ -284,9 +354,12 @@ and default_candidate_state_mutable () : candidate_state_mutable = {
   election_deadline = 0.;
 }
 
-let rec default_follower_state () : follower_state = {
-  voted_for = None;
-  current_leader = None;
+let rec default_follower_state 
+  ?voted_for:((voted_for:int option) = None)
+  ?current_leader:((current_leader:int option) = None)
+  () : follower_state  = {
+  voted_for;
+  current_leader;
 }
 
 and default_follower_state_mutable () : follower_state_mutable = {
@@ -294,25 +367,39 @@ and default_follower_state_mutable () : follower_state_mutable = {
   current_leader = None;
 }
 
-let rec default_configuration () : configuration = {
-  nb_of_server = 0;
-  election_timeout = 0.;
+let rec default_configuration 
+  ?nb_of_server:((nb_of_server:int) = 0)
+  ?election_timeout:((election_timeout:float) = 0.)
+  ?hearbeat_timeout:((hearbeat_timeout:float) = 0.)
+  () : configuration  = {
+  nb_of_server;
+  election_timeout;
+  hearbeat_timeout;
 }
 
 and default_configuration_mutable () : configuration_mutable = {
   nb_of_server = 0;
   election_timeout = 0.;
+  hearbeat_timeout = 0.;
 }
 
 
-let rec default_state () : state = {
-  id = 0;
-  current_term = 0;
-  log = [];
-  commit_index = 0;
-  last_applied = 0;
-  role = Leader (default_leader_state ());
-  configuration = default_configuration ();
+let rec default_state 
+  ?id:((id:int) = 0)
+  ?current_term:((current_term:int) = 0)
+  ?log:((log:log_entry list) = [])
+  ?commit_index:((commit_index:int) = 0)
+  ?last_applied:((last_applied:int) = 0)
+  ?role:((role:state_role) = Leader (default_leader_state ()))
+  ?configuration:((configuration:configuration) = default_configuration ())
+  () : state  = {
+  id;
+  current_term;
+  log;
+  commit_index;
+  last_applied;
+  role;
+  configuration;
 }
 
 and default_state_mutable () : state_mutable = {
@@ -325,20 +412,29 @@ and default_state_mutable () : state_mutable = {
   configuration = default_configuration ();
 }
 
-let rec default_follow_up_action_retry_append_data () : follow_up_action_retry_append_data = {
-  server_id = 0;
+let rec default_follow_up_action_retry_append_data 
+  ?server_id:((server_id:int) = 0)
+  () : follow_up_action_retry_append_data  = {
+  server_id;
 }
 
 and default_follow_up_action_retry_append_data_mutable () : follow_up_action_retry_append_data_mutable = {
   server_id = 0;
 }
 
-let rec default_follow_up_action_wait_for_next_rpc () : follow_up_action_wait_for_next_rpc = {
-  election_deadline = 0.;
+let rec default_follow_up_action_wait_for_next_rpc_time_out_type () = (New_leader_election:follow_up_action_wait_for_next_rpc_time_out_type)
+
+let rec default_follow_up_action_wait_for_next_rpc 
+  ?timeout:((timeout:float) = 0.)
+  ?timeout_type:((timeout_type:follow_up_action_wait_for_next_rpc_time_out_type) = default_follow_up_action_wait_for_next_rpc_time_out_type ())
+  () : follow_up_action_wait_for_next_rpc  = {
+  timeout;
+  timeout_type;
 }
 
 and default_follow_up_action_wait_for_next_rpc_mutable () : follow_up_action_wait_for_next_rpc_mutable = {
-  election_deadline = 0.;
+  timeout = 0.;
+  timeout_type = default_follow_up_action_wait_for_next_rpc_time_out_type ();
 }
 
 let rec default_follow_up_action () : follow_up_action = Act_as_new_leader
@@ -452,16 +548,32 @@ let rec decode_server_index d =
   let v:server_index = Obj.magic v in
   v
 
+let rec decode_receiver_heartbeat d =
+  let v = default_receiver_heartbeat_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+    )
+    | Some (1, Pbrt.Varint) -> v.server_id <- (Pbrt.Decoder.int_as_varint d); loop ()
+    | Some (2, Pbrt.Bits32) -> v.heartbeat_deadline <- (Pbrt.Decoder.float_as_bits32 d); loop ()
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:receiver_heartbeat = Obj.magic v in
+  v
+
 let rec decode_leader_state d =
   let v = default_leader_state_mutable () in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
+      v.receiver_heartbeats <- List.rev v.receiver_heartbeats;
       v.match_index <- List.rev v.match_index;
       v.next_index <- List.rev v.next_index;
     )
     | Some (1, Pbrt.Bytes) -> v.next_index <- (decode_server_index (Pbrt.Decoder.nested d)) :: v.next_index; loop ()
     | Some (2, Pbrt.Bytes) -> v.match_index <- (decode_server_index (Pbrt.Decoder.nested d)) :: v.match_index; loop ()
+    | Some (3, Pbrt.Bytes) -> v.receiver_heartbeats <- (decode_receiver_heartbeat (Pbrt.Decoder.nested d)) :: v.receiver_heartbeats; loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -504,6 +616,7 @@ let rec decode_configuration d =
     )
     | Some (1, Pbrt.Varint) -> v.nb_of_server <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (2, Pbrt.Bits64) -> v.election_timeout <- (Pbrt.Decoder.float_as_bits64 d); loop ()
+    | Some (3, Pbrt.Bits64) -> v.hearbeat_timeout <- (Pbrt.Decoder.float_as_bits64 d); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -546,13 +659,20 @@ let rec decode_follow_up_action_retry_append_data d =
   let v:follow_up_action_retry_append_data = Obj.magic v in
   v
 
+let rec decode_follow_up_action_wait_for_next_rpc_time_out_type d = 
+  match Pbrt.Decoder.int_as_varint d with
+  | 1 -> (New_leader_election:follow_up_action_wait_for_next_rpc_time_out_type)
+  | 2 -> (Heartbeat:follow_up_action_wait_for_next_rpc_time_out_type)
+  | _ -> failwith "Unknown value for enum follow_up_action_wait_for_next_rpc_time_out_type"
+
 let rec decode_follow_up_action_wait_for_next_rpc d =
   let v = default_follow_up_action_wait_for_next_rpc_mutable () in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
-    | Some (1, Pbrt.Bits64) -> v.election_deadline <- (Pbrt.Decoder.float_as_bits64 d); loop ()
+    | Some (1, Pbrt.Bits64) -> v.timeout <- (Pbrt.Decoder.float_as_bits64 d); loop ()
+    | Some (2, Pbrt.Varint) -> v.timeout_type <- (decode_follow_up_action_wait_for_next_rpc_time_out_type d); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -564,7 +684,6 @@ let rec decode_follow_up_action d =
     let ret:follow_up_action = match Pbrt.Decoder.key d with
       | None -> failwith "None of the known key is found"
       | Some (1, _) -> (Pbrt.Decoder.empty_nested d ; Act_as_new_leader)
-      | Some (3, _) -> (Pbrt.Decoder.empty_nested d ; Nothing_to_do)
       | Some (4, _) -> Retry_append (decode_follow_up_action_retry_append_data (Pbrt.Decoder.nested d))
       | Some (5, _) -> Wait_for_rpc (decode_follow_up_action_wait_for_next_rpc (Pbrt.Decoder.nested d))
       | Some (n, payload_kind) -> (
@@ -652,6 +771,13 @@ let rec encode_server_index (v:server_index) encoder =
   Pbrt.Encoder.int_as_varint v.server_log_index encoder;
   ()
 
+let rec encode_receiver_heartbeat (v:receiver_heartbeat) encoder = 
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.server_id encoder;
+  Pbrt.Encoder.key (2, Pbrt.Bits32) encoder; 
+  Pbrt.Encoder.float_as_bits32 v.heartbeat_deadline encoder;
+  ()
+
 let rec encode_leader_state (v:leader_state) encoder = 
   List.iter (fun x -> 
     Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
@@ -661,6 +787,10 @@ let rec encode_leader_state (v:leader_state) encoder =
     Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.nested (encode_server_index x) encoder;
   ) v.match_index;
+  List.iter (fun x -> 
+    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_receiver_heartbeat x) encoder;
+  ) v.receiver_heartbeats;
   ()
 
 let rec encode_candidate_state (v:candidate_state) encoder = 
@@ -690,6 +820,8 @@ let rec encode_configuration (v:configuration) encoder =
   Pbrt.Encoder.int_as_varint v.nb_of_server encoder;
   Pbrt.Encoder.key (2, Pbrt.Bits64) encoder; 
   Pbrt.Encoder.float_as_bits64 v.election_timeout encoder;
+  Pbrt.Encoder.key (3, Pbrt.Bits64) encoder; 
+  Pbrt.Encoder.float_as_bits64 v.hearbeat_timeout encoder;
   ()
 
 
@@ -729,19 +861,22 @@ let rec encode_follow_up_action_retry_append_data (v:follow_up_action_retry_appe
   Pbrt.Encoder.int_as_varint v.server_id encoder;
   ()
 
+let rec encode_follow_up_action_wait_for_next_rpc_time_out_type (v:follow_up_action_wait_for_next_rpc_time_out_type) encoder =
+  match v with
+  | New_leader_election -> Pbrt.Encoder.int_as_varint 1 encoder
+  | Heartbeat -> Pbrt.Encoder.int_as_varint 2 encoder
+
 let rec encode_follow_up_action_wait_for_next_rpc (v:follow_up_action_wait_for_next_rpc) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Bits64) encoder; 
-  Pbrt.Encoder.float_as_bits64 v.election_deadline encoder;
+  Pbrt.Encoder.float_as_bits64 v.timeout encoder;
+  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
+  encode_follow_up_action_wait_for_next_rpc_time_out_type v.timeout_type encoder;
   ()
 
 let rec encode_follow_up_action (v:follow_up_action) encoder = 
   match v with
   | Act_as_new_leader -> (
     Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.empty_nested encoder;
-  )
-  | Nothing_to_do -> (
-    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.empty_nested encoder;
   )
   | Retry_append x -> (
@@ -829,11 +964,21 @@ let rec pp_server_index fmt (v:server_index) =
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
+let rec pp_receiver_heartbeat fmt (v:receiver_heartbeat) = 
+  let pp_i fmt () =
+    Format.pp_open_vbox fmt 1;
+    Pbrt.Pp.pp_record_field "server_id" Pbrt.Pp.pp_int fmt v.server_id;
+    Pbrt.Pp.pp_record_field "heartbeat_deadline" Pbrt.Pp.pp_float fmt v.heartbeat_deadline;
+    Format.pp_close_box fmt ()
+  in
+  Pbrt.Pp.pp_brk pp_i fmt ()
+
 let rec pp_leader_state fmt (v:leader_state) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "next_index" (Pbrt.Pp.pp_list pp_server_index) fmt v.next_index;
     Pbrt.Pp.pp_record_field "match_index" (Pbrt.Pp.pp_list pp_server_index) fmt v.match_index;
+    Pbrt.Pp.pp_record_field "receiver_heartbeats" (Pbrt.Pp.pp_list pp_receiver_heartbeat) fmt v.receiver_heartbeats;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
@@ -861,6 +1006,7 @@ let rec pp_configuration fmt (v:configuration) =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "nb_of_server" Pbrt.Pp.pp_int fmt v.nb_of_server;
     Pbrt.Pp.pp_record_field "election_timeout" Pbrt.Pp.pp_float fmt v.election_timeout;
+    Pbrt.Pp.pp_record_field "hearbeat_timeout" Pbrt.Pp.pp_float fmt v.hearbeat_timeout;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
@@ -893,10 +1039,16 @@ let rec pp_follow_up_action_retry_append_data fmt (v:follow_up_action_retry_appe
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
+let rec pp_follow_up_action_wait_for_next_rpc_time_out_type fmt (v:follow_up_action_wait_for_next_rpc_time_out_type) =
+  match v with
+  | New_leader_election -> Format.fprintf fmt "New_leader_election"
+  | Heartbeat -> Format.fprintf fmt "Heartbeat"
+
 let rec pp_follow_up_action_wait_for_next_rpc fmt (v:follow_up_action_wait_for_next_rpc) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "election_deadline" Pbrt.Pp.pp_float fmt v.election_deadline;
+    Pbrt.Pp.pp_record_field "timeout" Pbrt.Pp.pp_float fmt v.timeout;
+    Pbrt.Pp.pp_record_field "timeout_type" pp_follow_up_action_wait_for_next_rpc_time_out_type fmt v.timeout_type;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
@@ -904,6 +1056,5 @@ let rec pp_follow_up_action_wait_for_next_rpc fmt (v:follow_up_action_wait_for_n
 let rec pp_follow_up_action fmt (v:follow_up_action) =
   match v with
   | Act_as_new_leader  -> Format.fprintf fmt "Act_as_new_leader"
-  | Nothing_to_do  -> Format.fprintf fmt "Nothing_to_do"
   | Retry_append x -> Format.fprintf fmt "@[Retry_append(%a)@]" pp_follow_up_action_retry_append_data x
   | Wait_for_rpc x -> Format.fprintf fmt "@[Wait_for_rpc(%a)@]" pp_follow_up_action_wait_for_next_rpc x
