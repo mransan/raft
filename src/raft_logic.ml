@@ -31,16 +31,12 @@ module Request_vote = struct
       {voter_term = state.current_term; voter_id = state.id ; vote_granted; }
     in 
 
-    let follow_up_action state = 
-      Follow_up_action.default state now 
-    in 
-
     if candidate_term < state.current_term 
     then 
       (* This request is coming from a candidate lagging behind ... 
          no vote for him.
        *)
-      (state, make_response state false, follow_up_action state)
+      (state, make_response state false, Follow_up_action.default state now)
     else 
       let state = 
         (* Enforce invariant that if this server is lagging behind 
@@ -56,7 +52,7 @@ module Request_vote = struct
         (* Enforce the safety constraint by denying vote if this server
            last log is more recent than the candidate one.
          *)
-        (state, make_response state false, follow_up_action state)
+        (state, make_response state false, Follow_up_action.default state now)
       else
         let role = state.role in 
         match role with
@@ -70,18 +66,18 @@ module Request_vote = struct
               current_leader = None;
             } 
           } in  
-          (state, make_response state true, follow_up_action state)
+          (state, make_response state true, Follow_up_action.new_election_wait state)
 
         | Follower {voted_for = Some id} when id = candidate_id -> 
           (* This server has already voted for that candidate ... reminding him
            *)
-          (state, make_response state true, follow_up_action state)
+          (state, make_response state true, Follow_up_action.new_election_wait state)
 
         | _ -> 
           (* Server has previously voted for another candidate or 
              itself
            *)
-          (state, make_response state false, follow_up_action state) 
+          (state, make_response state false, Follow_up_action.default state now) 
   
   let handle_response state response now = 
   
@@ -94,7 +90,7 @@ module Request_vote = struct
          it must convert to a follower and update to the latest term.
        *)
       let state = Follower.become ~term:voter_term state in 
-      (state, Follow_up_action.wait_for_rpc state now) 
+      (state, Follow_up_action.new_election_wait state) 
     else 
   
       match role, vote_granted  with
@@ -104,23 +100,23 @@ module Request_vote = struct
         then 
           (* Candidate is the new leader
            *)
-          (Leader.become state, Act_as_new_leader)  
+          (Leader.become state now, Act_as_new_leader)  
         else 
           (* Candidate has a new vote but not yet reached the majority
            *)
           let new_state = {state with 
             role = Candidate (Candidate.increment_vote_count candidate_state);
           } in 
-          (new_state, Wait_for_rpc {election_deadline}) 
+          (new_state, Follow_up_action.existing_election_wait election_deadline now) 
 
       | Candidate {election_deadline; _}, false ->
-        (state, Wait_for_rpc {election_deadline; }) 
+        (state, Follow_up_action.existing_election_wait election_deadline now)
         (* The vote was denied, the election keeps on going until
            its deadline. 
          *)
 
-      | Follower _ , _ -> (state, Follow_up_action.wait_for_rpc state now) 
-      | Leader   _ , _ -> (state, Nothing_to_do)
+      | Follower _ , _ -> (state, Follow_up_action.new_election_wait state) 
+      | Leader   _ , _ -> (state, Follow_up_action.default state now)
         (* If the server is either Follower or Leader, it means that 
            it has changed role in between the time it sent the 
            [RequestVote] request and this response. 
@@ -134,38 +130,51 @@ end (* Request_vote *)
 
 module Append_entries = struct 
   
+  (* Helper function to collect all the log entries
+     up until (and including) the log with given 
+     index. 
+   *)
+  let collect_log_since_index last_index log = 
+    let rec aux log_entries = function
+       | [] -> 
+         if last_index = 0
+         then (0, List.rev log_entries) 
+         else failwith "[Raft_logic] Internal error invalid log index"
+
+       | ({index;term;data = _ } as entry)::tl -> 
+         if index = last_index 
+         then (term, List.rev log_entries)
+         else aux (entry::log_entries) tl  
+    in 
+    aux [] log 
+
   let make state receiver_id = 
 
     match state.role with
     | Leader {next_index; match_index = _ } -> ( 
-      let {server_log_index;_ } = List.nth next_index receiver_id in 
-      let prev_log_index = server_log_index - 1 in 
+      
+      let is_receiver ({server_id; _ }:server_index) = 
+        server_id = receiver_id
+      in 
+      match List.find is_receiver next_index with
+      | {server_log_index; _ } -> (
 
-      let (prev_log_term, log_entries) = 
-        let rec aux log_entries = function
-           | [] -> 
-             if prev_log_index = 0
-             then (0, List.rev log_entries) 
-             else failwith @@ Printf.sprintf 
-               ("Invalid next index for receiver(%i) in server(%i), " ^^ 
-                "prev_log_index(%i)") receiver_id state.id prev_log_index
+        let prev_log_index = server_log_index - 1 in 
 
-           | ({index;term;data = _ } as entry)::tl -> 
-             if index = prev_log_index
-             then (term, List.rev log_entries)
-             else aux (entry::log_entries) tl  
-        in 
-        aux [] state.log
-      in
+        let (prev_log_term, log_entries) = 
+          collect_log_since_index prev_log_index state.log in  
 
-      Some {
-        leader_term = state.current_term;
-        leader_id = state.id;
-        prev_log_index; 
-        prev_log_term;
-        log_entries;
-        leader_commit = state.commit_index;
-      }
+        Some {
+          leader_term = state.current_term;
+          leader_id = state.id;
+          prev_log_index; 
+          prev_log_term;
+          log_entries;
+          leader_commit = state.commit_index;
+        }
+      ) 
+      | exception Not_found -> 
+        failwith "[Raft_logic] Invalid receiver id"
     )
     | _ -> None 
 
@@ -183,14 +192,14 @@ module Append_entries = struct
       (* This request is coming from a leader lagging behind...
        *)
       
-      (state, make_response state Failure, Follow_up_action.default state now )
+      (state, make_response state Failure, Follow_up_action.default state now)
   
     else 
       (* This request is coming from a legetimate leader, 
          let's ensure that this server is a follower.
        *)
       let state  = Follower.become ~current_leader:leader_id ~term:leader_term state in  
-      let wait_for_rpc_action = Follow_up_action.wait_for_rpc state now in 
+      let new_election_wait_action = Follow_up_action.new_election_wait state in 
 
       (* Next step is to handle the log entries from the leader.
          
@@ -218,7 +227,7 @@ module Append_entries = struct
             else state   
           in 
           let response = make_response state (Success {receiver_last_log_index; }) in 
-          (state, response, wait_for_rpc_action)
+          (state, response, new_election_wait_action)
   
       end (* Helper *) in 
   
@@ -233,7 +242,7 @@ module Append_entries = struct
             (* [case 1] The prev_log_index is not found in the state log. 
                This server is lagging behind. 
              *)
-            (state, make_response state Failure, wait_for_rpc_action) 
+            (state, make_response state Failure, new_election_wait_action) 
   
         | ({index; term; _ }::tl as log) when index = prev_log_index && 
                                                term = prev_log_term -> 
@@ -251,7 +260,7 @@ module Append_entries = struct
              As far as the leader is concerned it's like [case 1] now. 
            *)
           let new_state = {state with log} in 
-          (new_state, make_response state Failure, wait_for_rpc_action)
+          (new_state, make_response state Failure, new_election_wait_action)
         |  _::tl -> aux tl 
   
       in 
@@ -267,7 +276,7 @@ module Append_entries = struct
          it must convert to a follower and update to that term.
        *)
       let state = Follower.become ~term:receiver_term state in 
-      (state, Follow_up_action.wait_for_rpc state now) 
+      (state, Follow_up_action.new_election_wait state) 
   
     else 
       match result with
@@ -278,21 +287,36 @@ module Append_entries = struct
 
         begin match state.role with
         | Leader leader_state ->
+
+          let configuration = state.configuration in 
+
           let leader_state, nb = Leader.update_receiver_last_log_index 
-            ~server_id:receiver_id ~log_index:receiver_last_log_index leader_state 
+            ~server_id:receiver_id 
+            ~log_index:receiver_last_log_index 
+            leader_state 
           in
+
+          let leader_state, min_heartbeat_timeout = Leader.update_receiver_deadline 
+            ~server_id:receiver_id
+            ~now 
+            ~configuration
+            leader_state
+          in 
+          
           let commit_index = 
             (* Check if the received log entry from has reached 
                a majority of server. 
                Note that we need to add `+1` simply to count this 
                server (ie leader) which does not update its next/match
              *)
-            if Configuration.is_majority state.configuration (nb + 1)
+            if Configuration.is_majority configuration (nb + 1)
             then receiver_last_log_index
             else state.commit_index
           in  
           
-          ({state with commit_index; role = Leader leader_state}, Nothing_to_do)
+          let state = {state with commit_index; role = Leader leader_state} in
+          let action = Follow_up_action.make_heartbeat_wait min_heartbeat_timeout in 
+          (state, action)
 
         | _ -> (state, Follow_up_action.default state now)
 
@@ -303,12 +327,14 @@ module Append_entries = struct
            If a leader this server should decrement the next 
            log index and retry the append. 
          *)
-        let new_state = Leader.decrement_next_index state receiver_id in 
-        let next_action = 
-          if State.is_leader state
-          then Retry_append {server_id  = receiver_id} 
-          else Nothing_to_do
-        in 
-        (new_state, next_action)
+        begin match state.role with
+        | Leader leader_state ->
+          let leader_state = Leader.decrement_next_index ~server_id:receiver_id leader_state in 
+          let state = {state with role = Leader leader_state} in 
+          let action = Retry_append {server_id = receiver_id} in  
+          (state, action)
+        | _ ->
+          (state, Follow_up_action.default state now)
+        end 
 
 end (* Append_entries *)
