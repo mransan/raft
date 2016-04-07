@@ -903,12 +903,17 @@ let () =
       (* Handle the request in the oposite
        * order.
        *)
-      let server1, _, _        = Logic.Append_entries.handle_request server1 request1 now in  
-      Printf.printf ">>>\n%!";
-      let server1, response, _ = Logic.Append_entries.handle_request server1 request0 now in  
+      let server1, response0, _        = Logic.Append_entries.handle_request server1 request1 now in  
+      let server1, response1, _ = Logic.Append_entries.handle_request server1 request0 now in  
 
       assert(2 = List.length server1.log);
 
+      let server0, _ = Logic.Append_entries.handle_response server0 response0 now in 
+      let server0, _ = Logic.Append_entries.handle_response server0 response1 now in 
+
+      assert(Some (3) = Leader.next_index_for_receiver server0 1);
+      assert(Some (2) = Leader.match_index_for_receiver server0 1);
+      assert(2 = server0.commit_index);
     )  
   );
 
