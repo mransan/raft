@@ -135,16 +135,16 @@ module Append_entries = struct
    * index. 
    *)
   let collect_log_since_index last_index log = 
-    let rec aux log_entries = function
+    let rec aux rev_log_entries = function
        | [] -> 
          if last_index = 0
-         then (0, List.rev log_entries) 
+         then (0, rev_log_entries) 
          else failwith "[Raft_logic] Internal error invalid log index"
 
        | ({index;term;data = _ } as entry)::tl -> 
          if index = last_index 
-         then (term, List.rev log_entries)
-         else aux (entry::log_entries) tl  
+         then (term, rev_log_entries)
+         else aux (entry::rev_log_entries) tl  
     in 
     aux [] log 
 
@@ -161,7 +161,7 @@ module Append_entries = struct
 
         let prev_log_index = server_log_index - 1 in 
 
-        let (prev_log_term, log_entries) = 
+        let (prev_log_term, rev_log_entries) = 
           collect_log_since_index prev_log_index state.log in  
 
         Some {
@@ -169,7 +169,7 @@ module Append_entries = struct
           leader_id = state.id;
           prev_log_index; 
           prev_log_term;
-          log_entries;
+          rev_log_entries;
           leader_commit = state.commit_index;
         }
       ) 
@@ -206,62 +206,57 @@ module Append_entries = struct
        * The algorithm search for the [prev log entry] that the leader 
        * sent. 
        *)
-      let {prev_log_index; prev_log_term; log_entries; leader_commit} = request in 
+      let {prev_log_index; prev_log_term; rev_log_entries; leader_commit} = request in 
   
-      let module Helper = struct 
-        
-        (* This functions merges the request log entries with the 
-         * current log of the server. The current log is first split by 
-         * the caller into: 
-         *
-         * - [pre_logs] all the logs prior to (and including) [prev_log_index].
-         *
-         * - [rev_post_logs] all the log entry in the server future of the
-         *   [prev_log_index]. This list is expected to be in reverse order. 
-         *
-         * This function will then merge the 2 list of logs by adding all the 
-         * common logs first, then if either one is empty or an entry differs
-         * then the entries from the leader will override the one in the server. 
-         *
-         * This merging is necessary because message can be delivered out of 
-         * order. (See [test.ml] for a code example). This means that this
-         * server might receive an outdated append query from its leader.
-         *) 
-        let merge_log_entries state rev_post_logs pre_logs  =  
+      (* This functions merges the request log entries with the 
+       * current log of the server. The current log is first split by 
+       * the caller into: 
+       *
+       * - [pre_logs] all the logs prior to (and including) [prev_log_index].
+       *
+       * - [rev_post_logs] all the log entry in the server future of the
+       *   [prev_log_index]. This list is expected to be in reverse order. 
+       *
+       * This function will then merge the 2 list of logs by adding all the 
+       * common logs first, then if either one is empty or an entry differs
+       * then the entries from the leader will override the one in the server. 
+       *
+       * This merging is necessary because message can be delivered out of 
+       * order. (See [test.ml] for a code example). This means that this
+       * server might receive an outdated append query from its leader.
+       *) 
+      let merge_log_entries state rev_post_logs pre_logs  =  
 
-          let rev_log_entries = List.rev log_entries in
+        let rec aux log = function
+          | [], [] -> log 
+          | ({index=i1;term=t1;data} as e)::tl1, {index=i2;term=t2; _ }::tl2 -> 
+            if i1 = i2 && t1 = t2 
+            then aux (e::log) (tl1, tl2)
+            else aux (e::log) (tl1, []) 
+          | hd::tl, []
+          | [], hd::tl -> aux (hd::log) (tl, []) 
+        in 
 
-          let rec aux log = function
-            | [], [] -> log 
-            | ({index=i1;term=t1;data} as e)::tl1, {index=i2;term=t2; _ }::tl2 -> 
-              if i1 = i2 && t1 = t2 
-              then aux (e::log) (tl1, tl2)
-              else aux (e::log) (tl1, []) 
-            | hd::tl, []
-            | [], hd::tl -> aux (hd::log) (tl, []) 
-          in 
-
-          let state = {state with 
-            log = aux pre_logs (rev_log_entries, rev_post_logs)
-          } in 
-          let receiver_last_log_index = State.last_log_index state in 
-          let state = 
-            (* Update this server commit index based on value sent from 
-             * the leader. 
-             * Note that it is not guaranteed that the leader has sent
-             * all the log until it commit index so the min value 
-             * is taken.
-             *)
-            if leader_commit > state.commit_index
-            then {state with
-              commit_index = min leader_commit receiver_last_log_index 
-            } 
-            else state   
-          in 
-          let response = make_response state (Success {receiver_last_log_index; }) in 
-          (state, response, new_election_wait_action)
-  
-      end (* Helper *) in 
+        let state = {state with 
+          log = aux pre_logs (rev_log_entries, rev_post_logs)
+        } in 
+        let receiver_last_log_index = State.last_log_index state in 
+        let state = 
+          (* Update this server commit index based on value sent from 
+           * the leader. 
+           * Note that it is not guaranteed that the leader has sent
+           * all the log until it commit index so the min value 
+           * is taken.
+           *)
+          if leader_commit > state.commit_index
+          then {state with
+            commit_index = min leader_commit receiver_last_log_index 
+          } 
+          else state   
+        in 
+        let response = make_response state (Success {receiver_last_log_index; }) in 
+        (state, response, new_election_wait_action)
+      in
   
       let rec aux post_logs = function 
         | [] -> 
@@ -269,7 +264,7 @@ module Append_entries = struct
           then 
             (* [case 0] No previous log were ever inserted
              *)
-            Helper.merge_log_entries state post_logs []
+            merge_log_entries state post_logs []
           else 
             (* [case 1] The prev_log_index is not found in the state log. 
              * This server is lagging behind. 
@@ -281,7 +276,7 @@ module Append_entries = struct
           (* [case 2] The prev_log_index matches the leader, all is good, 
            * let's append all the new logs. 
            *)
-          Helper.merge_log_entries state post_logs log 
+          merge_log_entries state post_logs log 
   
         | {index; _ }::log when index = prev_log_index -> 
           (* [case 3] The prev_log_index is inconstent with the leader. 

@@ -43,7 +43,7 @@ type append_entries_request = {
   leader_id : int;
   prev_log_index : int;
   prev_log_term : int;
-  log_entries : log_entry list;
+  rev_log_entries : log_entry list;
   leader_commit : int;
 }
 
@@ -52,7 +52,7 @@ and append_entries_request_mutable = {
   mutable leader_id : int;
   mutable prev_log_index : int;
   mutable prev_log_term : int;
-  mutable log_entries : log_entry list;
+  mutable rev_log_entries : log_entry list;
   mutable leader_commit : int;
 }
 
@@ -252,14 +252,14 @@ let rec default_append_entries_request
   ?leader_id:((leader_id:int) = 0)
   ?prev_log_index:((prev_log_index:int) = 0)
   ?prev_log_term:((prev_log_term:int) = 0)
-  ?log_entries:((log_entries:log_entry list) = [])
+  ?rev_log_entries:((rev_log_entries:log_entry list) = [])
   ?leader_commit:((leader_commit:int) = 0)
   () : append_entries_request  = {
   leader_term;
   leader_id;
   prev_log_index;
   prev_log_term;
-  log_entries;
+  rev_log_entries;
   leader_commit;
 }
 
@@ -268,7 +268,7 @@ and default_append_entries_request_mutable () : append_entries_request_mutable =
   leader_id = 0;
   prev_log_index = 0;
   prev_log_term = 0;
-  log_entries = [];
+  rev_log_entries = [];
   leader_commit = 0;
 }
 
@@ -490,13 +490,13 @@ let rec decode_append_entries_request d =
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
-      v.log_entries <- List.rev v.log_entries;
+      v.rev_log_entries <- List.rev v.rev_log_entries;
     )
     | Some (1, Pbrt.Varint) -> v.leader_term <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (2, Pbrt.Varint) -> v.leader_id <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (3, Pbrt.Varint) -> v.prev_log_index <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (4, Pbrt.Varint) -> v.prev_log_term <- (Pbrt.Decoder.int_as_varint d); loop ()
-    | Some (5, Pbrt.Bytes) -> v.log_entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.log_entries; loop ()
+    | Some (5, Pbrt.Bytes) -> v.rev_log_entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.rev_log_entries; loop ()
     | Some (6, Pbrt.Varint) -> v.leader_commit <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -736,7 +736,7 @@ let rec encode_append_entries_request (v:append_entries_request) encoder =
   List.iter (fun x -> 
     Pbrt.Encoder.key (5, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.nested (encode_log_entry x) encoder;
-  ) v.log_entries;
+  ) v.rev_log_entries;
   Pbrt.Encoder.key (6, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.leader_commit encoder;
   ()
@@ -926,7 +926,7 @@ let rec pp_append_entries_request fmt (v:append_entries_request) =
     Pbrt.Pp.pp_record_field "leader_id" Pbrt.Pp.pp_int fmt v.leader_id;
     Pbrt.Pp.pp_record_field "prev_log_index" Pbrt.Pp.pp_int fmt v.prev_log_index;
     Pbrt.Pp.pp_record_field "prev_log_term" Pbrt.Pp.pp_int fmt v.prev_log_term;
-    Pbrt.Pp.pp_record_field "log_entries" (Pbrt.Pp.pp_list pp_log_entry) fmt v.log_entries;
+    Pbrt.Pp.pp_record_field "rev_log_entries" (Pbrt.Pp.pp_list pp_log_entry) fmt v.rev_log_entries;
     Pbrt.Pp.pp_record_field "leader_commit" Pbrt.Pp.pp_int fmt v.leader_commit;
     Format.pp_close_box fmt ()
   in

@@ -1,5 +1,18 @@
 option (int32_type) = int_t;
 
+// - Ordering of Log Entries -
+//  
+// The default ordering of log entries is descending chronological
+// order. The latest log entry (with the highest index) is first
+// in the list. 
+// 
+// The reason for this ordering is to provide efficient usage of the 
+// list data structure. 
+//
+// If the log are ordered in reverse order then the field will be 
+// prefixed with [prev]. 
+//
+
 // Messages 
 // --------
 
@@ -17,12 +30,12 @@ message RequestVoteResponse {
 }
 
 message AppendEntriesRequest {
-    required int32 leader_term     = 1; 
-    required int32 leader_id       = 2; 
-    required int32 prev_log_index  = 3; 
-    required int32 prev_log_term   = 4; 
-    repeated LogEntry log_entries  = 5;
-    required int32 leader_commit   = 6; 
+    required int32 leader_term         = 1; 
+    required int32 leader_id           = 2; 
+    required int32 prev_log_index      = 3; 
+    required int32 prev_log_term       = 4; 
+    repeated LogEntry rev_log_entries  = 5;
+    required int32 leader_commit       = 6; 
 }
 
 message AppendEntriesResponse {
