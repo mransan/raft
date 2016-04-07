@@ -210,8 +210,23 @@ module Append_entries = struct
   
       let module Helper = struct 
         
-        let insert_log_entries state old =  
-          let state = {state with log = log_entries @ old } in  
+        let insert_log_entries state rev_post_logs pre_logs  =  
+
+          let rev_log_entries = List.rev log_entries in
+
+          let rec aux log = function
+            | [], [] -> log 
+            | ({index=i1;term=t1;data} as e)::tl1, {index=i2;term=t2; _ }::tl2 -> 
+              if i1 = i2 && t1 = t2 
+              then aux (e::log) (tl1, tl2)
+              else aux (e::log) (tl1, []) 
+            | hd::tl, []
+            | [], hd::tl -> aux (hd::log) (tl, []) 
+          in 
+
+          let state = {state with 
+            log = aux pre_logs (rev_log_entries, rev_post_logs)
+          } in 
           let receiver_last_log_index = State.last_log_index state in 
           let state = 
             (* Update this server commit index based on value sent from 
@@ -231,13 +246,13 @@ module Append_entries = struct
   
       end (* Helper *) in 
   
-      let rec aux = function 
+      let rec aux post_logs = function 
         | [] -> 
           if prev_log_index = 0
           then 
             (* [case 0] No previous log were ever inserted
              *)
-            Helper.insert_log_entries state []
+            Helper.insert_log_entries state post_logs []
           else 
             (* [case 1] The prev_log_index is not found in the state log. 
                This server is lagging behind. 
@@ -249,9 +264,7 @@ module Append_entries = struct
           (* [case 2] The prev_log_index matches the leader, all is good, 
              let's append all the new logs. 
            *)
-           (* TODO implement the [leaderCommit] logic (item 5)
-            *)
-          Helper.insert_log_entries state log 
+          Helper.insert_log_entries state post_logs log 
   
         | {index; _ }::log when index = prev_log_index -> 
           (* [case 3] The prev_log_index is inconstent with the leader. 
@@ -261,10 +274,10 @@ module Append_entries = struct
            *)
           let new_state = {state with log} in 
           (new_state, make_response state Failure, new_election_wait_action)
-        |  _::tl -> aux tl 
+        |  hd::tl -> aux (hd::post_logs) tl 
   
       in 
-      aux state.log 
+      aux [] state.log 
   
   let handle_response state ({receiver_term; _ } as response) now = 
     
