@@ -38,7 +38,6 @@ let assert_no_current_leader state =
   match state.role with
   | Follower {current_leader = None; _ } -> ()
   | _ -> assert(false) 
-
   
 let ipc_time = 0.001 (* 1 ms *) 
 
@@ -832,3 +831,90 @@ let () =
     | _ -> print_endline "Log replication failure"
   )
   | None -> () 
+
+let () = 
+
+  (*
+   * In this test we will make sure that the RAFT
+   * protocol implementation is resilient to message
+   * delivery error.
+   * 
+   *) 
+  
+  (* 
+   * The first test will focus on sending twice 
+   * the Append Entry request. 
+   *)
+
+  let server0 = 
+    Leader.become (initial_state ~current_term:1 0) now 
+    |> Leader.add_log foo
+  in 
+  let server1 = initial_state ~current_term:1 1 in
+
+  assert(0 = List.length server1.log);
+  assert(1 = List.length server0.log);
+  assert(0 = server0.commit_index);
+  assert(Some (1) = Leader.next_index_for_receiver server0 1);
+  assert(Some (0) = Leader.match_index_for_receiver server0 1);
+
+  match Logic.Append_entries.make server0 1 with
+  | None -> assert(false)
+  | Some request -> (
+    let now = now +. 0.001 in
+    
+    (*
+     * The request is sent twice to the server1. 
+     *)
+    let server1, _ , _       = Logic.Append_entries.handle_request server1 request now in  
+    let server1, response, _ = Logic.Append_entries.handle_request server1 request now in  
+
+    assert(1 = List.length server1.log);
+    assert_current_leader server1 0; 
+    begin match response.result with
+    | Failure -> assert(false)
+    | Success {receiver_last_log_index} -> assert(1 = receiver_last_log_index) 
+    end
+  ); 
+
+  (* 
+   * In the test below the leader sends 2 requests which arrives
+   * in wrong order and receiver sends 2 responses arrive in correct
+   * order. 
+   *
+   * a) leader adds log foo
+   * b) leader sends an append query (0) with log foo
+   * c) leader adds log bar 
+   * d) leader sends an append query (1) with log foo bar
+   * e) server receives query (1) 
+   * f) server sends  response (1)
+   * g) server receives query (0) 
+   * h) server sends  response (0) 
+   * i) -> last log index must still be 2  
+   *)
+
+  match Logic.Append_entries.make server0 1 with
+  | None -> assert(false)
+  | Some request0 -> (
+    let server0 = Leader.add_log bar server0 in  
+    match Logic.Append_entries.make server0 1 with
+    | None -> assert(false)
+    | Some request1 -> (
+      (* Handle the request in the oposite
+       * order.
+       *)
+      let server1, response0, _        = Logic.Append_entries.handle_request server1 request1 now in  
+      let server1, response1, _ = Logic.Append_entries.handle_request server1 request0 now in  
+
+      assert(2 = List.length server1.log);
+
+      let server0, _ = Logic.Append_entries.handle_response server0 response0 now in 
+      let server0, _ = Logic.Append_entries.handle_response server0 response1 now in 
+
+      assert(Some (3) = Leader.next_index_for_receiver server0 1);
+      assert(Some (2) = Leader.match_index_for_receiver server0 1);
+      assert(2 = server0.commit_index);
+    )  
+  );
+
+  ()

@@ -34,13 +34,13 @@ module Request_vote = struct
     if candidate_term < state.current_term 
     then 
       (* This request is coming from a candidate lagging behind ... 
-         no vote for him.
+       * no vote for him.
        *)
       (state, make_response state false, Follow_up_action.default state now)
     else 
       let state = 
         (* Enforce invariant that if this server is lagging behind 
-           it must convert to a follower and update to that term.
+         * it must convert to a follower and update to that term.
          *)
         if candidate_term > state.current_term
         then Follower.become ~term:candidate_term state 
@@ -50,7 +50,7 @@ module Request_vote = struct
       if candidate_last_log_index < last_log_index
       then 
         (* Enforce the safety constraint by denying vote if this server
-           last log is more recent than the candidate one.
+         * last log is more recent than the candidate one.
          *)
         (state, make_response state false, Follow_up_action.default state now)
       else
@@ -75,7 +75,7 @@ module Request_vote = struct
 
         | _ -> 
           (* Server has previously voted for another candidate or 
-             itself
+           * itself
            *)
           (state, make_response state false, Follow_up_action.default state now) 
   
@@ -87,7 +87,7 @@ module Request_vote = struct
     if voter_term > current_term 
     then 
       (* Enforce invariant that if this server is lagging behind 
-         it must convert to a follower and update to the latest term.
+       * it must convert to a follower and update to the latest term.
        *)
       let state = Follower.become ~term:voter_term state in 
       (state, Follow_up_action.new_election_wait state) 
@@ -112,16 +112,16 @@ module Request_vote = struct
       | Candidate {election_deadline; _}, false ->
         (state, Follow_up_action.existing_election_wait election_deadline now)
         (* The vote was denied, the election keeps on going until
-           its deadline. 
+         * its deadline. 
          *)
 
       | Follower _ , _ -> (state, Follow_up_action.new_election_wait state) 
       | Leader   _ , _ -> (state, Follow_up_action.default state now)
         (* If the server is either Follower or Leader, it means that 
-           it has changed role in between the time it sent the 
-           [RequestVote] request and this response. 
-           This response can therefore safely be ignored and the server 
-           keeps its current state.
+         * it has changed role in between the time it sent the 
+         * [RequestVote] request and this response. 
+         * This response can therefore safely be ignored and the server 
+         * keeps its current state.
          *)
 
 end (* Request_vote *)
@@ -131,8 +131,8 @@ end (* Request_vote *)
 module Append_entries = struct 
   
   (* Helper function to collect all the log entries
-     up until (and including) the log with given 
-     index. 
+   * up until (and including) the log with given 
+   * index. 
    *)
   let collect_log_since_index last_index log = 
     let rec aux log_entries = function
@@ -196,29 +196,61 @@ module Append_entries = struct
   
     else 
       (* This request is coming from a legetimate leader, 
-         let's ensure that this server is a follower.
+       * let's ensure that this server is a follower.
        *)
       let state  = Follower.become ~current_leader:leader_id ~term:leader_term state in  
       let new_election_wait_action = Follow_up_action.new_election_wait state in 
 
       (* Next step is to handle the log entries from the leader.
-         
-         The algorithm search for the [prev log entry] that the leader 
-         sent. 
+       * 
+       * The algorithm search for the [prev log entry] that the leader 
+       * sent. 
        *)
       let {prev_log_index; prev_log_term; log_entries; leader_commit} = request in 
   
       let module Helper = struct 
         
-        let insert_log_entries state old =  
-          let state = {state with log = log_entries @ old } in  
+        (* This functions merges the request log entries with the 
+         * current log of the server. The current log is first split by 
+         * the caller into: 
+         *
+         * - [pre_logs] all the logs prior to (and including) [prev_log_index].
+         *
+         * - [rev_post_logs] all the log entry in the server future of the
+         *   [prev_log_index]. This list is expected to be in reverse order. 
+         *
+         * This function will then merge the 2 list of logs by adding all the 
+         * common logs first, then if either one is empty or an entry differs
+         * then the entries from the leader will override the one in the server. 
+         *
+         * This merging is necessary because message can be delivered out of 
+         * order. (See [test.ml] for a code example). This means that this
+         * server might receive an outdated append query from its leader.
+         *) 
+        let merge_log_entries state rev_post_logs pre_logs  =  
+
+          let rev_log_entries = List.rev log_entries in
+
+          let rec aux log = function
+            | [], [] -> log 
+            | ({index=i1;term=t1;data} as e)::tl1, {index=i2;term=t2; _ }::tl2 -> 
+              if i1 = i2 && t1 = t2 
+              then aux (e::log) (tl1, tl2)
+              else aux (e::log) (tl1, []) 
+            | hd::tl, []
+            | [], hd::tl -> aux (hd::log) (tl, []) 
+          in 
+
+          let state = {state with 
+            log = aux pre_logs (rev_log_entries, rev_post_logs)
+          } in 
           let receiver_last_log_index = State.last_log_index state in 
           let state = 
             (* Update this server commit index based on value sent from 
-               the leader. 
-               Note that it is not guaranteed that the leader has sent
-               all the log until it commit index so the min value 
-               is taken.
+             * the leader. 
+             * Note that it is not guaranteed that the leader has sent
+             * all the log until it commit index so the min value 
+             * is taken.
              *)
             if leader_commit > state.commit_index
             then {state with
@@ -231,40 +263,38 @@ module Append_entries = struct
   
       end (* Helper *) in 
   
-      let rec aux = function 
+      let rec aux post_logs = function 
         | [] -> 
           if prev_log_index = 0
           then 
             (* [case 0] No previous log were ever inserted
              *)
-            Helper.insert_log_entries state []
+            Helper.merge_log_entries state post_logs []
           else 
             (* [case 1] The prev_log_index is not found in the state log. 
-               This server is lagging behind. 
+             * This server is lagging behind. 
              *)
             (state, make_response state Failure, new_election_wait_action) 
   
         | ({index; term; _ }::tl as log) when index = prev_log_index && 
                                                term = prev_log_term -> 
           (* [case 2] The prev_log_index matches the leader, all is good, 
-             let's append all the new logs. 
+           * let's append all the new logs. 
            *)
-           (* TODO implement the [leaderCommit] logic (item 5)
-            *)
-          Helper.insert_log_entries state log 
+          Helper.merge_log_entries state post_logs log 
   
         | {index; _ }::log when index = prev_log_index -> 
           (* [case 3] The prev_log_index is inconstent with the leader. 
-             This conflict is resolved by discarding it along with all 
-             following log entries. 
-             As far as the leader is concerned it's like [case 1] now. 
+           * This conflict is resolved by discarding it along with all 
+           * following log entries. 
+           * As far as the leader is concerned it's like [case 1] now. 
            *)
           let new_state = {state with log} in 
           (new_state, make_response state Failure, new_election_wait_action)
-        |  _::tl -> aux tl 
+        |  hd::tl -> aux (hd::post_logs) tl 
   
       in 
-      aux state.log 
+      aux [] state.log 
   
   let handle_response state ({receiver_term; _ } as response) now = 
     
@@ -273,7 +303,7 @@ module Append_entries = struct
     if receiver_term > state.current_term
     then 
       (* Enforce invariant that if the server is lagging behind 
-         it must convert to a follower and update to that term.
+       * it must convert to a follower and update to that term.
        *)
       let state = Follower.become ~term:receiver_term state in 
       (state, Follow_up_action.new_election_wait state) 
@@ -282,7 +312,7 @@ module Append_entries = struct
       match result with
       | Success {receiver_last_log_index} -> 
         (* Log entries were successfully inserted by the receiver... 
-           let's update our leader state about that receiver
+         * let's update our leader state about that receiver
          *)
 
         begin match state.role with
@@ -305,9 +335,9 @@ module Append_entries = struct
           
           let commit_index = 
             (* Check if the received log entry from has reached 
-               a majority of server. 
-               Note that we need to add `+1` simply to count this 
-               server (ie leader) which does not update its next/match
+             * a majority of server. 
+             * Note that we need to add `+1` simply to count this 
+             * server (ie leader) which does not update its next/match
              *)
             if Configuration.is_majority configuration (nb + 1)
             then receiver_last_log_index
@@ -324,8 +354,8 @@ module Append_entries = struct
 
       | Failure ->
         (* The receiver log is not matching this server current belief. 
-           If a leader this server should decrement the next 
-           log index and retry the append. 
+         * If a leader this server should decrement the next 
+         * log index and retry the append. 
          *)
         begin match state.role with
         | Leader leader_state ->
