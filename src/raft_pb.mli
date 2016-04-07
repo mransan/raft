@@ -26,7 +26,7 @@ type append_entries_request = {
   leader_id : int;
   prev_log_index : int;
   prev_log_term : int;
-  log_entries : log_entry list;
+  rev_log_entries : log_entry list;
   leader_commit : int;
 }
 
@@ -142,7 +142,7 @@ val default_append_entries_request :
   ?leader_id:int ->
   ?prev_log_index:int ->
   ?prev_log_term:int ->
-  ?log_entries:log_entry list ->
+  ?rev_log_entries:log_entry list ->
   ?leader_commit:int ->
   unit ->
   append_entries_request
