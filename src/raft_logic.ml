@@ -213,7 +213,6 @@ module Append_entries = struct
        * the caller into: 
        *
        * - [pre_logs] all the logs prior to (and including) [prev_log_index].
-       *
        * - [rev_post_logs] all the log entry in the server future of the
        *   [prev_log_index]. This list is expected to be in reverse order. 
        *
