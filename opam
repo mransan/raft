@@ -16,7 +16,7 @@ build: [
 install: [
   [make "lib.install" ]
 ]
-remove:  [make "uninstall"]
+remove:  [make "lib.uninstall"]
 depends: [
   "ocamlfind"  {build}
   "ocamlbuild" {build}
