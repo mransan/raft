@@ -1,5 +1,7 @@
 option (int32_type) = int_t;
 
+package raft;
+
 // - Ordering of Log Entries -
 //  
 // The default ordering of log entries is descending chronological
