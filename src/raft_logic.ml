@@ -362,3 +362,41 @@ module Append_entries = struct
         end 
 
 end (* Append_entries *)
+
+module Message = struct
+
+  type response_to_send = Raft_pb.message * int 
+
+  let handle_message state message now = 
+    match message with
+    | Request_vote_request ({candidate_id; _ } as r) -> 
+      let state, response, action = Request_vote.handle_request state r now in  
+      (state, Some (Request_vote_response response, candidate_id), action)
+    
+    | Append_entries_request ({leader_id; _ } as r) -> 
+      let state, response, action = Append_entries.handle_request state r now in  
+      (state, Some (Append_entries_response response, leader_id), action) 
+
+    | Request_vote_response r ->
+      let state, action = Request_vote.handle_response state r now in  
+      (state, None, action)
+    
+    | Append_entries_response r ->
+      let state, action = Append_entries.handle_response state r now in  
+      (state, None, action)
+
+  let append_entries_request_for_all ({id; configuration = {nb_of_server;_ }; _ } as state) = 
+    let rec aux acc = function 
+      | -1 -> acc 
+      | server_id  -> 
+        let next = server_id - 1 in 
+        if server_id = id 
+        then aux acc next 
+        else 
+          match Append_entries.make state server_id with
+          | Some request -> aux ((Append_entries_request request, server_id) ::acc) next 
+          | None         -> aux acc next  
+    in
+    aux [] (nb_of_server - 1)
+
+end (* Message *)  

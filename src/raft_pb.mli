@@ -44,6 +44,12 @@ and append_entries_response = {
   result : append_entries_response_result;
 }
 
+type message =
+  | Request_vote_request of request_vote_request
+  | Request_vote_response of request_vote_response
+  | Append_entries_request of append_entries_request
+  | Append_entries_response of append_entries_response
+
 type server_index = {
   server_id : int;
   server_log_index : int;
@@ -163,6 +169,9 @@ val default_append_entries_response :
   append_entries_response
 (** [default_append_entries_response ()] is the default value for type [append_entries_response] *)
 
+val default_message : unit -> message
+(** [default_message ()] is the default value for type [message] *)
+
 val default_server_index : 
   ?server_id:int ->
   ?server_log_index:int ->
@@ -261,6 +270,9 @@ val decode_append_entries_response_success_data : Pbrt.Decoder.t -> append_entri
 val decode_append_entries_response : Pbrt.Decoder.t -> append_entries_response
 (** [decode_append_entries_response decoder] decodes a [append_entries_response] value from [decoder] *)
 
+val decode_message : Pbrt.Decoder.t -> message
+(** [decode_message decoder] decodes a [message] value from [decoder] *)
+
 val decode_server_index : Pbrt.Decoder.t -> server_index
 (** [decode_server_index decoder] decodes a [server_index] value from [decoder] *)
 
@@ -316,6 +328,9 @@ val encode_append_entries_response_success_data : append_entries_response_succes
 
 val encode_append_entries_response : append_entries_response -> Pbrt.Encoder.t -> unit
 (** [encode_append_entries_response v encoder] encodes [v] with the given [encoder] *)
+
+val encode_message : message -> Pbrt.Encoder.t -> unit
+(** [encode_message v encoder] encodes [v] with the given [encoder] *)
 
 val encode_server_index : server_index -> Pbrt.Encoder.t -> unit
 (** [encode_server_index v encoder] encodes [v] with the given [encoder] *)
@@ -374,6 +389,9 @@ val pp_append_entries_response_result : Format.formatter -> append_entries_respo
 
 val pp_append_entries_response : Format.formatter -> append_entries_response -> unit 
 (** [pp_append_entries_response v] formats v] *)
+
+val pp_message : Format.formatter -> message -> unit 
+(** [pp_message v] formats v] *)
 
 val pp_server_index : Format.formatter -> server_index -> unit 
 (** [pp_server_index v] formats v] *)

@@ -16,6 +16,15 @@ option (int32_type) = int_t;
 // Messages 
 // --------
 
+message Message {
+    oneof t {
+        RequestVoteRequest request_vote_request = 1;
+        RequestVoteResponse request_vote_response = 2;
+        AppendEntriesRequest append_entries_request = 3;
+        AppendEntriesResponse append_entries_response = 4;
+    }
+}
+
 message RequestVoteRequest {
     required int32 candidate_term           = 1;
     required int32 candidate_id             = 2;

@@ -80,6 +80,12 @@ and append_entries_response_mutable = {
   mutable result : append_entries_response_result;
 }
 
+type message =
+  | Request_vote_request of request_vote_request
+  | Request_vote_response of request_vote_response
+  | Append_entries_request of append_entries_request
+  | Append_entries_response of append_entries_response
+
 type server_index = {
   server_id : int;
   server_log_index : int;
@@ -298,6 +304,8 @@ and default_append_entries_response_mutable () : append_entries_response_mutable
   receiver_term = 0;
   result = Failure;
 }
+
+let rec default_message () : message = Request_vote_request (default_request_vote_request ())
 
 let rec default_server_index 
   ?server_id:((server_id:int) = 0)
@@ -534,6 +542,23 @@ let rec decode_append_entries_response d =
   let v:append_entries_response = Obj.magic v in
   v
 
+let rec decode_message d = 
+  let rec loop () = 
+    let ret:message = match Pbrt.Decoder.key d with
+      | None -> failwith "None of the known key is found"
+      | Some (1, _) -> Request_vote_request (decode_request_vote_request (Pbrt.Decoder.nested d))
+      | Some (2, _) -> Request_vote_response (decode_request_vote_response (Pbrt.Decoder.nested d))
+      | Some (3, _) -> Append_entries_request (decode_append_entries_request (Pbrt.Decoder.nested d))
+      | Some (4, _) -> Append_entries_response (decode_append_entries_response (Pbrt.Decoder.nested d))
+      | Some (n, payload_kind) -> (
+        Pbrt.Decoder.skip d payload_kind; 
+        loop () 
+      )
+    in
+    ret
+  in
+  loop ()
+
 let rec decode_server_index d =
   let v = default_server_index_mutable () in
   let rec loop () = 
@@ -764,6 +789,25 @@ let rec encode_append_entries_response (v:append_entries_response) encoder =
   );
   ()
 
+let rec encode_message (v:message) encoder = 
+  match v with
+  | Request_vote_request x -> (
+    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_request_vote_request x) encoder;
+  )
+  | Request_vote_response x -> (
+    Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_request_vote_response x) encoder;
+  )
+  | Append_entries_request x -> (
+    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_append_entries_request x) encoder;
+  )
+  | Append_entries_response x -> (
+    Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_append_entries_response x) encoder;
+  )
+
 let rec encode_server_index (v:server_index) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.server_id encoder;
@@ -954,6 +998,13 @@ and pp_append_entries_response fmt (v:append_entries_response) =
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
+
+let rec pp_message fmt (v:message) =
+  match v with
+  | Request_vote_request x -> Format.fprintf fmt "@[Request_vote_request(%a)@]" pp_request_vote_request x
+  | Request_vote_response x -> Format.fprintf fmt "@[Request_vote_response(%a)@]" pp_request_vote_response x
+  | Append_entries_request x -> Format.fprintf fmt "@[Append_entries_request(%a)@]" pp_append_entries_request x
+  | Append_entries_response x -> Format.fprintf fmt "@[Append_entries_response(%a)@]" pp_append_entries_response x
 
 let rec pp_server_index fmt (v:server_index) = 
   let pp_i fmt () =

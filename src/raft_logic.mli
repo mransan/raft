@@ -79,3 +79,25 @@ module Append_entries : sig
     *)
 
 end (* Append_entries *)
+
+module Message : sig 
+
+  type response_to_send = Raft_pb.message * int 
+
+  val handle_message : 
+    Raft_pb.state -> 
+    Raft_pb.message -> 
+    time ->
+    Raft_pb.state * (response_to_send option) * Raft_pb.follow_up_action  
+    (** [handle_message state message now] process the message by dispatching it
+        to the appropriate module. It also handles keeping track to which server
+        the response must be sent. 
+     *) 
+  
+  val append_entries_request_for_all : Raft_pb.state -> (Raft_pb.message * int) list  
+  (** [append_entries_request_for_all state] returns the list of message (Append
+      Entries request) as well as the server id to send the message to.
+
+      Note that only if the server is a leader that messages will be returned. 
+   *) 
+end 
