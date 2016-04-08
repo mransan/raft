@@ -128,7 +128,7 @@ message FollowUpAction {
       NEW_LEADER_ELECTION = 1;
       HEARTBEAT           = 2; 
     }
-    required double      timeout = 1;
+    required double      timeout      = 1;
     required TimeOutType timeout_type = 2;
   }
   oneof t {
@@ -139,7 +139,11 @@ message FollowUpAction {
 }
 
 message Configuration {
-  required int32  nb_of_server     = 1;
-  required double election_timeout = 2;  
-  required double hearbeat_timeout = 3; 
+  required int32  nb_of_server           = 1;
+  required double election_timeout       = 2;  
+  required double election_timeout_range = 3;
+    // The election timeout follows a uniform distribution 
+    // centered on [election_timeout] and of range
+    // [election_timeout_range]. 
+  required double hearbeat_timeout       = 4; 
 }

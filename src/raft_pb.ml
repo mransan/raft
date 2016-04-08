@@ -141,12 +141,14 @@ and follower_state_mutable = {
 type configuration = {
   nb_of_server : int;
   election_timeout : float;
+  election_timeout_range : float;
   hearbeat_timeout : float;
 }
 
 and configuration_mutable = {
   mutable nb_of_server : int;
   mutable election_timeout : float;
+  mutable election_timeout_range : float;
   mutable hearbeat_timeout : float;
 }
 
@@ -378,16 +380,19 @@ and default_follower_state_mutable () : follower_state_mutable = {
 let rec default_configuration 
   ?nb_of_server:((nb_of_server:int) = 0)
   ?election_timeout:((election_timeout:float) = 0.)
+  ?election_timeout_range:((election_timeout_range:float) = 0.)
   ?hearbeat_timeout:((hearbeat_timeout:float) = 0.)
   () : configuration  = {
   nb_of_server;
   election_timeout;
+  election_timeout_range;
   hearbeat_timeout;
 }
 
 and default_configuration_mutable () : configuration_mutable = {
   nb_of_server = 0;
   election_timeout = 0.;
+  election_timeout_range = 0.;
   hearbeat_timeout = 0.;
 }
 
@@ -641,7 +646,8 @@ let rec decode_configuration d =
     )
     | Some (1, Pbrt.Varint) -> v.nb_of_server <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (2, Pbrt.Bits64) -> v.election_timeout <- (Pbrt.Decoder.float_as_bits64 d); loop ()
-    | Some (3, Pbrt.Bits64) -> v.hearbeat_timeout <- (Pbrt.Decoder.float_as_bits64 d); loop ()
+    | Some (3, Pbrt.Bits64) -> v.election_timeout_range <- (Pbrt.Decoder.float_as_bits64 d); loop ()
+    | Some (4, Pbrt.Bits64) -> v.hearbeat_timeout <- (Pbrt.Decoder.float_as_bits64 d); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -865,6 +871,8 @@ let rec encode_configuration (v:configuration) encoder =
   Pbrt.Encoder.key (2, Pbrt.Bits64) encoder; 
   Pbrt.Encoder.float_as_bits64 v.election_timeout encoder;
   Pbrt.Encoder.key (3, Pbrt.Bits64) encoder; 
+  Pbrt.Encoder.float_as_bits64 v.election_timeout_range encoder;
+  Pbrt.Encoder.key (4, Pbrt.Bits64) encoder; 
   Pbrt.Encoder.float_as_bits64 v.hearbeat_timeout encoder;
   ()
 
@@ -1057,6 +1065,7 @@ let rec pp_configuration fmt (v:configuration) =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "nb_of_server" Pbrt.Pp.pp_int fmt v.nb_of_server;
     Pbrt.Pp.pp_record_field "election_timeout" Pbrt.Pp.pp_float fmt v.election_timeout;
+    Pbrt.Pp.pp_record_field "election_timeout_range" Pbrt.Pp.pp_float fmt v.election_timeout_range;
     Pbrt.Pp.pp_record_field "hearbeat_timeout" Pbrt.Pp.pp_float fmt v.hearbeat_timeout;
     Format.pp_close_box fmt ()
   in
