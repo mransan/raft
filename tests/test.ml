@@ -918,3 +918,31 @@ let () =
   );
 
   ()
+
+
+let () = 
+
+  (*
+   * This test verifies the Message.append_entries_request_for_all 
+   * function for a leader and a follower. 
+   * 
+   * In the case of the leader we expect 2 messages to be sent to the 
+   * other 2 servers while none for the follower.
+   *
+   *)
+
+  let server0 = 
+    Leader.become (initial_state ~current_term:1 0) now 
+    |> Leader.add_log foo
+  in 
+
+  let messages = Logic.Message.append_entries_request_for_all server0 in 
+  assert(2 = List.length messages); 
+  assert(List.exists (fun (_, id) -> id = 1) messages);
+  assert(List.exists (fun (_, id) -> id = 2) messages);
+  
+  let server1 = initial_state ~current_term:1 1 in
+  let messages = Logic.Message.append_entries_request_for_all server1 in 
+  assert(0 = List.length messages); 
+
+  ()
