@@ -9,9 +9,10 @@ module Follow_up_action = Raft_helper.Follow_up_action
 module Logic     = Raft_logic  
 
 let default_configuration = {
-  nb_of_server = 3; 
-  election_timeout = 0.1;
-  hearbeat_timeout = 0.02;
+  nb_of_server           = 3; 
+  election_timeout       = 0.1;
+  election_timeout_range = 0.01; 
+  hearbeat_timeout       = 0.02;
 }
 
 let initial_state  
@@ -784,9 +785,10 @@ let () =
   (* Create a 3 server configuration. 
    *) 
   let configuration = Raft_pb.( {
-    nb_of_server     = 3;
-    election_timeout = 0.1;
-    hearbeat_timeout = 0.02;
+    nb_of_server           = 3;
+    election_timeout       = 0.1;
+    election_timeout_range = 0.01;
+    hearbeat_timeout       = 0.02;
   }) in 
 
   (* Create a leader state by simulating a (rigged) election

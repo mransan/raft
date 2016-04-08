@@ -79,6 +79,7 @@ type follower_state = {
 type configuration = {
   nb_of_server : int;
   election_timeout : float;
+  election_timeout_range : float;
   hearbeat_timeout : float;
 }
 
@@ -211,6 +212,7 @@ val default_follower_state :
 val default_configuration : 
   ?nb_of_server:int ->
   ?election_timeout:float ->
+  ?election_timeout_range:float ->
   ?hearbeat_timeout:float ->
   unit ->
   configuration
