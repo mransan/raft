@@ -100,4 +100,9 @@ module Message : sig
 
       Note that only if the server is a leader that messages will be returned. 
    *) 
+
+  val request_vote_for_all : Raft_pb.state -> (Raft_pb.message * int) list 
+  (** [request_vote_for_all state] returns the list of message (Request vote 
+      request) as well as the server id to send the message to.
+   *) 
 end 

@@ -398,5 +398,20 @@ module Message = struct
           | None         -> aux acc next  
     in
     aux [] (nb_of_server - 1)
+  
+  let request_vote_for_all ({id; configuration = {nb_of_server;_ }; _ } as state) = 
+    let rec aux acc = function 
+      | -1 -> acc 
+      | server_id  -> 
+        let next = server_id - 1 in 
+        if server_id = id 
+        then aux acc next 
+        else 
+          let request = Request_vote.make state  in 
+          aux ((Request_vote_request request, server_id) :: acc) next 
+    in
+    aux [] (nb_of_server - 1)
+
+
 
 end (* Message *)  
