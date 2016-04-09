@@ -13,6 +13,7 @@ let default_configuration = {
   election_timeout       = 0.1;
   election_timeout_range = 0.01; 
   hearbeat_timeout       = 0.02;
+  max_nb_message         = 10;
 }
 
 let initial_state  
@@ -38,6 +39,11 @@ let assert_current_leader state expected_leader =
 let assert_no_current_leader state = 
   match state.role with
   | Follower {current_leader = None; _ } -> ()
+  | _ -> assert(false) 
+
+let assert_nb_votes state expected_vote_count= 
+  match state.role with
+  | Candidate {vote_count; _ } -> assert(vote_count = expected_vote_count)
   | _ -> assert(false) 
   
 let ipc_time = 0.001 (* 1 ms *) 
@@ -98,7 +104,7 @@ let () =
    * Convert from Candidate to Leader after getting majority
    *)
   
-  let (candidate0, follow_up_action), server1, now 
+  let (candidate0, msgs_to_send, follow_up_action), server1, now 
     = vote_communication ~from:candidate0 ~to_:server1 ~now () in 
 
   assert(now = 0.002);
@@ -137,8 +143,14 @@ let () =
      * the term. 
      *)
   assert (0 = candidate0.id);
-
-  assert (Act_as_new_leader = follow_up_action);
+  let () =
+    let action = Wait_for_rpc {
+      timeout = default_configuration.hearbeat_timeout; 
+      timeout_type  = Heartbeat; 
+    } in 
+    assert(action = follow_up_action)
+  in
+  assert(2 = List.length msgs_to_send);
 
   (* 
    * Let's assume here that the new leader i s
@@ -192,7 +204,7 @@ let () =
    * server0 must grant its vote. 
    *)
 
-  let (candidate1, follow_up_action1), server0, now  
+  let (candidate1, msgs_to_send, follow_up_action1), server0, now  
     = vote_communication ~from:candidate1 ~to_:server0 ~now () in 
 
   assert(now = 0.002); 
@@ -214,7 +226,14 @@ let () =
    *)
   
   assert(State.is_leader candidate1);
-  assert(Act_as_new_leader = follow_up_action1);
+  let () = 
+    let action = Wait_for_rpc {
+      timeout = default_configuration.hearbeat_timeout; 
+      timeout_type = Heartbeat; 
+    } in 
+    assert(action = follow_up_action1)
+  in
+  assert(2 = List.length msgs_to_send);
 
   (* 
    * Let's perform the second vote request which is 
@@ -224,7 +243,7 @@ let () =
    * not grant it again to candidate2. 
    *)
   
-  let (candidate2, follow_up_action2), server0, now 
+  let (candidate2, msgs_to_send, follow_up_action2), server0, now 
     = vote_communication ~from:candidate2 ~to_:server0 ~now () in 
 
   assert(now = 0.004);
@@ -246,6 +265,10 @@ let () =
     } in 
     assert(action = follow_up_action2)
   in
+  assert([] = msgs_to_send); 
+    (* candidate2 is not a leader and therefore no message
+       should be sent.
+     *)
   ()
 
 let foo = Bytes.of_string "Foo"
@@ -282,8 +305,11 @@ let () =
    *    previously inserted.
    *)
 
+  let configuration = {default_configuration with 
+    max_nb_message = 1
+  } in 
   let server0   = 
-    Leader.become (initial_state ~current_term:1 0) now 
+    Leader.become (initial_state ~configuration ~current_term:1 0) now 
     |> Leader.add_log foo
     |> Leader.add_log bar
   in 
@@ -319,26 +345,35 @@ let () =
   assert(0 = List.length server1.log);
   assert_no_current_leader server1;
 
-  
-  let (server0, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in 
-
-
+  
   (* Check leader state after request/response communication
    *)
-  let check_server0 server0 = 
+  let check_server0 ~commit_index ~next_index server0 = 
     assert (0 = server0.id);
     assert (1 = server0.current_term);
     assert (log_version_0 = server0.log); 
     assert (State.is_leader server0); 
-    assert ((Some 3) = Leader.next_index_for_receiver server0 1); 
+    assert ((Some next_index) = Leader.next_index_for_receiver server0 1); 
     assert ((Some 1) = Leader.next_index_for_receiver server0 2); 
-    assert (2 = server0.commit_index);
+    assert (commit_index = server0.commit_index);
   in
 
-  check_server0 server0;
+  check_server0 ~commit_index:1 ~next_index:2 server0;
+    (* Because the max number of message 1, then only the log 
+     * index1 was sent in the request, hence next index 2 and 
+     * the only commited index is 1. (It is commited because
+     * a single server replication is a majority in our 3 server 
+     * configuration);
+     *)
   
   assert (now = 0.002);
+  
+  assert(1 = List.length msgs_to_send); 
+  (* There is a msg to send since the server0 log contains log entries
+   * not replicated on the server1. (Due to max nb of messages). 
+   *) 
 
   (* 
    * The leader has not sent any requests since time 0 when 
@@ -355,11 +390,11 @@ let () =
   
   (* Check the follower state after request/request communication
    *)
-  let check_server1 ~commit_index server1 = 
+  let check_server1 ~log_length ~commit_index server1 = 
     assert(1 = server1.id);
     assert(1 = server1.current_term);
     assert_current_leader server1 0;
-    assert(2 = List.length server1.log);
+    assert(log_length  = List.length server1.log);
       (* The 2 leader logs were inserted
        *)
     begin match server1.role with
@@ -369,7 +404,7 @@ let () =
     assert(commit_index = server1.commit_index);
   in
 
-  check_server1 ~commit_index:0 server1;
+  check_server1 ~log_length:1 ~commit_index:0 server1;
     (* None of the new entry are yet commited since 
        for that to happen the leader would have needed 
        to receive a mojority of successful append logs
@@ -381,20 +416,21 @@ let () =
        commit_index updated to 2.
      *)
   
-  let (server0, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in 
   assert(now = 0.004); 
-  check_server0 server0;
-    (* The leader should have been unchanged since no new log entries
-       were added and they had all been send to the receiver 1 
-       in the first request. 
+  assert([] = msgs_to_send);
+  check_server0 ~commit_index:2 ~next_index:3 server0;
+    (* The second Append entries request contained the second log
+     * entry from server 0. After the sucessful replication, the commit
+     * index is now 2 and the next index 3. 
+     * 
+     * All the logs were sent and therefore [msgs_to_send] is empty.
      *)
-  check_server1 ~commit_index:2 server1;
-    (* The server1 has the exact same state as before the 
-       second request except for the commit index. (see above). 
-       
-       Since the request contained no new log entries, all
-       other state variables have not changed.
+  check_server1 ~commit_index:1 ~log_length:2 server1;
+    (* The server1 has replicated the second log and is now
+     * aware that the first log was commited. It will only 
+     * be aware of the second log commited in the next request.
      *)
 
   (* server0 has still not send any request to server 2 
@@ -413,7 +449,7 @@ let () =
     |> Leader.add_log bim
   in
 
-  let (server0, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in 
 
   let check_server0 server0 = 
@@ -427,6 +463,12 @@ let () =
     assert (3 = server0.commit_index);
   in
   check_server0 server0;
+
+  assert([] = msgs_to_send); 
+    (* Leader new log entry was successfully replicated as part of 
+       the Append Entry communication above, therefore no subsequent
+       messages need to be sent.
+     *)
 
   let check_server1 ~commit_index server1 = 
     assert(1 = server1.id);
@@ -445,7 +487,7 @@ let () =
 
   check_server1 ~commit_index:2 server1;
   
-  let (server0, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in 
     (* Since no new log were inserted, this should have send 
        an empty append entry request but with a leader commit index = 3 which
@@ -453,6 +495,11 @@ let () =
      *)
   check_server0 server0;
   check_server1 ~commit_index:3 server1;
+
+  assert([] = msgs_to_send); 
+    (* Since the leader (server0) logs are fully replicated on 
+       server1, no msg needs to sent. 
+     *)
 
   (* 
   Format.printf "server0: %a\n" pp_state server0; 
@@ -486,18 +533,20 @@ let () =
     let current_term = 0 in 
     initial_state ~current_term 1 
   in 
+
+  assert(0 = List.length server1.log);
   
   assert((Some 4) = Leader.next_index_for_receiver server0 1);
     (* Initially the leader belief of the next index for
      * a follower is set to its last log index  + 1. 
      *
      * This belief is indeed incorrect in our test case... 
-     * (see above the lof of the server1 is empty), but 
+     * (see above the log of the server1 is empty), but 
      * the next `append entry` communication will inform 
      * the leader about it.
      *)
 
-  let (server0, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in
 
   assert(now = 0.002); 
@@ -539,32 +588,72 @@ let () =
      * the leader is supposed to decrement its belief of 
      * what the next log index is for that follower. 
      *)
-  assert(Retry_append {server_id = 1} = follow_up_action); 
+
+  begin match msgs_to_send with
+  | (Append_entries_request r, receiver_id)::[] -> (
     (* Another concequence of the server1 denying the 
      * append entry request, is that the leader should 
      * send another append query. 
      *)
-  
-  let (server0, follow_up_action), server1, _, now = 
+    assert(1 = receiver_id);
+    assert(0 = r.leader_id);
+    assert(2 = r.leader_term);
+    assert(2 = r.prev_log_index);
+    assert(1 = r.prev_log_term);
+    assert(3 = r.leader_commit);
+  )
+  | _ -> assert(false)
+  end;
+
+  let () = 
+    let action = Wait_for_rpc {
+      timeout = default_configuration.hearbeat_timeout -. now;
+      timeout_type = Heartbeat;
+    } in 
+    assert(action = follow_up_action)
+  in 
+
+  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in
   assert(now = 0.004); 
   assert((Some 2) = Leader.next_index_for_receiver server0 1);
-  assert(Retry_append {server_id = 1} = follow_up_action); 
+  
+  begin match msgs_to_send with
+  | (Append_entries_request r, receiver_id)::[] -> (
     (* The server1 is lagging by 3 log and will therefore 3 
      * append entry iteration for a successful handling.
      *) 
-  
-  let (server0, follow_up_action), server1, _, now = 
+    assert(1 = receiver_id);
+    assert(0 = r.leader_id);
+    assert(2 = r.leader_term);
+    assert(1 = r.prev_log_index);
+    assert(1 = r.prev_log_term);
+    assert(3 = r.leader_commit);
+  )
+  | _ -> assert(false)
+  end;
+
+  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in
   assert(now = 0.006); 
   assert((Some 1) = Leader.next_index_for_receiver server0 1);
-  assert(Retry_append {server_id = 1} = follow_up_action); 
+  begin match msgs_to_send with
+  | (Append_entries_request r, receiver_id)::[] -> (
      (* Now the leader has the correct believe of what should 
       * be the next log index for the server1, next roundtrip
       * should be successful.
       *)
+    assert(1 = receiver_id);
+    assert(0 = r.leader_id);
+    assert(2 = r.leader_term);
+    assert(0 = r.prev_log_index);
+    assert(0 = r.prev_log_term);
+    assert(3 = r.leader_commit);
+  )
+  | _ -> assert(false)
+  end;
 
-  let (server0, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in
   assert(now = 0.008); 
   assert(3 = List.length server1.log); 
@@ -576,6 +665,9 @@ let () =
        having inserted up to index 3 will also have its 
        commit index set to 3.
      *)
+
+  assert([] = msgs_to_send);
+
   assert((Some 4) = Leader.next_index_for_receiver server0 1);
   assert((Some 3) = Leader.match_index_for_receiver server0 1);
     (* As a concequence of the server1 successfully inserting
@@ -688,13 +780,21 @@ let () =
    * and server1 (follower of the server0 leader)
    *)
 
-  let (server2, follow_up_action), server1, now =
+  let (server2, msgs_to_send, follow_up_action), server1, now =
     vote_communication ~from:server2 ~to_:server1 ~now () in
   assert(now = 0.002);
 
   assert(State.is_candidate server2); 
   (* Despite not being granted the vote, server2 is 
      still a candidate
+   *)
+  assert_nb_votes server2 1; 
+  (* server2 only vote at is the one from itself.
+   *)
+
+  assert([] = msgs_to_send);
+  (* No follow up msg to send. server2 is still a 
+     candidate waiting for new responses or an election timeout
    *)
 
   (* The vote was not granted due to the fact 
@@ -719,13 +819,22 @@ let () =
    * and server0
    *)
 
-  let (server2, follow_up_action), server0, now =
+  let (server2, msgs_to_send, follow_up_action), server0, now =
     vote_communication ~from:server2 ~to_:server0 ~now () in
   assert(now = 0.004);
   
   assert(State.is_candidate server2); 
     (* The vote was not granted due to the fact 
        that server0 log was more up to date. 
+     *)
+  assert_nb_votes server2 1; 
+    (* Because the vote was not granted, sever2 vote count 
+     * is still limited to the vote it granted itself.
+     *)
+  assert([] = msgs_to_send);
+    (* No message to send, the next action to for server2
+     * is to wait until the next election timeout has 
+     * elapsed and start another one.
      *)
 
   assert(State.is_follower server0); 
@@ -760,16 +869,23 @@ let () =
   let server1 = Candidate.become ~now server1 in
   assert(12 = server1.current_term); 
 
-  let (server1, follow_up_action), server0, now = 
+  let (server1, msgs_to_send, follow_up_action), server0, now = 
     vote_communication ~from:server1 ~to_:server0 ~now () in 
 
   assert(State.is_leader server1); 
-  assert(Act_as_new_leader = follow_up_action);
     (* server0 current log is at the same stage as 
      * server1... hence it grants its vote to server1. In 
      * a configuration of 3 server this is sufficient for a
      * majority and server1 become leader. 
      *) 
+  let () = 
+    let action = Wait_for_rpc {
+      timeout = default_configuration.hearbeat_timeout;
+      timeout_type = Heartbeat; 
+    } in 
+    assert(action = follow_up_action);
+  in 
+  assert(2 = List.length msgs_to_send);
 
   begin match server0.role with
     | Follower {voted_for = Some 1} -> () 
@@ -789,6 +905,7 @@ let () =
     election_timeout       = 0.1;
     election_timeout_range = 0.01;
     hearbeat_timeout       = 0.02;
+    max_nb_message         = 10;
   }) in 
 
   (* Create a leader state by simulating a (rigged) election
@@ -820,7 +937,7 @@ let () =
     (* 'Update' server 0 (ie leader) by applying the response. This returns
        the new state as well as a follow up action to take. 
      *)
-    let _ , _ = Raft_logic.Append_entries.handle_response leader_0 response now in 
+    let _ , _, _ = Raft_logic.Append_entries.handle_response leader_0 response now in 
 
     (* Check that the follower has successfully replicated the leader single
        log
@@ -910,8 +1027,8 @@ let () =
 
       assert(2 = List.length server1.log);
 
-      let server0, _ = Logic.Append_entries.handle_response server0 response0 now in 
-      let server0, _ = Logic.Append_entries.handle_response server0 response1 now in 
+      let server0, _ , _ = Logic.Append_entries.handle_response server0 response0 now in 
+      let server0, _ , _ = Logic.Append_entries.handle_response server0 response1 now in 
 
       assert(Some (3) = Leader.next_index_for_receiver server0 1);
       assert(Some (2) = Leader.match_index_for_receiver server0 1);
@@ -933,6 +1050,7 @@ let () =
    *
    *)
 
+  (* 
   let server0 = 
     Leader.become (initial_state ~current_term:1 0) now 
     |> Leader.add_log foo
@@ -946,5 +1064,6 @@ let () =
   let server1 = initial_state ~current_term:1 1 in
   let messages = Logic.Message.append_entries_request_for_all server1 in 
   assert(0 = List.length messages); 
+  *)
 
   ()

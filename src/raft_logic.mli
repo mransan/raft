@@ -17,6 +17,8 @@
  *)
 
 type time = float 
+  
+type message_to_send = Raft_pb.message * int 
 
 (** {2 Request_vote} *)
 
@@ -39,7 +41,7 @@ module Request_vote : sig
     Raft_pb.state -> 
     Raft_pb.request_vote_response -> 
     time -> 
-    (Raft_pb.state * Raft_pb.follow_up_action)
+    (Raft_pb.state * (message_to_send list) * Raft_pb.follow_up_action)
   (** [handle_response state response] returns the updated
       state along with the expected follow up action to 
       be performed.
@@ -72,7 +74,7 @@ module Append_entries : sig
     Raft_pb.state -> 
     Raft_pb.append_entries_response -> 
     time ->
-    (Raft_pb.state * Raft_pb.follow_up_action)
+    (Raft_pb.state * (message_to_send list) * Raft_pb.follow_up_action)
   (** [handle_response state response] returns the updated
       state along with the expected follow up action to 
       be performed.
@@ -82,27 +84,31 @@ end (* Append_entries *)
 
 module Message : sig 
 
-  type response_to_send = Raft_pb.message * int 
 
   val handle_message : 
     Raft_pb.state -> 
     Raft_pb.message -> 
     time ->
-    Raft_pb.state * (response_to_send option) * Raft_pb.follow_up_action  
+    Raft_pb.state * (message_to_send list) * Raft_pb.follow_up_action  
     (** [handle_message state message now] process the message by dispatching it
         to the appropriate module. It also handles keeping track to which server
         the response must be sent. 
      *) 
+
+  val handle_new_election_timeout :
+    Raft_pb.state -> 
+    time ->
+    Raft_pb.state * (message_to_send list) * Raft_pb.follow_up_action 
+  (** [handle_new_election_timeout state now] implements the state change to 
+      a Candidate along with the list of request vote message to send. 
+    *)
+
+  val handle_heartbeat_timeout : 
+    Raft_pb.state -> 
+    time -> 
+    Raft_pb.state * (message_to_send list) * Raft_pb.follow_up_action 
+  (** [handle_heartbeat_timeout state now] computes the necessary messages
+      to send in the case of a heartbeat. 
+   *)
   
-  val append_entries_request_for_all : Raft_pb.state -> (Raft_pb.message * int) list  
-  (** [append_entries_request_for_all state] returns the list of message (Append
-      Entries request) as well as the server id to send the message to.
-
-      Note that only if the server is a leader that messages will be returned. 
-   *) 
-
-  val request_vote_for_all : Raft_pb.state -> (Raft_pb.message * int) list 
-  (** [request_vote_for_all state] returns the list of message (Request vote 
-      request) as well as the server id to send the message to.
-   *) 
 end 
