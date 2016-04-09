@@ -9,6 +9,58 @@ module Configuration    = Raft_helper.Configuration
 module Follow_up_action = Raft_helper.Follow_up_action 
 
 type time = float 
+  
+type message_to_send = Raft_pb.message * int 
+  
+(* Helper function to collect all the log entries
+ * up until (and including) the log with given 
+ * index. 
+ *)
+let collect_log_since_index last_index log max_nb_message = 
+
+  let rec keep_first_n l = function
+    | 0 -> []
+    | n -> let hd::tl = l in hd::(keep_first_n tl (n - 1))
+  in 
+
+  let rec aux count rev_log_entries = function
+     | [] -> 
+       if last_index = 0
+       then 
+         if count > max_nb_message
+         then
+           (0, keep_first_n rev_log_entries max_nb_message) 
+         else
+           (0, rev_log_entries)
+       else 
+         failwith "[Raft_logic] Internal error invalid log index"
+
+     | ({index;term;data = _ } as entry)::tl -> 
+       if index = last_index 
+       then 
+         if count > max_nb_message
+         then
+           (term, keep_first_n rev_log_entries max_nb_message) 
+         else 
+           (term, rev_log_entries)
+       else 
+         aux (count + 1) (entry::rev_log_entries) tl  
+  in 
+  aux 0 [] log 
+
+let make_append_entries prev_log_index state =  
+  let max_nb_message = state.configuration.max_nb_message in
+  let (prev_log_term, rev_log_entries) = 
+    collect_log_since_index prev_log_index state.log max_nb_message in  
+
+  {
+    leader_term = state.current_term;
+    leader_id = state.id;
+    prev_log_index; 
+    prev_log_term;
+    rev_log_entries;
+    leader_commit = state.commit_index;
+  }
 
 (** {2 Request Vote} *) 
 
@@ -90,7 +142,7 @@ module Request_vote = struct
        * it must convert to a follower and update to the latest term.
        *)
       let state = Follower.become ~term:voter_term state in 
-      (state, Follow_up_action.new_election_wait state) 
+      (state, [], Follow_up_action.new_election_wait state) 
     else 
   
       match role, vote_granted  with
@@ -100,23 +152,46 @@ module Request_vote = struct
         then 
           (* Candidate is the new leader
            *)
-          (Leader.become state now, Act_as_new_leader)  
+          let state = Leader.become state now in 
+          
+          (* As a new leader, the server must send Append entries request
+             to the other servers to both establish its leadership and
+             start synching its log with the others. 
+           *)
+          let msgs = begin match state.role with
+            | Leader {next_index; _ } -> (
+              List.map (fun {server_id; server_log_index} ->
+                
+                let prev_log_index = server_log_index - 1 in 
+                let req = make_append_entries prev_log_index state in 
+                let msg = Append_entries_request req in 
+                (msg, server_id)
+              ) next_index 
+            )
+            | _ -> failwith "Programmatic error" 
+          end 
+          in
+
+          let hearbeat_timeout = configuration.hearbeat_timeout in 
+          let action = Follow_up_action.make_heartbeat_wait hearbeat_timeout in 
+
+          (state, msgs, action)  
         else 
           (* Candidate has a new vote but not yet reached the majority
            *)
           let new_state = {state with 
             role = Candidate (Candidate.increment_vote_count candidate_state);
           } in 
-          (new_state, Follow_up_action.existing_election_wait election_deadline now) 
+          (new_state, [], Follow_up_action.existing_election_wait election_deadline now) 
 
       | Candidate {election_deadline; _}, false ->
-        (state, Follow_up_action.existing_election_wait election_deadline now)
+        (state, [], Follow_up_action.existing_election_wait election_deadline now)
         (* The vote was denied, the election keeps on going until
          * its deadline. 
          *)
 
-      | Follower _ , _ -> (state, Follow_up_action.new_election_wait state) 
-      | Leader   _ , _ -> (state, Follow_up_action.default state now)
+      | Follower _ , _ -> (state, [], Follow_up_action.new_election_wait state) 
+      | Leader   _ , _ -> (state, [], Follow_up_action.default state now)
         (* If the server is either Follower or Leader, it means that 
          * it has changed role in between the time it sent the 
          * [RequestVote] request and this response. 
@@ -130,52 +205,24 @@ end (* Request_vote *)
 
 module Append_entries = struct 
   
-  (* Helper function to collect all the log entries
-   * up until (and including) the log with given 
-   * index. 
-   *)
-  let collect_log_since_index last_index log = 
-    let rec aux rev_log_entries = function
-       | [] -> 
-         if last_index = 0
-         then (0, rev_log_entries) 
-         else failwith "[Raft_logic] Internal error invalid log index"
 
-       | ({index;term;data = _ } as entry)::tl -> 
-         if index = last_index 
-         then (term, rev_log_entries)
-         else aux (entry::rev_log_entries) tl  
+  let make_of_leader_state state {next_index; _ } receiver_id = 
+
+    let is_receiver ({server_id; _ }:server_index) = 
+      server_id = receiver_id
     in 
-    aux [] log 
+
+    match List.find is_receiver next_index with
+    | {server_log_index; _ } -> (
+      let prev_log_index = server_log_index - 1 in 
+      make_append_entries prev_log_index state 
+    ) 
+    | exception Not_found -> 
+      failwith "[Raft_logic] Invalid receiver id"
 
   let make state receiver_id = 
-
     match state.role with
-    | Leader {next_index; match_index = _ } -> ( 
-      
-      let is_receiver ({server_id; _ }:server_index) = 
-        server_id = receiver_id
-      in 
-      match List.find is_receiver next_index with
-      | {server_log_index; _ } -> (
-
-        let prev_log_index = server_log_index - 1 in 
-
-        let (prev_log_term, rev_log_entries) = 
-          collect_log_since_index prev_log_index state.log in  
-
-        Some {
-          leader_term = state.current_term;
-          leader_id = state.id;
-          prev_log_index; 
-          prev_log_term;
-          rev_log_entries;
-          leader_commit = state.commit_index;
-        }
-      ) 
-      | exception Not_found -> 
-        failwith "[Raft_logic] Invalid receiver id"
-    )
+    | Leader leader_state -> Some (make_of_leader_state state leader_state receiver_id) 
     | _ -> None 
 
   let handle_request state request now = 
@@ -300,7 +347,7 @@ module Append_entries = struct
        * it must convert to a follower and update to that term.
        *)
       let state = Follower.become ~term:receiver_term state in 
-      (state, Follow_up_action.new_election_wait state) 
+      (state, [], Follow_up_action.new_election_wait state) 
   
     else 
       match result with
@@ -320,13 +367,7 @@ module Append_entries = struct
             leader_state 
           in
 
-          let leader_state, min_heartbeat_timeout = Leader.update_receiver_deadline 
-            ~server_id:receiver_id
-            ~now 
-            ~configuration
-            leader_state
-          in 
-          
+
           let commit_index = 
             (* Check if the received log entry from has reached 
              * a majority of server. 
@@ -339,10 +380,17 @@ module Append_entries = struct
           in  
           
           let state = {state with commit_index; role = Leader leader_state} in
-          let action = Follow_up_action.make_heartbeat_wait min_heartbeat_timeout in 
-          (state, action)
+          let req = make_append_entries receiver_last_log_index state in 
 
-        | _ -> (state, Follow_up_action.default state now)
+          let msg = match req.rev_log_entries with
+            | [] -> []
+            | _  -> [(Append_entries_request req, receiver_id)]
+          in 
+
+          let action = Follow_up_action.default state now in 
+          (state, msg, action)
+
+        | _ -> (state, [], Follow_up_action.default state now)
 
         end (* match state.role *)
 
@@ -354,64 +402,84 @@ module Append_entries = struct
         begin match state.role with
         | Leader leader_state ->
           let leader_state = Leader.decrement_next_index ~server_id:receiver_id leader_state in 
-          let state = {state with role = Leader leader_state} in 
-          let action = Retry_append {server_id = receiver_id} in  
-          (state, action)
+          let state  = {state with role = Leader leader_state} in 
+          let msg    = Append_entries_request (
+            make_of_leader_state state leader_state receiver_id
+          ) in 
+          let action = Follow_up_action.default state now in 
+          (state, [(msg, receiver_id)], action)
         | _ ->
-          (state, Follow_up_action.default state now)
+          (state, [], Follow_up_action.default state now)
         end 
 
 end (* Append_entries *)
 
 module Message = struct
 
-  type response_to_send = Raft_pb.message * int 
 
   let handle_message state message now = 
     match message with
     | Request_vote_request ({candidate_id; _ } as r) -> 
       let state, response, action = Request_vote.handle_request state r now in  
-      (state, Some (Request_vote_response response, candidate_id), action)
+      (state, [(Request_vote_response response, candidate_id)], action)
     
     | Append_entries_request ({leader_id; _ } as r) -> 
       let state, response, action = Append_entries.handle_request state r now in  
-      (state, Some (Append_entries_response response, leader_id), action) 
+      (state, [(Append_entries_response response, leader_id)], action) 
 
     | Request_vote_response r ->
-      let state, action = Request_vote.handle_response state r now in  
-      (state, None, action)
+      Request_vote.handle_response state r now 
     
     | Append_entries_response r ->
-      let state, action = Append_entries.handle_response state r now in  
-      (state, None, action)
+      Append_entries.handle_response state r now 
+
+  (* Iterates over all the other server ids. (ie the ones different 
+   * from the state id).
+   *)
+  let fold_over_servers f e0 {id; configuration = {nb_of_server;_ }; _ } =  
+    let rec aux acc = function 
+      | -1 -> acc 
+      | server_id  -> 
+        let next = server_id - 1 in 
+        if server_id = id 
+        then aux acc next 
+        else aux (f acc server_id) next 
+    in
+    aux e0 (nb_of_server - 1)
 
   let append_entries_request_for_all ({id; configuration = {nb_of_server;_ }; _ } as state) = 
-    let rec aux acc = function 
-      | -1 -> acc 
-      | server_id  -> 
-        let next = server_id - 1 in 
-        if server_id = id 
-        then aux acc next 
-        else 
-          match Append_entries.make state server_id with
-          | Some request -> aux ((Append_entries_request request, server_id) ::acc) next 
-          | None         -> aux acc next  
-    in
-    aux [] (nb_of_server - 1)
-  
+    fold_over_servers (fun acc server_id -> 
+      match Append_entries.make state server_id with
+      | Some request -> ((Append_entries_request request, server_id) ::acc) 
+      | None         -> acc
+    ) [] state 
+
   let request_vote_for_all ({id; configuration = {nb_of_server;_ }; _ } as state) = 
-    let rec aux acc = function 
-      | -1 -> acc 
-      | server_id  -> 
-        let next = server_id - 1 in 
-        if server_id = id 
-        then aux acc next 
-        else 
-          let request = Request_vote.make state  in 
-          aux ((Request_vote_request request, server_id) :: acc) next 
-    in
-    aux [] (nb_of_server - 1)
-
-
-
+    fold_over_servers (fun acc server_id ->
+      let request = Request_vote.make state  in 
+      (Request_vote_request request, server_id) :: acc
+    ) [] state 
+  
+  let handle_new_election_timeout state now = 
+    let state = Raft_helper.Candidate.become ~now state in 
+    let msgs  = request_vote_for_all state in 
+    let action = Follow_up_action.new_election_wait state in 
+    (state, msgs, action)
+  
+  let handle_heartbeat_timeout ({role; configuration; _ } as state) now = 
+    match state.role with
+    | Leader leader_state -> 
+      let msgs = append_entries_request_for_all state in 
+      let leader_state = List.fold_left (fun leader_state (_, server_id) -> 
+        fst @@ Raft_helper.Leader.update_receiver_deadline 
+            ~server_id ~now ~configuration leader_state
+      ) leader_state msgs
+      in 
+      let hearbeat_timeout = configuration.hearbeat_timeout in 
+      let action = Follow_up_action.make_heartbeat_wait hearbeat_timeout in 
+      let state = {state with role = Leader leader_state} in 
+      (state, msgs, action) 
+    | _ -> 
+      (state, [], Follow_up_action.default state now)
+        
 end (* Message *)  

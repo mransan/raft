@@ -122,9 +122,6 @@ message ServerIndex {
 
 message FollowUpAction {
   message NoData { }
-  message RetryAppendData {
-    required int32 server_id = 1; 
-  }
   message WaitForNextRpc {
     enum TimeOutType {
       NEW_LEADER_ELECTION = 1;
@@ -134,8 +131,6 @@ message FollowUpAction {
     required TimeOutType timeout_type = 2;
   }
   oneof t {
-    NoData          act_as_new_leader  = 1;
-    RetryAppendData retry_append       = 4;
     WaitForNextRpc  wait_for_rpc       = 5;
   }
 }
@@ -148,4 +143,5 @@ message Configuration {
     // centered on [election_timeout] and of range
     // [election_timeout_range]. 
   required double hearbeat_timeout       = 4; 
+  required int32 max_nb_message          = 5;
 }
