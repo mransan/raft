@@ -71,6 +71,7 @@ message State {
   required int32 id           = 1;
   required int32 current_term = 2; 
   repeated LogEntry log       = 3; 
+  required int32 log_size     = 10;
   required int32 commit_index = 4; 
   required int32 last_applied = 5; 
 

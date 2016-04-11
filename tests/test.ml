@@ -25,6 +25,7 @@ let initial_state
   id;
   current_term;
   log;
+  log_size = List.length log;
   commit_index;
   last_applied = 0;
   role;
@@ -69,9 +70,9 @@ let () =
    * Convert follower to candidate 
    *)
 
-  let candidate0 = Candidate.become ~now (initial_state 0)  in 
+  let server0 = Candidate.become ~now (initial_state 0)  in 
   
-  begin match candidate0.role with
+  begin match server0.role with
     | Candidate {vote_count; election_deadline} -> (
       assert(1 = vote_count); 
       assert(0.1 = election_deadline);
@@ -81,12 +82,14 @@ let () =
     )
     | _ -> assert(false)
   end; 
-  assert (State.is_candidate candidate0);
-  assert (1 = candidate0.current_term);
+  assert (State.is_candidate server0);
+  assert (1 = server0.current_term);
     (* Make sure that any new election increments the 
      * current term by 1.
      *)
-  assert (0 = candidate0.id);
+  assert (0 = server0.id);
+  assert ([] = server0.log);
+  assert (0 = server0.log_size);
 
   let server1  = initial_state 1 in 
 
@@ -98,14 +101,15 @@ let () =
   assert (1 = server1.id);
   assert (0 = server1.current_term);
   assert ([] = server1.log);
+  assert (0 = server1.log_size);
   
   (* 
    * Vote for the Candidate
    * Convert from Candidate to Leader after getting majority
    *)
   
-  let (candidate0, msgs_to_send, follow_up_action), server1, now 
-    = vote_communication ~from:candidate0 ~to_:server1 ~now () in 
+  let (server0, msgs_to_send, follow_up_action), server1, now 
+    = vote_communication ~from:server0 ~to_:server1 ~now () in 
 
   assert(now = 0.002);
   
@@ -122,7 +126,7 @@ let () =
      *)
   assert ([] = server1.log);
   
-  begin match candidate0.role with
+  begin match server0.role with
   | Leader {next_index; match_index} -> (
     assert(2 = List.length next_index); 
     List.iter (fun {server_log_index; _ } -> 
@@ -138,11 +142,11 @@ let () =
   )
   | _ -> assert(false)
   end; 
-  assert (1 = candidate0.current_term);
+  assert (1 = server0.current_term);
     (* Becoming a leader should not alter 
      * the term. 
      *)
-  assert (0 = candidate0.id);
+  assert (0 = server0.id);
   let () =
     let action = Wait_for_rpc {
       timeout = default_configuration.hearbeat_timeout; 
@@ -169,13 +173,13 @@ let () =
    * since becoming a leader.
    *)
   
-  let next_action = Follow_up_action.default candidate0  now in 
+  let next_action = Follow_up_action.default server0  now in 
   assert(Wait_for_rpc {
     timeout = default_configuration.hearbeat_timeout -. 0.001; 
     timeout_type = Heartbeat} = next_action); 
 
   (* 
-  Format.printf "candidate0': %a\n" pp_state candidate0; 
+  Format.printf "server0': %a\n" pp_state server0; 
   Format.printf "server1' : %a\n" pp_state server1; 
   Format.printf "followup action: %a\n" pp_follow_up_action follow_up_action; 
   *)
@@ -329,6 +333,7 @@ let () =
       ()
     | _ -> assert(false)
   end; 
+  assert(2 = server0.log_size);
   begin match server0.role with
     | Leader {next_index; match_index} -> (
       assert(2 = List.length next_index);
@@ -343,6 +348,7 @@ let () =
   assert(1 = server1.id);
   assert(0 = server1.current_term);
   assert(0 = List.length server1.log);
+  assert(0 = server1.log_size);
   assert_no_current_leader server1;
 
   let (server0, msgs_to_send, follow_up_action), server1, _, now = 
@@ -354,6 +360,7 @@ let () =
     assert (0 = server0.id);
     assert (1 = server0.current_term);
     assert (log_version_0 = server0.log); 
+    assert (2 = server0.log_size); 
     assert (State.is_leader server0); 
     assert ((Some next_index) = Leader.next_index_for_receiver server0 1); 
     assert ((Some 1) = Leader.next_index_for_receiver server0 2); 
@@ -395,6 +402,7 @@ let () =
     assert(1 = server1.current_term);
     assert_current_leader server1 0;
     assert(log_length  = List.length server1.log);
+    assert(log_length  = server1.log_size);
       (* The 2 leader logs were inserted
        *)
     begin match server1.role with
@@ -457,6 +465,7 @@ let () =
     assert (0 = server0.id);
     assert (1 = server0.current_term);
     assert (log_version_1 = server0.log); 
+    assert (server0.log_size  = List.length server0.log);
     assert (State.is_leader server0); 
     assert ((Some 4) = Leader.next_index_for_receiver server0 1); 
     assert ((Some 1) = Leader.next_index_for_receiver server0 2); 
@@ -475,6 +484,7 @@ let () =
     assert(1 = server1.current_term);
     assert_current_leader server1 0;
     assert(3 = List.length server1.log);
+    assert(3 = server1.log_size);
       (* The third log [bim] should have been inserted as part 
          of the append entry request.
        *)

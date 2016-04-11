@@ -93,6 +93,7 @@ and state = {
   id : int;
   current_term : int;
   log : log_entry list;
+  log_size : int;
   commit_index : int;
   last_applied : int;
   role : state_role;
@@ -219,6 +220,7 @@ val default_state :
   ?id:int ->
   ?current_term:int ->
   ?log:log_entry list ->
+  ?log_size:int ->
   ?commit_index:int ->
   ?last_applied:int ->
   ?role:state_role ->
