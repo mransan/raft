@@ -34,6 +34,7 @@ module Follower = struct
       id; 
       current_term; 
       log;
+      log_size = List.length log;
       commit_index = 0; 
       last_applied = 0; 
       role = Follower {voted_for; current_leader};  
@@ -119,7 +120,8 @@ module Leader = struct
         index = last_log_index + 1;
         term = state.current_term; 
         data; 
-      }::state.log
+      }::state.log;
+      log_size = state.log_size + 1;
     }
    
   let update_receiver_last_log_index ~server_id ~log_index leader_state = 

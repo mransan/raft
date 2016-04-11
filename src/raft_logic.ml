@@ -273,19 +273,18 @@ module Append_entries = struct
        *) 
       let merge_log_entries state rev_post_logs pre_logs  =  
 
-        let rec aux log = function
-          | [], [] -> log 
+        let rec aux count log = function
+          | [], [] -> (count, log) 
           | ({index=i1;term=t1;data} as e)::tl1, {index=i2;term=t2; _ }::tl2 -> 
             if i1 = i2 && t1 = t2 
-            then aux (e::log) (tl1, tl2)
-            else aux (e::log) (tl1, []) 
+            then aux (count + 1) (e::log) (tl1, tl2)
+            else aux (count + 1) (e::log) (tl1, []) 
           | hd::tl, []
-          | [], hd::tl -> aux (hd::log) (tl, []) 
+          | [], hd::tl -> aux (count + 1) (hd::log) (tl, []) 
         in 
 
-        let state = {state with 
-          log = aux pre_logs (rev_log_entries, rev_post_logs)
-        } in 
+        let (log_size, log) = aux (state.log_size - (List.length rev_post_logs)) pre_logs (rev_log_entries, rev_post_logs) in
+        let state = {state with log ; log_size; } in 
         let receiver_last_log_index = State.last_log_index state in 
         let state = 
           (* Update this server commit index based on value sent from 
