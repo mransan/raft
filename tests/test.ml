@@ -57,6 +57,14 @@ let assert_nb_votes state expected_vote_count=
   match state.role with
   | Candidate {vote_count; _ } -> assert(vote_count = expected_vote_count)
   | _ -> assert(false) 
+
+let assert_action a1 a2 = 
+  match a1, a2 with
+  | Wait_for_rpc w1, Wait_for_rpc w2 -> (
+    assert(w1.timeout_type = w2.timeout_type);
+    let diff = abs_float (w1.timeout -. w2.timeout) in 
+    assert(diff < 0.00001)
+  )
   
 let ipc_time = 0.001 (* 1 ms *) 
 
@@ -65,9 +73,10 @@ let now = 0.
 let vote_communication ~from ~to_ ~now () = 
   let request_vote  = Logic.Request_vote.make from in 
   let now = now +. ipc_time in 
-  let to_, response, _ = Logic.Request_vote.handle_request to_ request_vote now in 
+  let to_, response = Logic.Request_vote.handle_request to_ request_vote now in 
   let now = now +. ipc_time in 
-  Logic.Request_vote.handle_response from response now, to_, now 
+  let state, response = Logic.Request_vote.handle_response from response now in 
+  ((state, response, Follow_up_action.default state now), to_, now)
 
 let () = 
   (* 
@@ -163,7 +172,7 @@ let () =
       timeout = default_configuration.hearbeat_timeout; 
       timeout_type  = Heartbeat; 
     } in 
-    assert(action = follow_up_action)
+    assert_action action follow_up_action
   in
   assert(2 = List.length msgs_to_send);
 
@@ -246,7 +255,7 @@ let () =
       timeout = default_configuration.hearbeat_timeout; 
       timeout_type = Heartbeat; 
     } in 
-    assert(action = follow_up_action1)
+    assert_action action follow_up_action1
   in
   assert(2 = List.length msgs_to_send);
 
@@ -297,11 +306,12 @@ let append_entry_communication ~from ~to_ ~now () =
     (* Format.printf "[append entry] request: %a\n" pp_append_entries_request request; 
      *)
     let now = now +. 0.001 in 
-    let to_, response, _ = Logic.Append_entries.handle_request to_ request now in  
+    let to_, response = Logic.Append_entries.handle_request to_ request now in  
     (* Format.printf "[append entry] response: %a\n" pp_append_entries_response response; 
      *)
     let now = now +. 0.001 in 
-    Logic.Append_entries.handle_response from response now, to_, response, now 
+    let state, responses = Logic.Append_entries.handle_response from response now in 
+    ((state, responses, Follow_up_action.default state now) , to_, response, now) 
   | None -> failwith "request expected"
 
 let () = 
@@ -907,7 +917,7 @@ let () =
       timeout = default_configuration.hearbeat_timeout;
       timeout_type = Heartbeat; 
     } in 
-    assert(action = follow_up_action);
+    assert_action action follow_up_action;
   in 
   assert(2 = List.length msgs_to_send);
 
@@ -956,12 +966,12 @@ let () =
     (* 'Update' server 1 (ie follower) by applying the request. This returns
        the response to send to the leader. 
      *)
-    let follower_1, response, _ = Raft_logic.Append_entries.handle_request follower_1 request now in 
+    let follower_1, response = Raft_logic.Append_entries.handle_request follower_1 request now in 
 
     (* 'Update' server 0 (ie leader) by applying the response. This returns
        the new state as well as a follow up action to take. 
      *)
-    let _ , _, _ = Raft_logic.Append_entries.handle_response leader_0 response now in 
+    let _ , _ = Raft_logic.Append_entries.handle_response leader_0 response now in 
 
     (* Check that the follower has successfully replicated the leader single
        log
@@ -1009,8 +1019,8 @@ let () =
     (*
      * The request is sent twice to the server1. 
      *)
-    let server1, _ , _       = Logic.Append_entries.handle_request server1 request now in  
-    let server1, response, _ = Logic.Append_entries.handle_request server1 request now in  
+    let server1, _        = Logic.Append_entries.handle_request server1 request now in  
+    let server1, response = Logic.Append_entries.handle_request server1 request now in  
 
     assert(1 = List.length server1.log);
     assert_current_leader server1 0; 
@@ -1046,13 +1056,13 @@ let () =
       (* Handle the request in the oposite
        * order.
        *)
-      let server1, response0, _        = Logic.Append_entries.handle_request server1 request1 now in  
-      let server1, response1, _ = Logic.Append_entries.handle_request server1 request0 now in  
+      let server1, response0 = Logic.Append_entries.handle_request server1 request1 now in  
+      let server1, response1 = Logic.Append_entries.handle_request server1 request0 now in  
 
       assert(2 = List.length server1.log);
 
-      let server0, _ , _ = Logic.Append_entries.handle_response server0 response0 now in 
-      let server0, _ , _ = Logic.Append_entries.handle_response server0 response1 now in 
+      let server0, _ = Logic.Append_entries.handle_response server0 response0 now in 
+      let server0, _ = Logic.Append_entries.handle_response server0 response1 now in 
 
       assert(Some (3) = Leader.next_index_for_receiver server0 1);
       assert(Some (2) = Leader.match_index_for_receiver server0 1);

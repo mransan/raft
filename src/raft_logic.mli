@@ -32,7 +32,7 @@ module Request_vote : sig
     Raft_pb.state -> 
     Raft_pb.request_vote_request ->
     time ->  
-    (Raft_pb.state * Raft_pb.request_vote_response * Raft_pb.follow_up_action) 
+    (Raft_pb.state * Raft_pb.request_vote_response) 
   (** [handle_request state request] returns the updated 
       state and the response to be sent back. 
     *)
@@ -41,7 +41,7 @@ module Request_vote : sig
     Raft_pb.state -> 
     Raft_pb.request_vote_response -> 
     time -> 
-    (Raft_pb.state * (message_to_send list) * Raft_pb.follow_up_action)
+    (Raft_pb.state * (message_to_send list))
   (** [handle_response state response] returns the updated
       state along with the expected follow up action to 
       be performed.
@@ -65,7 +65,7 @@ module Append_entries : sig
     Raft_pb.state -> 
     Raft_pb.append_entries_request ->
     time -> 
-    (Raft_pb.state * Raft_pb.append_entries_response * Raft_pb.follow_up_action) 
+    (Raft_pb.state * Raft_pb.append_entries_response) 
   (** [handle_request state request] returns the updated 
       state and the response to be sent back. 
     *)
@@ -74,7 +74,7 @@ module Append_entries : sig
     Raft_pb.state -> 
     Raft_pb.append_entries_response -> 
     time ->
-    (Raft_pb.state * (message_to_send list) * Raft_pb.follow_up_action)
+    (Raft_pb.state * (message_to_send list))
   (** [handle_response state response] returns the updated
       state along with the expected follow up action to 
       be performed.
@@ -89,7 +89,7 @@ module Message : sig
     Raft_pb.state -> 
     Raft_pb.message -> 
     time ->
-    Raft_pb.state * (message_to_send list) * Raft_pb.follow_up_action  
+    Raft_pb.state * (message_to_send list)  
     (** [handle_message state message now] process the message by dispatching it
         to the appropriate module. It also handles keeping track to which server
         the response must be sent. 
@@ -98,7 +98,7 @@ module Message : sig
   val handle_new_election_timeout :
     Raft_pb.state -> 
     time ->
-    Raft_pb.state * (message_to_send list) * Raft_pb.follow_up_action 
+    Raft_pb.state * (message_to_send list) 
   (** [handle_new_election_timeout state now] implements the state change to 
       a Candidate along with the list of request vote message to send. 
     *)
@@ -106,7 +106,7 @@ module Message : sig
   val handle_heartbeat_timeout : 
     Raft_pb.state -> 
     time -> 
-    Raft_pb.state * (message_to_send list) * Raft_pb.follow_up_action 
+    Raft_pb.state * (message_to_send list) 
   (** [handle_heartbeat_timeout state now] computes the necessary messages
       to send in the case of a heartbeat. 
    *)
