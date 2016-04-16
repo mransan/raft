@@ -29,7 +29,8 @@ end
 
 module Follower = struct 
 
-  let create ?current_leader ?current_term:(current_term = 0) ?voted_for ?log:(log = []) ~configuration ~id () = 
+  let create ?current_leader ?current_term:(current_term = 0) ?voted_for ?log:(log = []) ~configuration ~now ~id () = 
+    let {election_timeout; _ } = configuration in 
     {
       id; 
       current_term; 
@@ -37,16 +38,20 @@ module Follower = struct
       log_size = List.length log;
       commit_index = 0; 
       last_applied = 0; 
-      role = Follower {voted_for; current_leader};  
+      role = Follower {voted_for; current_leader; election_deadline = now +. election_timeout};  
       configuration; 
     }
 
-  let become ?current_leader ~term state = { state with 
-    role = Follower {
-      voted_for = None; 
-      current_leader; 
-    }; 
-    current_term = term; 
+  let become ?current_leader ~term ~now state = 
+    let {configuration = {election_timeout; _}; _}= state in 
+    { state with 
+
+      role = Follower {
+        voted_for = None; 
+        current_leader; 
+        election_deadline = now +. election_timeout;
+      }; 
+      current_term = term; 
   }
 
 end 
@@ -228,7 +233,8 @@ module Follow_up_action = struct
 
   let default state now = 
     match state.role with
-    | Follower _ -> new_election_wait state 
+    | Follower {election_deadline; _} ->
+      existing_election_wait election_deadline  now  
     | Leader leader_state -> 
       make_heartbeat_wait (Leader.min_heartbeat_timout ~now leader_state)
     | Candidate {election_deadline; _ } -> 

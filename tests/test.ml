@@ -17,20 +17,31 @@ let default_configuration = {
 }
 
 let initial_state  
-  ?role:(role = Follower {voted_for = None; current_leader = None;}) 
+  ?role
   ?log:(log = [])
   ?commit_index:(commit_index = 0)
   ?configuration:(configuration = default_configuration)
-  ?current_term:(current_term = 0) id = {
-  id;
-  current_term;
-  log;
-  log_size = List.length log;
-  commit_index;
-  last_applied = 0;
-  role;
-  configuration; 
-}
+  ?current_term:(current_term = 0) 
+  ~now 
+  id = 
+
+  let {election_timeout;_} = configuration in 
+  let role = match role with
+    | None -> Follower (
+      default_follower_state ~election_deadline:(now +.  election_timeout) () 
+    )
+    | Some x -> x 
+  in 
+  {
+    id;
+    current_term;
+    log;
+    log_size = List.length log;
+    commit_index;
+    last_applied = 0;
+    role;
+    configuration; 
+  }
 
 let assert_current_leader state expected_leader = 
   match state.role with
@@ -70,7 +81,7 @@ let () =
    * Convert follower to candidate 
    *)
 
-  let server0 = Candidate.become ~now (initial_state 0)  in 
+  let server0 = Candidate.become ~now (initial_state ~now 0)  in 
   
   begin match server0.role with
     | Candidate {vote_count; election_deadline} -> (
@@ -91,7 +102,7 @@ let () =
   assert ([] = server0.log);
   assert (0 = server0.log_size);
 
-  let server1  = initial_state 1 in 
+  let server1  = initial_state ~now 1 in 
 
   assert (State.is_follower server1);
   begin match server1.role with
@@ -193,9 +204,9 @@ let () =
    * candidate within that same term. 
    *)
 
-  let server0  = initial_state 0 in 
-  let candidate1 = Candidate.become ~now (initial_state 1) in
-  let candidate2 = Candidate.become ~now (initial_state 2) in
+  let server0  = initial_state ~now 0 in 
+  let candidate1 = Candidate.become ~now (initial_state ~now 1) in
+  let candidate2 = Candidate.become ~now (initial_state ~now 2) in
 
   assert(1 = candidate1.id);
   assert(2 = candidate2.id); 
@@ -313,7 +324,7 @@ let () =
     max_nb_message = 1
   } in 
   let server0   = 
-    Leader.become (initial_state ~configuration ~current_term:1 0) now 
+    Leader.become (initial_state ~configuration ~current_term:1 ~now 0) now 
     |> Leader.add_log foo
     |> Leader.add_log bar
   in 
@@ -344,7 +355,7 @@ let () =
 
   (* Check initial follower state.
    *)
-  let server1 = initial_state 1 in 
+  let server1 = initial_state ~now 1 in 
   assert(1 = server1.id);
   assert(0 = server1.current_term);
   assert(0 = List.length server1.log);
@@ -536,12 +547,12 @@ let () =
   let server0 = 
     let current_term = 2 in 
     let log = leader_log_version_0 in 
-    Leader.become (initial_state ~commit_index:3 ~log ~current_term 0) now  
+    Leader.become (initial_state ~commit_index:3 ~log ~current_term ~now 0) now  
   in  
 
   let server1 = 
     let current_term = 0 in 
-    initial_state ~current_term 1 
+    initial_state ~current_term ~now 1 
   in 
 
   assert(0 = List.length server1.log);
@@ -727,7 +738,7 @@ let () =
   let server0 = 
     let current_term = 1 in 
     let log = leader_log_version_0 in 
-    Leader.become (initial_state ~commit_index:3 ~log ~current_term 0) now 
+    Leader.become (initial_state ~commit_index:3 ~log ~current_term ~now 0) now 
   in  
 
   let server1 = 
@@ -738,12 +749,15 @@ let () =
      * See previous unit tests for the interaction
      * details.
      *)
+    let {election_timeout; _ } = default_configuration in 
     let current_term = 1 in 
-    let role = Follower {
-      voted_for = Some 0; 
-      current_leader = Some 0;
-    } in 
-    initial_state ~commit_index:3 ~role ~log:leader_log_version_0 ~current_term 1 
+    let role = Follower (
+      default_follower_state 
+        ~voted_for:(Some 0) 
+        ~current_leader:(Some 0)
+        ~election_deadline:(now +. election_timeout) () 
+    )in 
+    initial_state ~commit_index:3 ~role ~log:leader_log_version_0 ~current_term ~now 1 
   in 
 
   let server2 = 
@@ -762,7 +776,7 @@ let () =
      * become leader.
      *)
     let current_term = 10 in 
-    Candidate.become ~now (initial_state ~current_term 2)
+    Candidate.become ~now (initial_state ~current_term ~now 2)
   in  
 
   (* verify initial properties
@@ -921,7 +935,7 @@ let () =
   (* Create a leader state by simulating a (rigged) election
    *)
   let leader_0 = 
-    Raft_helper.Follower.create ~configuration ~id:0 () 
+    Raft_helper.Follower.create ~configuration ~now ~id:0 () 
     |> Raft_helper.Candidate.become ~now:0.0 
     |> (fun s -> Raft_helper.Leader.become s now) 
     |> Raft_helper.Leader.add_log (Bytes.of_string "Foo") 
@@ -930,7 +944,7 @@ let () =
   (* Create a follower
    *)
   let follower_1 = 
-    Raft_helper.Follower.create ~configuration ~id:1 () 
+    Raft_helper.Follower.create ~configuration ~now ~id:1 () 
   in 
 
   (* First create an 'Append Entries' request from the 
@@ -976,10 +990,10 @@ let () =
    *)
 
   let server0 = 
-    Leader.become (initial_state ~current_term:1 0) now 
+    Leader.become (initial_state ~current_term:1 ~now 0) now 
     |> Leader.add_log foo
   in 
-  let server1 = initial_state ~current_term:1 1 in
+  let server1 = initial_state ~current_term:1 ~now 1 in
 
   assert(0 = List.length server1.log);
   assert(1 = List.length server0.log);

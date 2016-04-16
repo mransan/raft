@@ -131,11 +131,13 @@ and candidate_state_mutable = {
 type follower_state = {
   voted_for : int option;
   current_leader : int option;
+  election_deadline : float;
 }
 
 and follower_state_mutable = {
   mutable voted_for : int option;
   mutable current_leader : int option;
+  mutable election_deadline : float;
 }
 
 type configuration = {
@@ -361,14 +363,17 @@ and default_candidate_state_mutable () : candidate_state_mutable = {
 let rec default_follower_state 
   ?voted_for:((voted_for:int option) = None)
   ?current_leader:((current_leader:int option) = None)
+  ?election_deadline:((election_deadline:float) = 0.)
   () : follower_state  = {
   voted_for;
   current_leader;
+  election_deadline;
 }
 
 and default_follower_state_mutable () : follower_state_mutable = {
   voted_for = None;
   current_leader = None;
+  election_deadline = 0.;
 }
 
 let rec default_configuration 
@@ -622,6 +627,7 @@ let rec decode_follower_state d =
     )
     | Some (1, Pbrt.Varint) -> v.voted_for <- Some (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (2, Pbrt.Varint) -> v.current_leader <- Some (Pbrt.Decoder.int_as_varint d); loop ()
+    | Some (3, Pbrt.Bits64) -> v.election_deadline <- (Pbrt.Decoder.float_as_bits64 d); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -840,6 +846,8 @@ let rec encode_follower_state (v:follower_state) encoder =
     Pbrt.Encoder.int_as_varint x encoder;
   )
   | None -> ());
+  Pbrt.Encoder.key (3, Pbrt.Bits64) encoder; 
+  Pbrt.Encoder.float_as_bits64 v.election_deadline encoder;
   ()
 
 let rec encode_configuration (v:configuration) encoder = 
@@ -1024,6 +1032,7 @@ let rec pp_follower_state fmt (v:follower_state) =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "voted_for" (Pbrt.Pp.pp_option Pbrt.Pp.pp_int) fmt v.voted_for;
     Pbrt.Pp.pp_record_field "current_leader" (Pbrt.Pp.pp_option Pbrt.Pp.pp_int) fmt v.current_leader;
+    Pbrt.Pp.pp_record_field "election_deadline" Pbrt.Pp.pp_float fmt v.election_deadline;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

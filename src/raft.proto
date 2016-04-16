@@ -20,9 +20,9 @@ package raft;
 
 message Message {
     oneof t {
-        RequestVoteRequest request_vote_request = 1;
-        RequestVoteResponse request_vote_response = 2;
-        AppendEntriesRequest append_entries_request = 3;
+        RequestVoteRequest    request_vote_request    = 1;
+        RequestVoteResponse   request_vote_response   = 2;
+        AppendEntriesRequest  append_entries_request  = 3;
         AppendEntriesResponse append_entries_response = 4;
     }
 }
@@ -102,8 +102,9 @@ message CandidateState {
 }
 
 message FollowerState {
-  optional int32 voted_for = 1; 
-  optional int32 current_leader = 2;
+  optional int32 voted_for          = 1; 
+  optional int32 current_leader     = 2;
+  required double election_deadline = 3;
 }
 
 // This message keeps track of when a heartbeat 
