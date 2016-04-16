@@ -65,10 +65,9 @@ let collect_log_since_index last_index log max_nb_message =
   aux 0 [] log 
 
 let make_append_entries prev_log_index state =  
-  let max_nb_message = state.configuration.max_nb_message in
+  let max = state.configuration.max_nb_logs_per_message in
   let (prev_log_term, rev_log_entries) = 
-    collect_log_since_index prev_log_index state.log max_nb_message in  
-
+    collect_log_since_index prev_log_index state.log max in  
   {
     leader_term = state.current_term;
     leader_id = state.id;
@@ -77,6 +76,46 @@ let make_append_entries prev_log_index state =
     rev_log_entries;
     leader_commit = state.commit_index;
   }
+  
+let make_append_entries_for_server state {next_index; _ } receiver_id = 
+
+  let is_receiver ({server_id; _ }:server_index) = 
+    server_id = receiver_id
+  in 
+
+  match List.find is_receiver next_index with
+  | {server_log_index; _ } -> (
+    let prev_log_index = server_log_index - 1 in 
+    make_append_entries prev_log_index state 
+  ) 
+  | exception Not_found -> 
+    failwith "[Raft_logic] Invalid receiver id"
+
+(* This helper function create heartbeat requests for 
+ * all the servers with past deadlines. 
+ *)
+let make_heartbeat_requests state leader_state now = 
+  let {receiver_heartbeats; _} = leader_state in 
+  let server_to_send = List.fold_left (fun acc {server_id; heartbeat_deadline;} ->
+    if now >= heartbeat_deadline
+    then server_id::acc
+    else acc
+  ) [] receiver_heartbeats
+  in 
+  List.map (fun server_id -> 
+    let request = make_append_entries_for_server state leader_state server_id in 
+    (Append_entries_request request, server_id)
+  ) server_to_send
+
+(* Helper function to update the heartbeat deadline for the servers
+ * that we are sending messages to. 
+ *)
+let update_receivers_deadline configuration leader_state msgs_to_send now = 
+  List.fold_left (fun leader_state (_, server_id) -> 
+    Raft_helper.Leader.update_receiver_deadline 
+        ~server_id ~now ~configuration leader_state
+  ) leader_state msgs_to_send
+  
 
 (** {2 Request Vote} *) 
 
@@ -101,14 +140,18 @@ module Request_vote = struct
 
     if candidate_term < state.current_term 
     then 
-      (* This request is coming from a candidate lagging behind ... 
+      (* 
+       * This request is coming from a candidate lagging behind ... 
        * no vote for him.
+       *
        *)
       (state, make_response state false)
     else 
       let state = 
-        (* Enforce invariant that if this server is lagging behind 
+        (* 
+         * Enforce invariant that if this server is lagging behind 
          * it must convert to a follower and update to that term.
+         *
          *)
         if candidate_term > state.current_term
         then Follower.become ~term:candidate_term ~now state 
@@ -117,15 +160,18 @@ module Request_vote = struct
       let last_log_index = State.last_log_index state in 
       if candidate_last_log_index < last_log_index
       then 
-        (* Enforce the safety constraint by denying vote if this server
+        (* 
+         * Enforce the safety constraint by denying vote if this server
          * last log is more recent than the candidate one.
+         *
          *)
         (state, make_response state false)
       else
         let role = state.role in 
         match role with
         | Follower {voted_for = None; _} ->
-          (* This server has never voted before, candidate is getting the vote
+          (* 
+           * This server has never voted before, candidate is getting the vote
            *
            * In accordance to the `Rules for Servers`, the follower must
            * reset its election deadline when granting its vote.
@@ -142,15 +188,18 @@ module Request_vote = struct
           } in  
           (state, make_response state true)
            
-
         | Follower {voted_for = Some id} when id = candidate_id -> 
-          (* This server has already voted for that candidate ... reminding him
+          (* 
+           * This server has already voted for that candidate ... reminding him
+           *
            *)
           (state, make_response state true)
 
         | _ -> 
-          (* Server has previously voted for another candidate or 
+          (* 
+           * Server has previously voted for another candidate or 
            * itself
+           *
            *)
           (state, make_response state false)
   
@@ -161,8 +210,10 @@ module Request_vote = struct
 
     if voter_term > current_term 
     then 
-      (* Enforce invariant that if this server is lagging behind 
+      (* 
+       * Enforce invariant that if this server is lagging behind 
        * it must convert to a follower and update to the latest term.
+       *
        *)
       let state = Follower.become ~term:voter_term ~now state in 
       (state, [])
@@ -173,13 +224,17 @@ module Request_vote = struct
         let has_majority = vote_count >= (configuration.nb_of_server / 2) in 
         if  has_majority
         then 
-          (* Candidate is the new leader
+          (* 
+           * By reaching a majority of votes, the 
+           * candidate is now the new leader
+           *
            *)
           let state = Leader.become state now in 
           
-          (* As a new leader, the server must send Append entries request
-             to the other servers to both establish its leadership and
-             start synching its log with the others. 
+          (* 
+           * As a new leader, the server must send Append entries request
+           * to the other servers to both establish its leadership and
+           * start synching its log with the others. 
            *)
           let msgs = begin match state.role with
             | Leader {next_index; _ } -> (
@@ -191,7 +246,7 @@ module Request_vote = struct
                 (msg, server_id)
               ) next_index 
             )
-            | _ -> failwith "Programmatic error" 
+            | _ -> assert(false)
           end 
           in
 
@@ -225,23 +280,10 @@ end (* Request_vote *)
 module Append_entries = struct 
   
 
-  let make_of_leader_state state {next_index; _ } receiver_id = 
-
-    let is_receiver ({server_id; _ }:server_index) = 
-      server_id = receiver_id
-    in 
-
-    match List.find is_receiver next_index with
-    | {server_log_index; _ } -> (
-      let prev_log_index = server_log_index - 1 in 
-      make_append_entries prev_log_index state 
-    ) 
-    | exception Not_found -> 
-      failwith "[Raft_logic] Invalid receiver id"
 
   let make state receiver_id = 
     match state.role with
-    | Leader leader_state -> Some (make_of_leader_state state leader_state receiver_id) 
+    | Leader leader_state -> Some (make_append_entries_for_server state leader_state receiver_id) 
     | _ -> None 
 
   let handle_request state request now = 
@@ -378,50 +420,92 @@ module Append_entries = struct
 
           let configuration = state.configuration in 
 
-          let leader_state, nb = Leader.update_receiver_last_log_index 
+          let leader_state, nb_of_replications = Leader.update_receiver_last_log_index 
             ~server_id:receiver_id 
             ~log_index:receiver_last_log_index 
             leader_state 
           in
 
           let commit_index = 
-            (* Check if the received log entry from has reached 
+            (* 
+             * Check if the received log entry from has reached 
              * a majority of server. 
              * Note that we need to add `+1` simply to count this 
              * server (ie leader) which does not update its next/match
+             *
              *)
-            if Configuration.is_majority configuration (nb + 1)
+            if Configuration.is_majority configuration (nb_of_replications + 1)
             then receiver_last_log_index
             else state.commit_index
           in  
-          
-          let state = {state with commit_index; role = Leader leader_state} in
-          let req = make_append_entries receiver_last_log_index state in 
+          let state = {state with commit_index} in 
 
-          let msg = match req.rev_log_entries with
+          (* 
+           * We now compute the next messages to send.
+           *
+           * First we see if the server that we just receive the response
+           * from has missing entries. This is needed because we might have 
+           * previously throttled the number of log sent due to the 
+           * max_nb_message parameter in the configuration. 
+           *
+           *)
+          let req1 = make_append_entries receiver_last_log_index state in 
+          let msg1 = match req1.rev_log_entries with
             | [] -> []
-            | _  -> [(Append_entries_request req, receiver_id)]
+            | _  -> [(Append_entries_request req1, receiver_id)]
           in 
 
-          (state, msg)
+          (* 
+           * Second we check that if we others servers are past their 
+           * heartbeat deadlines. 
+           *
+           * The reason we compute those requests here rather than 
+           * waiting for a heartbeat timeout is that the server 
+           * event loop might be continuously receiving responses from 
+           * servers and the [Timeout] event never triggered. 
+           *
+           * Furthermore at this stage we know that we are a leader 
+           * and therefore expected to send heartbeat requests.
+           *
+           *)
+          let msg2 = make_heartbeat_requests state leader_state now in 
+
+          let msgs = msg1 @ msg2 in 
+
+          let leader_state = 
+            update_receivers_deadline configuration leader_state msgs now 
+              (* 
+               * We assume the msgs will be sent and therefore the 
+               * heartbeat deadline of all servers which we send messages
+               * to need to be updated.
+               *
+               *)
+          in
+
+          let state = {state with role = Leader leader_state} in
+
+          (state, msgs)
 
         | _ -> (state, [])
 
         end (* match state.role *)
 
       | Failure ->
-        (* The receiver log is not matching this server current belief. 
+        (* 
+         * The receiver log is not matching this server current belief. 
          * If a leader this server should decrement the next 
          * log index and retry the append. 
+         *
          *)
         begin match state.role with
         | Leader leader_state ->
+          let configuration = state.configuration in 
           let leader_state = Leader.decrement_next_index ~server_id:receiver_id leader_state in 
+          let req  = make_append_entries_for_server state leader_state receiver_id in
+          let msgs = [(Append_entries_request req, receiver_id)] in 
+          let leader_state = update_receivers_deadline configuration leader_state msgs now in  
           let state  = {state with role = Leader leader_state} in 
-          let msg    = Append_entries_request (
-            make_of_leader_state state leader_state receiver_id
-          ) in 
-          (state, [(msg, receiver_id)])
+          (state,msgs)
         | _ ->
           (state, [])
         end 
@@ -429,7 +513,6 @@ module Append_entries = struct
 end (* Append_entries *)
 
 module Message = struct
-
 
   let handle_message state message now = 
     match message with
@@ -461,13 +544,6 @@ module Message = struct
     in
     aux e0 (nb_of_server - 1)
 
-  let append_entries_request_for_all ({id; configuration = {nb_of_server;_ }; _ } as state) = 
-    fold_over_servers (fun acc server_id -> 
-      match Append_entries.make state server_id with
-      | Some request -> ((Append_entries_request request, server_id) ::acc) 
-      | None         -> acc
-    ) [] state 
-
   let request_vote_for_all ({id; configuration = {nb_of_server;_ }; _ } as state) = 
     fold_over_servers (fun acc server_id ->
       let request = Request_vote.make state  in 
@@ -482,9 +558,9 @@ module Message = struct
   let handle_heartbeat_timeout ({role; configuration; _ } as state) now = 
     match state.role with
     | Leader leader_state -> 
-      let msgs = append_entries_request_for_all state in 
+      let msgs = make_heartbeat_requests state leader_state now in 
       let leader_state = List.fold_left (fun leader_state (_, server_id) -> 
-        fst @@ Raft_helper.Leader.update_receiver_deadline 
+        Raft_helper.Leader.update_receiver_deadline 
             ~server_id ~now ~configuration leader_state
       ) leader_state msgs
       in 

@@ -135,10 +135,9 @@ module Leader : sig
     now:float -> 
     configuration:Raft_pb.configuration ->
     Raft_pb.leader_state -> 
-    (Raft_pb.leader_state * float) 
+    Raft_pb.leader_state
   (** [update_receiver_deadline ~server_id ~now ~configuration leader_state] returns 
-      the new leader state with the [server_id] heartbeat deadline updated. Additionally
-      it returns the min heartbeat timeout of any of the receiver.
+      the new leader state with the [server_id] heartbeat deadline updated. 
     *)
 
   val decrement_next_index : server_id:int -> Raft_pb.leader_state -> Raft_pb.leader_state 
