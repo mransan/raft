@@ -74,6 +74,7 @@ type candidate_state = {
 type follower_state = {
   voted_for : int option;
   current_leader : int option;
+  election_deadline : float;
 }
 
 type configuration = {
@@ -201,6 +202,7 @@ val default_candidate_state :
 val default_follower_state : 
   ?voted_for:int option ->
   ?current_leader:int option ->
+  ?election_deadline:float ->
   unit ->
   follower_state
 (** [default_follower_state ()] is the default value for type [follower_state] *)

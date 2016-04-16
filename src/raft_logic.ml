@@ -20,31 +20,47 @@ let collect_log_since_index last_index log max_nb_message =
 
   let rec keep_first_n l = function
     | 0 -> []
-    | n -> let hd::tl = l in hd::(keep_first_n tl (n - 1))
+    | n -> 
+      begin match l with 
+      | hd::tl -> hd::(keep_first_n tl (n - 1))
+      | [] -> assert(false)
+      end
   in 
 
-  let rec aux count rev_log_entries = function
-     | [] -> 
-       if last_index = 0
-       then 
-         if count > max_nb_message
-         then
-           (0, keep_first_n rev_log_entries max_nb_message) 
-         else
-           (0, rev_log_entries)
-       else 
-         failwith "[Raft_logic] Internal error invalid log index"
+  (*
+   * In the case of a last_index because a lot lower than the 
+   * latest log index then the linear operation 
+   * below is really expensive. 
+   * 
+   * TODO
+   * An optimization could be to keep track for each server of that
+   * [reverse log entries] value and only use the actual log value
+   * when we are done sending all the reverse log entries.
+   *
+   *)
 
-     | ({index;term;data = _ } as entry)::tl -> 
-       if index = last_index 
-       then 
-         if count > max_nb_message
-         then
-           (term, keep_first_n rev_log_entries max_nb_message) 
-         else 
-           (term, rev_log_entries)
-       else 
-         aux (count + 1) (entry::rev_log_entries) tl  
+  let rec aux count rev_log_entries = function
+    | [] -> 
+      if last_index = 0
+      then 
+        if count > max_nb_message
+        then
+          (0, keep_first_n rev_log_entries max_nb_message) 
+        else
+          (0, rev_log_entries)
+      else 
+        failwith "[Raft_logic] Internal error invalid log index"
+
+    | ({index;term;data = _ } as entry)::tl -> 
+      if index = last_index 
+      then 
+        if count > max_nb_message
+        then
+          (term, keep_first_n rev_log_entries max_nb_message) 
+        else 
+          (term, rev_log_entries)
+      else 
+        aux (count + 1) (entry::rev_log_entries) tl  
   in 
   aux 0 [] log 
 
@@ -95,7 +111,7 @@ module Request_vote = struct
          * it must convert to a follower and update to that term.
          *)
         if candidate_term > state.current_term
-        then Follower.become ~term:candidate_term state 
+        then Follower.become ~term:candidate_term ~now state 
         else state
       in
       let last_log_index = State.last_log_index state in 
@@ -108,22 +124,29 @@ module Request_vote = struct
       else
         let role = state.role in 
         match role with
-        | Follower {voted_for = None} ->
+        | Follower {voted_for = None; _} ->
           (* This server has never voted before, candidate is getting the vote
+           *
+           * In accordance to the `Rules for Servers`, the follower must
+           * reset its election deadline when granting its vote.
+           *
            *)
           
+          let {configuration = {election_timeout; _ }; _} = state in  
           let state ={state with 
             role = Follower {
-              voted_for = Some candidate_id; 
-              current_leader = None;
+              voted_for         = Some candidate_id; 
+              current_leader    = None;
+              election_deadline = now +. election_timeout; 
             } 
           } in  
-          (state, make_response state true, Follow_up_action.new_election_wait state)
+          (state, make_response state true, Follow_up_action.default state now)
+           
 
         | Follower {voted_for = Some id} when id = candidate_id -> 
           (* This server has already voted for that candidate ... reminding him
            *)
-          (state, make_response state true, Follow_up_action.new_election_wait state)
+          (state, make_response state true, Follow_up_action.default state now)
 
         | _ -> 
           (* Server has previously voted for another candidate or 
@@ -141,8 +164,8 @@ module Request_vote = struct
       (* Enforce invariant that if this server is lagging behind 
        * it must convert to a follower and update to the latest term.
        *)
-      let state = Follower.become ~term:voter_term state in 
-      (state, [], Follow_up_action.new_election_wait state) 
+      let state = Follower.become ~term:voter_term ~now state in 
+      (state, [], Follow_up_action.default state now) 
     else 
   
       match role, vote_granted  with
@@ -190,7 +213,7 @@ module Request_vote = struct
          * its deadline. 
          *)
 
-      | Follower _ , _ -> (state, [], Follow_up_action.new_election_wait state) 
+      | Follower _ , _ 
       | Leader   _ , _ -> (state, [], Follow_up_action.default state now)
         (* If the server is either Follower or Leader, it means that 
          * it has changed role in between the time it sent the 
@@ -245,8 +268,8 @@ module Append_entries = struct
       (* This request is coming from a legetimate leader, 
        * let's ensure that this server is a follower.
        *)
-      let state  = Follower.become ~current_leader:leader_id ~term:leader_term state in  
-      let new_election_wait_action = Follow_up_action.new_election_wait state in 
+      let state  = Follower.become ~current_leader:leader_id ~term:leader_term ~now state in  
+      let new_election_wait_action = Follow_up_action.default state now in 
 
       (* Next step is to handle the log entries from the leader.
        * 
@@ -345,8 +368,8 @@ module Append_entries = struct
       (* Enforce invariant that if the server is lagging behind 
        * it must convert to a follower and update to that term.
        *)
-      let state = Follower.become ~term:receiver_term state in 
-      (state, [], Follow_up_action.new_election_wait state) 
+      let state = Follower.become ~term:receiver_term ~now state in 
+      (state, [], Follow_up_action.default state now) 
   
     else 
       match result with
@@ -462,7 +485,7 @@ module Message = struct
   let handle_new_election_timeout state now = 
     let state = Raft_helper.Candidate.become ~now state in 
     let msgs  = request_vote_for_all state in 
-    let action = Follow_up_action.new_election_wait state in 
+    let action = Follow_up_action.default state now in 
     (state, msgs, action)
   
   let handle_heartbeat_timeout ({role; configuration; _ } as state) now = 

@@ -39,6 +39,7 @@ module Follower : sig
     ?voted_for:int -> 
     ?log:Raft_pb.log_entry list ->
     configuration:Raft_pb.configuration -> 
+    now:float -> 
     id:int -> 
     unit -> 
     Raft_pb.state 
@@ -46,7 +47,7 @@ module Follower : sig
       follower state. 
     *)
 
-  val become : ?current_leader:int -> term:int -> Raft_pb.state -> Raft_pb.state
+  val become : ?current_leader:int -> term:int -> now:float -> Raft_pb.state -> Raft_pb.state
   (** [become ~current_leader state term] return the new follower state. 
       
       {ul
@@ -159,10 +160,12 @@ end (* Configuration *)
 
 module Follow_up_action : sig
 
+  (*
   val new_election_wait : Raft_pb.state -> Raft_pb.follow_up_action
   (** [new_election_wait state] returns a [Wait_for_rpc] follow action for 
       a new election. 
     *)
+  *)
   
   val existing_election_wait : float -> float -> Raft_pb.follow_up_action 
   (** [existing_election_wait election_deadline now] returns [Wait_for_rpc] follow up 
