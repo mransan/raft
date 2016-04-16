@@ -92,6 +92,13 @@ module Leader = struct
           let next      = {server_id = i; server_log_index = last_log_index + 1} in
           let match_    = {server_id = i; server_log_index = 0 } in 
           let heartbeat = {server_id = i; heartbeat_deadline = now +. hearbeat_timeout} in 
+            (* 
+             * Here the expectation is that after becoming a leader
+             * the client application will send a message to all the receivers
+             * and therefore the heartbeat_deadline is set 
+             * to [now + timeout] rather than [now].
+             *
+             *)
           aux (next::next_index, match_::match_index, heartbeat::receiver_heartbeats) (i - 1)
     in 
     let next_index, match_index, receiver_heartbeats = aux ([], [], []) (nb_of_server - 1) in 
@@ -162,9 +169,9 @@ module Leader = struct
     let {receiver_heartbeats;_ } = leader_state in 
     let receiver_id = server_id in 
 
-    let (receiver_heartbeats, min_deadline) = List.fold_left (fun  acc receiver_heartbeat -> 
+    let receiver_heartbeats = List.fold_left (fun acc receiver_heartbeat -> 
 
-      let receiver_heartbeats, min_deadline = acc in 
+      let receiver_heartbeats = acc in 
       let {heartbeat_deadline; server_id}  = receiver_heartbeat in 
 
       let receiver_heartbeat = 
@@ -173,13 +180,11 @@ module Leader = struct
         else  receiver_heartbeat 
       in 
       
-      let min_deadline = min min_deadline receiver_heartbeat.heartbeat_deadline in 
+      receiver_heartbeat::receiver_heartbeats
 
-      (receiver_heartbeat::receiver_heartbeats, min_deadline) 
+    ) [] receiver_heartbeats in 
 
-    ) ([], max_float) receiver_heartbeats in 
-
-    ({leader_state with receiver_heartbeats}, (min_deadline -. now)) 
+    {leader_state with receiver_heartbeats}
 
 
   let min_heartbeat_timout ~now {receiver_heartbeats; _ } = 

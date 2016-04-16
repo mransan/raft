@@ -13,7 +13,7 @@ let default_configuration = {
   election_timeout       = 0.1;
   election_timeout_range = 0.01; 
   hearbeat_timeout       = 0.02;
-  max_nb_message         = 10;
+  max_nb_logs_per_message = 10;
 }
 
 let initial_state  
@@ -331,7 +331,7 @@ let () =
    *)
 
   let configuration = {default_configuration with 
-    max_nb_message = 1
+    max_nb_logs_per_message = 1
   } in 
   let server0   = 
     Leader.become (initial_state ~configuration ~current_term:1 ~now 0) now 
@@ -939,7 +939,7 @@ let () =
     election_timeout       = 0.1;
     election_timeout_range = 0.01;
     hearbeat_timeout       = 0.02;
-    max_nb_message         = 10;
+    max_nb_logs_per_message = 10;
   }) in 
 
   (* Create a leader state by simulating a (rigged) election

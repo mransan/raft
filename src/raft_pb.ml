@@ -145,7 +145,7 @@ type configuration = {
   election_timeout : float;
   election_timeout_range : float;
   hearbeat_timeout : float;
-  max_nb_message : int;
+  max_nb_logs_per_message : int;
 }
 
 and configuration_mutable = {
@@ -153,7 +153,7 @@ and configuration_mutable = {
   mutable election_timeout : float;
   mutable election_timeout_range : float;
   mutable hearbeat_timeout : float;
-  mutable max_nb_message : int;
+  mutable max_nb_logs_per_message : int;
 }
 
 type state_role =
@@ -381,13 +381,13 @@ let rec default_configuration
   ?election_timeout:((election_timeout:float) = 0.)
   ?election_timeout_range:((election_timeout_range:float) = 0.)
   ?hearbeat_timeout:((hearbeat_timeout:float) = 0.)
-  ?max_nb_message:((max_nb_message:int) = 0)
+  ?max_nb_logs_per_message:((max_nb_logs_per_message:int) = 0)
   () : configuration  = {
   nb_of_server;
   election_timeout;
   election_timeout_range;
   hearbeat_timeout;
-  max_nb_message;
+  max_nb_logs_per_message;
 }
 
 and default_configuration_mutable () : configuration_mutable = {
@@ -395,7 +395,7 @@ and default_configuration_mutable () : configuration_mutable = {
   election_timeout = 0.;
   election_timeout_range = 0.;
   hearbeat_timeout = 0.;
-  max_nb_message = 0;
+  max_nb_logs_per_message = 0;
 }
 
 
@@ -644,7 +644,7 @@ let rec decode_configuration d =
     | Some (2, Pbrt.Bits64) -> v.election_timeout <- (Pbrt.Decoder.float_as_bits64 d); loop ()
     | Some (3, Pbrt.Bits64) -> v.election_timeout_range <- (Pbrt.Decoder.float_as_bits64 d); loop ()
     | Some (4, Pbrt.Bits64) -> v.hearbeat_timeout <- (Pbrt.Decoder.float_as_bits64 d); loop ()
-    | Some (5, Pbrt.Varint) -> v.max_nb_message <- (Pbrt.Decoder.int_as_varint d); loop ()
+    | Some (5, Pbrt.Varint) -> v.max_nb_logs_per_message <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -860,7 +860,7 @@ let rec encode_configuration (v:configuration) encoder =
   Pbrt.Encoder.key (4, Pbrt.Bits64) encoder; 
   Pbrt.Encoder.float_as_bits64 v.hearbeat_timeout encoder;
   Pbrt.Encoder.key (5, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.max_nb_message encoder;
+  Pbrt.Encoder.int_as_varint v.max_nb_logs_per_message encoder;
   ()
 
 
@@ -1044,7 +1044,7 @@ let rec pp_configuration fmt (v:configuration) =
     Pbrt.Pp.pp_record_field "election_timeout" Pbrt.Pp.pp_float fmt v.election_timeout;
     Pbrt.Pp.pp_record_field "election_timeout_range" Pbrt.Pp.pp_float fmt v.election_timeout_range;
     Pbrt.Pp.pp_record_field "hearbeat_timeout" Pbrt.Pp.pp_float fmt v.hearbeat_timeout;
-    Pbrt.Pp.pp_record_field "max_nb_message" Pbrt.Pp.pp_int fmt v.max_nb_message;
+    Pbrt.Pp.pp_record_field "max_nb_logs_per_message" Pbrt.Pp.pp_int fmt v.max_nb_logs_per_message;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

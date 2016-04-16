@@ -82,7 +82,7 @@ type configuration = {
   election_timeout : float;
   election_timeout_range : float;
   hearbeat_timeout : float;
-  max_nb_message : int;
+  max_nb_logs_per_message : int;
 }
 
 type state_role =
@@ -212,7 +212,7 @@ val default_configuration :
   ?election_timeout:float ->
   ?election_timeout_range:float ->
   ?hearbeat_timeout:float ->
-  ?max_nb_message:int ->
+  ?max_nb_logs_per_message:int ->
   unit ->
   configuration
 (** [default_configuration ()] is the default value for type [configuration] *)

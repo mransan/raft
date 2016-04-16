@@ -145,5 +145,5 @@ message Configuration {
     // centered on [election_timeout] and of range
     // [election_timeout_range]. 
   required double hearbeat_timeout       = 4; 
-  required int32 max_nb_message          = 5;
+  required int32 max_nb_logs_per_message = 5;
 }
