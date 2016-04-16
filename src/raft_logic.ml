@@ -104,7 +104,7 @@ module Request_vote = struct
       (* This request is coming from a candidate lagging behind ... 
        * no vote for him.
        *)
-      (state, make_response state false, Follow_up_action.default state now)
+      (state, make_response state false)
     else 
       let state = 
         (* Enforce invariant that if this server is lagging behind 
@@ -120,7 +120,7 @@ module Request_vote = struct
         (* Enforce the safety constraint by denying vote if this server
          * last log is more recent than the candidate one.
          *)
-        (state, make_response state false, Follow_up_action.default state now)
+        (state, make_response state false)
       else
         let role = state.role in 
         match role with
@@ -140,19 +140,19 @@ module Request_vote = struct
               election_deadline = now +. election_timeout; 
             } 
           } in  
-          (state, make_response state true, Follow_up_action.default state now)
+          (state, make_response state true)
            
 
         | Follower {voted_for = Some id} when id = candidate_id -> 
           (* This server has already voted for that candidate ... reminding him
            *)
-          (state, make_response state true, Follow_up_action.default state now)
+          (state, make_response state true)
 
         | _ -> 
           (* Server has previously voted for another candidate or 
            * itself
            *)
-          (state, make_response state false, Follow_up_action.default state now) 
+          (state, make_response state false)
   
   let handle_response state response now = 
   
@@ -165,7 +165,7 @@ module Request_vote = struct
        * it must convert to a follower and update to the latest term.
        *)
       let state = Follower.become ~term:voter_term ~now state in 
-      (state, [], Follow_up_action.default state now) 
+      (state, [])
     else 
   
       match role, vote_granted  with
@@ -195,26 +195,22 @@ module Request_vote = struct
           end 
           in
 
-          let hearbeat_timeout = configuration.hearbeat_timeout in 
-          let action = Follow_up_action.make_heartbeat_wait hearbeat_timeout in 
-
-          (state, msgs, action)  
+          (state, msgs)  
         else 
           (* Candidate has a new vote but not yet reached the majority
            *)
           let new_state = {state with 
             role = Candidate (Candidate.increment_vote_count candidate_state);
           } in 
-          (new_state, [], Follow_up_action.existing_election_wait election_deadline now) 
+          (new_state, [])
 
-      | Candidate {election_deadline; _}, false ->
-        (state, [], Follow_up_action.existing_election_wait election_deadline now)
+      | Candidate _ , false
         (* The vote was denied, the election keeps on going until
          * its deadline. 
          *)
 
       | Follower _ , _ 
-      | Leader   _ , _ -> (state, [], Follow_up_action.default state now)
+      | Leader   _ , _ -> (state, [])
         (* If the server is either Follower or Leader, it means that 
          * it has changed role in between the time it sent the 
          * [RequestVote] request and this response. 
@@ -262,14 +258,13 @@ module Append_entries = struct
       (* This request is coming from a leader lagging behind...
        *)
       
-      (state, make_response state Failure, Follow_up_action.default state now)
+      (state, make_response state Failure)
   
     else 
       (* This request is coming from a legetimate leader, 
        * let's ensure that this server is a follower.
        *)
       let state  = Follower.become ~current_leader:leader_id ~term:leader_term ~now state in  
-      let new_election_wait_action = Follow_up_action.default state now in 
 
       (* Next step is to handle the log entries from the leader.
        * 
@@ -323,7 +318,7 @@ module Append_entries = struct
           else state   
         in 
         let response = make_response state (Success {receiver_last_log_index; }) in 
-        (state, response, new_election_wait_action)
+        (state, response)
       in
   
       let rec aux post_logs = function 
@@ -337,7 +332,7 @@ module Append_entries = struct
             (* [case 1] The prev_log_index is not found in the state log. 
              * This server is lagging behind. 
              *)
-            (state, make_response state Failure, new_election_wait_action) 
+            (state, make_response state Failure)
   
         | ({index; term; _ }::tl as log) when index = prev_log_index && 
                                                term = prev_log_term -> 
@@ -353,7 +348,7 @@ module Append_entries = struct
            * As far as the leader is concerned it's like [case 1] now. 
            *)
           let new_state = {state with log} in 
-          (new_state, make_response state Failure, new_election_wait_action)
+          (new_state, make_response state Failure)
         |  hd::tl -> aux (hd::post_logs) tl 
   
       in 
@@ -369,7 +364,7 @@ module Append_entries = struct
        * it must convert to a follower and update to that term.
        *)
       let state = Follower.become ~term:receiver_term ~now state in 
-      (state, [], Follow_up_action.default state now) 
+      (state, [])
   
     else 
       match result with
@@ -388,7 +383,6 @@ module Append_entries = struct
             ~log_index:receiver_last_log_index 
             leader_state 
           in
-
 
           let commit_index = 
             (* Check if the received log entry from has reached 
@@ -409,10 +403,9 @@ module Append_entries = struct
             | _  -> [(Append_entries_request req, receiver_id)]
           in 
 
-          let action = Follow_up_action.default state now in 
-          (state, msg, action)
+          (state, msg)
 
-        | _ -> (state, [], Follow_up_action.default state now)
+        | _ -> (state, [])
 
         end (* match state.role *)
 
@@ -428,10 +421,9 @@ module Append_entries = struct
           let msg    = Append_entries_request (
             make_of_leader_state state leader_state receiver_id
           ) in 
-          let action = Follow_up_action.default state now in 
-          (state, [(msg, receiver_id)], action)
+          (state, [(msg, receiver_id)])
         | _ ->
-          (state, [], Follow_up_action.default state now)
+          (state, [])
         end 
 
 end (* Append_entries *)
@@ -442,12 +434,12 @@ module Message = struct
   let handle_message state message now = 
     match message with
     | Request_vote_request ({candidate_id; _ } as r) -> 
-      let state, response, action = Request_vote.handle_request state r now in  
-      (state, [(Request_vote_response response, candidate_id)], action)
+      let state, response = Request_vote.handle_request state r now in  
+      (state, [(Request_vote_response response, candidate_id)])
     
     | Append_entries_request ({leader_id; _ } as r) -> 
-      let state, response, action = Append_entries.handle_request state r now in  
-      (state, [(Append_entries_response response, leader_id)], action) 
+      let state, response = Append_entries.handle_request state r now in  
+      (state, [(Append_entries_response response, leader_id)])
 
     | Request_vote_response r ->
       Request_vote.handle_response state r now 
@@ -485,8 +477,7 @@ module Message = struct
   let handle_new_election_timeout state now = 
     let state = Raft_helper.Candidate.become ~now state in 
     let msgs  = request_vote_for_all state in 
-    let action = Follow_up_action.default state now in 
-    (state, msgs, action)
+    (state, msgs)
   
   let handle_heartbeat_timeout ({role; configuration; _ } as state) now = 
     match state.role with
@@ -497,11 +488,9 @@ module Message = struct
             ~server_id ~now ~configuration leader_state
       ) leader_state msgs
       in 
-      let hearbeat_timeout = configuration.hearbeat_timeout in 
-      let action = Follow_up_action.make_heartbeat_wait hearbeat_timeout in 
       let state = {state with role = Leader leader_state} in 
-      (state, msgs, action) 
+      (state, msgs)
     | _ -> 
-      (state, [], Follow_up_action.default state now)
+      (state, [])
         
 end (* Message *)  

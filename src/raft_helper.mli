@@ -160,23 +160,6 @@ end (* Configuration *)
 
 module Follow_up_action : sig
 
-  (*
-  val new_election_wait : Raft_pb.state -> Raft_pb.follow_up_action
-  (** [new_election_wait state] returns a [Wait_for_rpc] follow action for 
-      a new election. 
-    *)
-  *)
-  
-  val existing_election_wait : float -> float -> Raft_pb.follow_up_action 
-  (** [existing_election_wait election_deadline now] returns [Wait_for_rpc] follow up 
-      action for an existing election. 
-    *)
-
-  val make_heartbeat_wait : float -> Raft_pb.follow_up_action 
-  (** [make_heartbeat_wait timeout] creates a [Wait_for_rpc] 
-      follow up action of type type heartbeat. 
-    *)
-
   val default : Raft_pb.state -> float -> Raft_pb.follow_up_action 
 
 end (* Follow_up_action *)

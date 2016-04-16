@@ -207,17 +207,10 @@ module Configuration = struct
 
   let is_majority {nb_of_server; _} nb = 
     nb > (nb_of_server / 2) 
-  
 
 end 
 
 module Follow_up_action = struct
-
-  let new_election_wait state = 
-    Wait_for_rpc {
-      timeout      = state.configuration.election_timeout; 
-      timeout_type = New_leader_election; 
-    } 
 
   let existing_election_wait election_deadline now = 
     Wait_for_rpc {
