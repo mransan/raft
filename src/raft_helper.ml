@@ -38,7 +38,6 @@ module Follower = struct
       log;
       log_size = List.length log;
       commit_index = 0; 
-      last_applied = 0; 
       role = Follower {
         voted_for; 
         current_leader; 
