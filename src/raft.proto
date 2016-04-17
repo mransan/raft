@@ -227,34 +227,106 @@ message State {
   required Configuration configuration = 9;
 }
 
+// [LogEntry] 
+// 
+// RAFT protocol ensure consensus on the execution of a 
+// state machine. In other word each RAFT server must eventually
+// execute the exact same state machine instructions hence leading to the
+// same state.
+//
+// Each instruction of the state machine is wrapped into a [LogEntry]. 
+// 
+// [data] 
+//   Placeholder for the application state machine instruction. 
+//
+// [index]
+//   Instruction index. Each new instruction index increment by 1 
+//   the previous instruction index. 
+//
+// [term]
+//   During which term the log entry was inserted into the state [Log].
+//
 message LogEntry {
   required int32 index = 1; // starts at 1  
   required int32 term  = 2; // starts at 0
   required bytes data  = 3; 
 }
 
+// [LeaderState]
+//
+// When a server is a [Leader] it must keep tracks of several 
+// information in order to do its job. 
+//
+// [next_index]
+//   Which [LogEntry] should be sent next to a particular 
+//   server. This information is used when the [Leader] computes 
+//   the [AppendEntriesRequest] for a [Follower]: it 
+//   will send all the [LogEntry] with index >= to that index. 
+// 
+// [match_index] 
+//   The index of the last known replicated [LogEntry]. This 
+//   information is used by the [Leader] to know if a particular
+//   [LogEntry] has been replicated on a majority of server and 
+//   can therefore be commited.
+//
+// [receiver_heartbeats]
+//   In order to maintain its leadership the [Leader] must 
+//   regularly send [AppendEntriesRequest] to all the [Follower]s.
+//   [receiver_heartbeats] keeps track of when should the next 
+//   heartbeat message be sent.
+//  
 message LeaderState {
   repeated ServerIndex       next_index          = 1;  
   repeated ServerIndex       match_index         = 2;  
   repeated ReceiverHeartbeat receiver_heartbeats = 3;
 }
 
+// [CandidateState]
+//
+// When a server is a [Candidate] it must keep track of its 
+// [vote_count] so that when it reaches a majority of votes it 
+// becomes a leader. 
+// 
+// Additionally each election can only last for so long (based 
+// on the configuration) and therefore the [Candidate] must keep
+// track of when the election should end [election_deadline]. 
+//
+// It's important to note that a [Candidate] will only start a 
+// new election after the [election_deadline]. Event if it 
+// receives a majority of negative responses it has to wait until then.
+// This gives the chance to another server to create a new election.
+//
 message CandidateState {
   required int32 vote_count         = 1;
   required double election_deadline = 2;
 }
 
+// [FollowerState]
+//
+// When a server is a [Follower] it first keeps track of its [Leader].
+// This information is optional because during an election there are no
+// [Leader]s. The [Follower] keeps track of this information so that 
+// if a client applcation is sending a request to it, it can redirect 
+// the client to the appropriate [Leader] server.
+//
+// The [Follower] is also keeping track of which [Candidate] it voted
+// for during its current term. This is to ensure that a [Follower] can 
+// only vote once.
+// 
+// Finally the [Follower] also sets an [election_deadline]. If it has 
+// not receive any [AppendEntriesRequest] from a valid [Leader] until
+// [election_deadline], it will then become a [Candidate] for the next 
+// term. 
+// We can see now how crucial it is for the [Leader] to send regular
+// heartbeat messages to the [Follower]. Each time an [AppendEntriesRequest]
+// is received by the [Follower] it will reset its [election_timeout]. 
+//
 message FollowerState {
   optional int32 voted_for          = 1; 
   optional int32 current_leader     = 2;
   required double election_deadline = 3;
 }
 
-// This message keeps track of when a heartbeat 
-// should be sent to a server by a leader. The 
-// leader must ensure that frequent enough heartbeat 
-// messages are sent to the receiver in order to prevent
-// a new election. 
 message ReceiverHeartbeat {
   required int32 server_id           = 1; 
   required float heartbeat_deadline  = 2; 
