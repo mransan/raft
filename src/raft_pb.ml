@@ -183,22 +183,19 @@ and state_mutable = {
   mutable configuration : configuration;
 }
 
-type follow_up_action_wait_for_next_rpc_time_out_type =
+type timeout_event_time_out_type =
   | New_leader_election 
   | Heartbeat 
 
-type follow_up_action_wait_for_next_rpc = {
+type timeout_event = {
   timeout : float;
-  timeout_type : follow_up_action_wait_for_next_rpc_time_out_type;
+  timeout_type : timeout_event_time_out_type;
 }
 
-and follow_up_action_wait_for_next_rpc_mutable = {
+and timeout_event_mutable = {
   mutable timeout : float;
-  mutable timeout_type : follow_up_action_wait_for_next_rpc_time_out_type;
+  mutable timeout_type : timeout_event_time_out_type;
 }
-
-type follow_up_action =
-  | Wait_for_rpc of follow_up_action_wait_for_next_rpc
 
 let rec default_request_vote_request 
   ?candidate_term:((candidate_term:int) = 0)
@@ -430,22 +427,20 @@ and default_state_mutable () : state_mutable = {
   configuration = default_configuration ();
 }
 
-let rec default_follow_up_action_wait_for_next_rpc_time_out_type () = (New_leader_election:follow_up_action_wait_for_next_rpc_time_out_type)
+let rec default_timeout_event_time_out_type () = (New_leader_election:timeout_event_time_out_type)
 
-let rec default_follow_up_action_wait_for_next_rpc 
+let rec default_timeout_event 
   ?timeout:((timeout:float) = 0.)
-  ?timeout_type:((timeout_type:follow_up_action_wait_for_next_rpc_time_out_type) = default_follow_up_action_wait_for_next_rpc_time_out_type ())
-  () : follow_up_action_wait_for_next_rpc  = {
+  ?timeout_type:((timeout_type:timeout_event_time_out_type) = default_timeout_event_time_out_type ())
+  () : timeout_event  = {
   timeout;
   timeout_type;
 }
 
-and default_follow_up_action_wait_for_next_rpc_mutable () : follow_up_action_wait_for_next_rpc_mutable = {
+and default_timeout_event_mutable () : timeout_event_mutable = {
   timeout = 0.;
-  timeout_type = default_follow_up_action_wait_for_next_rpc_time_out_type ();
+  timeout_type = default_timeout_event_time_out_type ();
 }
-
-let rec default_follow_up_action () : follow_up_action = Wait_for_rpc (default_follow_up_action_wait_for_next_rpc ())
 
 let rec decode_request_vote_request d =
   let v = default_request_vote_request_mutable () in
@@ -675,39 +670,25 @@ let rec decode_state d =
   let v:state = Obj.magic v in
   v
 
-let rec decode_follow_up_action_wait_for_next_rpc_time_out_type d = 
+let rec decode_timeout_event_time_out_type d = 
   match Pbrt.Decoder.int_as_varint d with
-  | 1 -> (New_leader_election:follow_up_action_wait_for_next_rpc_time_out_type)
-  | 2 -> (Heartbeat:follow_up_action_wait_for_next_rpc_time_out_type)
-  | _ -> failwith "Unknown value for enum follow_up_action_wait_for_next_rpc_time_out_type"
+  | 1 -> (New_leader_election:timeout_event_time_out_type)
+  | 2 -> (Heartbeat:timeout_event_time_out_type)
+  | _ -> failwith "Unknown value for enum timeout_event_time_out_type"
 
-let rec decode_follow_up_action_wait_for_next_rpc d =
-  let v = default_follow_up_action_wait_for_next_rpc_mutable () in
+let rec decode_timeout_event d =
+  let v = default_timeout_event_mutable () in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Bits64) -> v.timeout <- (Pbrt.Decoder.float_as_bits64 d); loop ()
-    | Some (2, Pbrt.Varint) -> v.timeout_type <- (decode_follow_up_action_wait_for_next_rpc_time_out_type d); loop ()
+    | Some (2, Pbrt.Varint) -> v.timeout_type <- (decode_timeout_event_time_out_type d); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
-  let v:follow_up_action_wait_for_next_rpc = Obj.magic v in
+  let v:timeout_event = Obj.magic v in
   v
-
-let rec decode_follow_up_action d = 
-  let rec loop () = 
-    let ret:follow_up_action = match Pbrt.Decoder.key d with
-      | None -> failwith "None of the known key is found"
-      | Some (5, _) -> Wait_for_rpc (decode_follow_up_action_wait_for_next_rpc (Pbrt.Decoder.nested d))
-      | Some (n, payload_kind) -> (
-        Pbrt.Decoder.skip d payload_kind; 
-        loop () 
-      )
-    in
-    ret
-  in
-  loop ()
 
 let rec encode_request_vote_request (v:request_vote_request) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
@@ -897,24 +878,17 @@ let rec encode_state (v:state) encoder =
   Pbrt.Encoder.nested (encode_configuration v.configuration) encoder;
   ()
 
-let rec encode_follow_up_action_wait_for_next_rpc_time_out_type (v:follow_up_action_wait_for_next_rpc_time_out_type) encoder =
+let rec encode_timeout_event_time_out_type (v:timeout_event_time_out_type) encoder =
   match v with
   | New_leader_election -> Pbrt.Encoder.int_as_varint 1 encoder
   | Heartbeat -> Pbrt.Encoder.int_as_varint 2 encoder
 
-let rec encode_follow_up_action_wait_for_next_rpc (v:follow_up_action_wait_for_next_rpc) encoder = 
+let rec encode_timeout_event (v:timeout_event) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Bits64) encoder; 
   Pbrt.Encoder.float_as_bits64 v.timeout encoder;
   Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
-  encode_follow_up_action_wait_for_next_rpc_time_out_type v.timeout_type encoder;
+  encode_timeout_event_time_out_type v.timeout_type encoder;
   ()
-
-let rec encode_follow_up_action (v:follow_up_action) encoder = 
-  match v with
-  | Wait_for_rpc x -> (
-    Pbrt.Encoder.key (5, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_follow_up_action_wait_for_next_rpc x) encoder;
-  )
 
 let rec pp_request_vote_request fmt (v:request_vote_request) = 
   let pp_i fmt () =
@@ -1070,20 +1044,16 @@ and pp_state fmt (v:state) =
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
-let rec pp_follow_up_action_wait_for_next_rpc_time_out_type fmt (v:follow_up_action_wait_for_next_rpc_time_out_type) =
+let rec pp_timeout_event_time_out_type fmt (v:timeout_event_time_out_type) =
   match v with
   | New_leader_election -> Format.fprintf fmt "New_leader_election"
   | Heartbeat -> Format.fprintf fmt "Heartbeat"
 
-let rec pp_follow_up_action_wait_for_next_rpc fmt (v:follow_up_action_wait_for_next_rpc) = 
+let rec pp_timeout_event fmt (v:timeout_event) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "timeout" Pbrt.Pp.pp_float fmt v.timeout;
-    Pbrt.Pp.pp_record_field "timeout_type" pp_follow_up_action_wait_for_next_rpc_time_out_type fmt v.timeout_type;
+    Pbrt.Pp.pp_record_field "timeout_type" pp_timeout_event_time_out_type fmt v.timeout_type;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
-
-let rec pp_follow_up_action fmt (v:follow_up_action) =
-  match v with
-  | Wait_for_rpc x -> Format.fprintf fmt "@[Wait_for_rpc(%a)@]" pp_follow_up_action_wait_for_next_rpc x

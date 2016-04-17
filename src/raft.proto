@@ -15,6 +15,16 @@ package raft;
 // prefixed with [prev]. 
 //
 
+// The Raft protocol defines: 
+// * 4 messages 
+// * 1 server state with 3 mutually exclusive roles. 
+// * 2 Timeout events 
+//
+// The server has always one role assigned and can 
+// receive any message at any time. Timeout events 
+// as we will see later are specific to roles.
+ 
+
 // Messages 
 // --------
 
@@ -26,6 +36,11 @@ message Message {
         AppendEntriesResponse append_entries_response = 4;
     }
 }
+
+// The 4 Raft messages are divided in 2 request/response pairs. 
+// - Request Vote 
+// - Append Entries
+//
 
 message RequestVoteRequest {
     required int32 candidate_term           = 1;
@@ -122,21 +137,6 @@ message ServerIndex {
   required int32 server_log_index = 2; 
 }
 
-message FollowUpAction {
-  message NoData { }
-  message WaitForNextRpc {
-    enum TimeOutType {
-      NEW_LEADER_ELECTION = 1;
-      HEARTBEAT           = 2; 
-    }
-    required double      timeout      = 1;
-    required TimeOutType timeout_type = 2;
-  }
-  oneof t {
-    WaitForNextRpc  wait_for_rpc       = 5;
-  }
-}
-
 message Configuration {
   required int32  nb_of_server           = 1;
   required double election_timeout       = 2;  
@@ -146,4 +146,15 @@ message Configuration {
     // [election_timeout_range]. 
   required double hearbeat_timeout       = 4; 
   required int32 max_nb_logs_per_message = 5;
+}
+
+// Timeout Events
+
+message TimeoutEvent {
+  enum TimeOutType {
+    NEW_LEADER_ELECTION = 1;
+    HEARTBEAT           = 2; 
+  }
+  required double      timeout      = 1;
+  required TimeOutType timeout_type = 2;
 }

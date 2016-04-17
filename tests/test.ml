@@ -4,14 +4,16 @@ module State     = Raft_helper.State
 module Candidate = Raft_helper.Candidate
 module Follower  = Raft_helper.Follower
 module Leader    = Raft_helper.Leader 
-module Follow_up_action = Raft_helper.Follow_up_action 
+module Timeout_event = Raft_helper.Timeout_event 
 
 module Logic     = Raft_logic  
 
 let default_configuration = {
   nb_of_server           = 3; 
   election_timeout       = 0.1;
-  election_timeout_range = 0.01; 
+  election_timeout_range = 0.0; 
+    (* To get deterministic number for testing.
+     *) 
   hearbeat_timeout       = 0.02;
   max_nb_logs_per_message = 10;
 }
@@ -58,13 +60,10 @@ let assert_nb_votes state expected_vote_count=
   | Candidate {vote_count; _ } -> assert(vote_count = expected_vote_count)
   | _ -> assert(false) 
 
-let assert_action a1 a2 = 
-  match a1, a2 with
-  | Wait_for_rpc w1, Wait_for_rpc w2 -> (
-    assert(w1.timeout_type = w2.timeout_type);
-    let diff = abs_float (w1.timeout -. w2.timeout) in 
-    assert(diff < 0.00001)
-  )
+let assert_event e1 e2 = 
+  assert(e1.timeout_type = e2.timeout_type);
+  let diff = abs_float (e1.timeout -. e2.timeout) in 
+  assert(diff < 0.00001)
   
 let ipc_time = 0.001 (* 1 ms *) 
 
@@ -76,7 +75,7 @@ let vote_communication ~from ~to_ ~now () =
   let to_, response = Logic.Request_vote.handle_request to_ request_vote now in 
   let now = now +. ipc_time in 
   let state, response = Logic.Request_vote.handle_response from response now in 
-  ((state, response, Follow_up_action.default state now), to_, now)
+  ((state, response, Timeout_event.next state now), to_, now)
 
 let () = 
   (* 
@@ -128,7 +127,7 @@ let () =
    * Convert from Candidate to Leader after getting majority
    *)
   
-  let (server0, msgs_to_send, follow_up_action), server1, now 
+  let (server0, msgs_to_send, next_event), server1, now 
     = vote_communication ~from:server0 ~to_:server1 ~now () in 
 
   assert(now = 0.002);
@@ -168,11 +167,11 @@ let () =
      *)
   assert (0 = server0.id);
   let () =
-    let action = Wait_for_rpc {
+    let expected_event = {
       timeout = default_configuration.hearbeat_timeout; 
       timeout_type  = Heartbeat; 
     } in 
-    assert_action action follow_up_action
+    assert_event expected_event next_event
   in
   assert(2 = List.length msgs_to_send);
 
@@ -187,21 +186,22 @@ let () =
   assert(now = 0.003); 
 
   (*
-   * We now check that the default next action
+   * We now check that the next next action
    * is to wait on Rpc with the heartbeat timeout 
    * set to the value in the configuration - 1ms elapsed
    * since becoming a leader.
    *)
   
-  let next_action = Follow_up_action.default server0  now in 
-  assert(Wait_for_rpc {
-    timeout = default_configuration.hearbeat_timeout -. 0.001; 
-    timeout_type = Heartbeat} = next_action); 
+  let next_event = Timeout_event.next server0  now in 
+  assert_event {
+    timeout = default_configuration.hearbeat_timeout -. 0.001;
+    timeout_type = Heartbeat;
+  } next_event;
 
   (* 
   Format.printf "server0': %a\n" pp_state server0; 
   Format.printf "server1' : %a\n" pp_state server1; 
-  Format.printf "followup action: %a\n" pp_follow_up_action follow_up_action; 
+  Format.printf "followup action: %a\n" pp_next_event next_event; 
   *)
   ()
 
@@ -228,7 +228,7 @@ let () =
    * server0 must grant its vote. 
    *)
 
-  let (candidate1, msgs_to_send, follow_up_action1), server0, now  
+  let (candidate1, msgs_to_send, next_event1), server0, now  
     = vote_communication ~from:candidate1 ~to_:server0 ~now () in 
 
   assert(now = 0.002); 
@@ -251,11 +251,11 @@ let () =
   
   assert(State.is_leader candidate1);
   let () = 
-    let action = Wait_for_rpc {
+    let expected_event = {
       timeout = default_configuration.hearbeat_timeout; 
       timeout_type = Heartbeat; 
     } in 
-    assert_action action follow_up_action1
+    assert_event expected_event next_event1
   in
   assert(2 = List.length msgs_to_send);
 
@@ -267,7 +267,7 @@ let () =
    * not grant it again to candidate2. 
    *)
   
-  let (candidate2, msgs_to_send, follow_up_action2), server0, now 
+  let (candidate2, msgs_to_send, next_event2), server0, now 
     = vote_communication ~from:candidate2 ~to_:server0 ~now () in 
 
   assert(now = 0.004);
@@ -283,11 +283,11 @@ let () =
    * (election_timeout - 0.004) 
    *)
   let () = 
-    let action = Wait_for_rpc {
+    let expected_event = {
       timeout = default_configuration.election_timeout -. 0.004; 
       timeout_type = New_leader_election;
     } in 
-    assert(action = follow_up_action2)
+    assert(expected_event = next_event2)
   in
   assert([] = msgs_to_send); 
     (* candidate2 is not a leader and therefore no message
@@ -311,7 +311,7 @@ let append_entry_communication ~from ~to_ ~now () =
      *)
     let now = now +. 0.001 in 
     let state, responses = Logic.Append_entries.handle_response from response now in 
-    ((state, responses, Follow_up_action.default state now) , to_, response, now) 
+    ((state, responses, Timeout_event.next state now) , to_, response, now) 
   | None -> failwith "request expected"
 
 let () = 
@@ -372,7 +372,7 @@ let () =
   assert(0 = server1.log_size);
   assert_no_current_leader server1;
 
-  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, next_event), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in 
   
   (* Check leader state after request/response communication
@@ -409,11 +409,11 @@ let () =
    * the min timeout is (hearbeat_timeout -. 0.002). 
    *)
   let () = 
-    let action = Wait_for_rpc {
+    let expected_event = {
       timeout_type = Heartbeat;
       timeout = default_configuration.hearbeat_timeout -. 0.002; 
     } in 
-    assert(action = follow_up_action); 
+    assert_event expected_event next_event; 
   in
   
   (* Check the follower state after request/request communication
@@ -445,7 +445,7 @@ let () =
        commit_index updated to 2.
      *)
   
-  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, next_event), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in 
   assert(now = 0.004); 
   assert([] = msgs_to_send);
@@ -466,11 +466,11 @@ let () =
    * and therefore the timeout will be hearbeat_timeout - now. 
    *) 
   let () = 
-    let action = Wait_for_rpc {
+    let expected_event = {
       timeout = default_configuration.hearbeat_timeout -. now;
       timeout_type = Heartbeat;
     } in 
-    assert(action = follow_up_action)
+    assert_event expected_event next_event
   in 
 
   let server0 = 
@@ -478,7 +478,7 @@ let () =
     |> Leader.add_log bim
   in
 
-  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, next_event), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in 
 
   let check_server0 server0 = 
@@ -518,7 +518,7 @@ let () =
 
   check_server1 ~commit_index:2 server1;
   
-  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, next_event), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in 
     (* Since no new log were inserted, this should have send 
        an empty append entry request but with a leader commit index = 3 which
@@ -535,7 +535,7 @@ let () =
   (* 
   Format.printf "server0: %a\n" pp_state server0; 
   Format.printf "server1' : %a\n" pp_state server1; 
-  Format.printf "followup action: %a\n" pp_follow_up_action follow_up_action; 
+  Format.printf "followup action: %a\n" pp_next_event next_event; 
   *)
   ()
 
@@ -577,7 +577,7 @@ let () =
      * the leader about it.
      *)
 
-  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, next_event), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in
 
   assert(now = 0.002); 
@@ -637,14 +637,14 @@ let () =
   end;
 
   let () = 
-    let action = Wait_for_rpc {
+    let expected_event = {
       timeout = default_configuration.hearbeat_timeout -. now;
       timeout_type = Heartbeat;
     } in 
-    assert(action = follow_up_action)
+    assert_event expected_event next_event
   in 
 
-  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, next_event), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in
   assert(now = 0.004); 
   assert((Some 2) = Leader.next_index_for_receiver server0 1);
@@ -664,7 +664,7 @@ let () =
   | _ -> assert(false)
   end;
 
-  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, next_event), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in
   assert(now = 0.006); 
   assert((Some 1) = Leader.next_index_for_receiver server0 1);
@@ -684,7 +684,7 @@ let () =
   | _ -> assert(false)
   end;
 
-  let (server0, msgs_to_send, follow_up_action), server1, _, now = 
+  let (server0, msgs_to_send, next_event), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in
   assert(now = 0.008); 
   assert(3 = List.length server1.log); 
@@ -711,11 +711,11 @@ let () =
      * and therefore the leader is expected to send a heart beat in
      * hearbeat_timeout - now
      *)
-    let action = Wait_for_rpc {
+    let expected_event = {
       timeout_type = Heartbeat; 
       timeout = default_configuration.hearbeat_timeout -. now; 
     } in 
-    assert(action = follow_up_action)
+    assert_event expected_event next_event
   in
   ()
 
@@ -814,7 +814,7 @@ let () =
    * and server1 (follower of the server0 leader)
    *)
 
-  let (server2, msgs_to_send, follow_up_action), server1, now =
+  let (server2, msgs_to_send, next_event), server1, now =
     vote_communication ~from:server2 ~to_:server1 ~now () in
   assert(now = 0.002);
 
@@ -841,11 +841,11 @@ let () =
      *)
   
   let () = 
-    let action = Wait_for_rpc {
+    let expected_event = {
       timeout = default_configuration.election_timeout -. now; 
       timeout_type = New_leader_election; 
     } in 
-    assert(action = follow_up_action)
+    assert_event expected_event next_event
   in 
 
   (*
@@ -853,7 +853,7 @@ let () =
    * and server0
    *)
 
-  let (server2, msgs_to_send, follow_up_action), server0, now =
+  let (server2, msgs_to_send, next_event), server0, now =
     vote_communication ~from:server2 ~to_:server0 ~now () in
   assert(now = 0.004);
   
@@ -880,11 +880,11 @@ let () =
      *)
 
   let () = 
-    let action = Wait_for_rpc {
+    let expected_event = {
       timeout_type = New_leader_election; 
       timeout = default_configuration.election_timeout -. now; 
     } in 
-    assert(action = follow_up_action)
+    assert_event expected_event next_event
   in 
   
   (*
@@ -903,7 +903,7 @@ let () =
   let server1 = Candidate.become ~now server1 in
   assert(12 = server1.current_term); 
 
-  let (server1, msgs_to_send, follow_up_action), server0, now = 
+  let (server1, msgs_to_send, next_event), server0, now = 
     vote_communication ~from:server1 ~to_:server0 ~now () in 
 
   assert(State.is_leader server1); 
@@ -913,11 +913,11 @@ let () =
      * majority and server1 become leader. 
      *) 
   let () = 
-    let action = Wait_for_rpc {
+    let expected_event = {
       timeout = default_configuration.hearbeat_timeout;
       timeout_type = Heartbeat; 
     } in 
-    assert_action action follow_up_action;
+    assert_event expected_event next_event;
   in 
   assert(2 = List.length msgs_to_send);
 

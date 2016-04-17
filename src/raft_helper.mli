@@ -157,8 +157,8 @@ module Configuration : sig
 
 end (* Configuration *)
 
-module Follow_up_action : sig
+module Timeout_event : sig
 
-  val default : Raft_pb.state -> float -> Raft_pb.follow_up_action 
+  val next : Raft_pb.state -> float -> Raft_pb.timeout_event 
 
-end (* Follow_up_action *)
+end (* Timeout_event *)

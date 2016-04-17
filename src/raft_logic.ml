@@ -6,7 +6,7 @@ module Follower         = Raft_helper.Follower
 module Candidate        = Raft_helper.Candidate
 module Leader           = Raft_helper.Leader
 module Configuration    = Raft_helper.Configuration
-module Follow_up_action = Raft_helper.Follow_up_action 
+module Timeout_event    = Raft_helper.Timeout_event 
 
 type time = float 
   
