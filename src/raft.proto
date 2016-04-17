@@ -18,22 +18,21 @@ package raft;
 // ----------------------------------------------------------------------------
 //
 // Messages define the data exchanged between the servers participating
-// in the RAFT protocol. The message described below don't include 
+// in the RAFT protocol. The messages described below don't include 
 // the protocol between a client application and the RAFT servers. Those
-// Messages would be specific to a concrete implementation of a Raft 
-// servers. 
+// messages would be specific to a concrete implementation.
 //
 // The 4 Raft messages are divided into 2 request/response pairs. 
 //
 // - Request Vote
-//   The [Request Vote] messages are used for leader election. The Raft 
+//   The [Request Vote] messages are used for leader election. The RAFT 
 //   protocol relies on a leader server coordinating the state mofications 
 //   and ensuring replication to all the other servers. 
 //
 // - Append Entries
 //   The [Append Entries] messages are used for replication of the 
-//   data between the leader and the follower servers. 
-//   Additionally empty [Append Entries] requests are used for 
+//   data between the [Leader]] and the [Follower] servers. 
+//   Additionally empty [AppendEntriesRequet]s are used for 
 //   heartbeat notifications.
 
 // The [Message] type groups together the 4 messages that makes 
@@ -56,9 +55,9 @@ message Message {
 // [candidate_term] identifies the election term. The term uniquely
 // identifies an election round. 
 //
-// [candidate_last_log_index] and [candidate_last_log_term] are here to
-// indicate what is the most recent data replicated by the sender. This 
-// information is needed by the receiver of this message to determine is the 
+// [candidate_last_log_index] and [candidate_last_log_term] indicates
+// the most recent data replicated by the [Candidate ]sender. This 
+// information is needed by the receiver of the message to determine if the 
 // candidate is up to date. 
 // 
 message RequestVoteRequest {
@@ -69,7 +68,7 @@ message RequestVoteRequest {
 }
 
 // [RequestVoteResponse] is the message expected to be sent by a server 
-// in reply to a [RequestVoteResponse]. 
+// in reply to a [RequestVoteRequest]. 
 // 
 // In short it indicates whether or not the server has granted 
 // its vote for this election.
@@ -80,8 +79,7 @@ message RequestVoteResponse {
     required bool  vote_granted = 3; 
 }
 
-
-// [AppendEntriesResponse] is send by a [Leader] server to 
+// [AppendEntriesRequest] is send by a [Leader] server to 
 // replicate data to the other servers. 
 // 
 // While data replication is the primary purpose of this message
@@ -98,11 +96,11 @@ message RequestVoteResponse {
 // Heartbeat:
 //   In order for a leader to maintain its [Leader] role it must 
 //   continuously remind other servers of its current leadership. In fact
-//   if the Leader fails to do so, another server will eventually believe 
+//   if the [Leader] fails to do so, another server will eventually believe 
 //   that the Leader is no longer assuming its role. That server will
 //   consequently initiate a new election among the servers.
-//   The [Leader] is therefore sending empty AppendEntriesRequest at regular 
-//   time intervals to perpetuate its Leader role.
+//   The [Leader] is therefore sending empty [AppendEntriesRequest] at regular 
+//   time intervals to perpetuate its [Leader] role.
 //
 // [leader_term]/[leader_id] identifies the server. The [leader_term] is 
 // also used by the receiver of the message to either be aware of a new term or 
