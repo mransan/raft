@@ -40,7 +40,6 @@ let initial_state
     log;
     log_size = List.length log;
     commit_index;
-    last_applied = 0;
     role;
     configuration; 
   }

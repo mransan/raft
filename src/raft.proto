@@ -2,19 +2,9 @@ option (int32_type) = int_t;
 
 package raft;
 
-// - Ordering of Log Entries -
-//  
-// The default ordering of log entries is descending chronological
-// order. The latest log entry (with the highest index) is first
-// in the list. 
-// 
-// The reason for this ordering is to provide efficient usage of the 
-// list data structure. 
+// OVERVIEW 
+// ----------------------------------------------------------------------------
 //
-// If the log are ordered in reverse order then the field will be 
-// prefixed with [prev]. 
-//
-
 // The Raft protocol defines: 
 // * 4 messages 
 // * 1 server state with 3 mutually exclusive roles. 
@@ -24,10 +14,30 @@ package raft;
 // receive any message at any time. Timeout events 
 // as we will see later are specific to roles.
  
+// MESSAGES
+// ----------------------------------------------------------------------------
+//
+// Messages define the data exchanged between the servers participating
+// in the RAFT protocol. The message described below don't include 
+// the protocol between a client application and the RAFT servers. Those
+// Messages would be specific to a concrete implementation of a Raft 
+// servers. 
+//
+// The 4 Raft messages are divided into 2 request/response pairs. 
+//
+// - Request Vote
+//   The [Request Vote] messages are used for leader election. The Raft 
+//   protocol relies on a leader server coordinating the state mofications 
+//   and ensuring replication to all the other servers. 
+//
+// - Append Entries
+//   The [Append Entries] messages are used for replication of the 
+//   data between the leader and the follower servers. 
+//   Additionally empty [Append Entries] requests are used for 
+//   heartbeat notifications.
 
-// Messages 
-// --------
-
+// The [Message] type groups together the 4 messages that makes 
+// up the RAFT protocol. 
 message Message {
     oneof t {
         RequestVoteRequest    request_vote_request    = 1;
@@ -37,11 +47,20 @@ message Message {
     }
 }
 
-// The 4 Raft messages are divided in 2 request/response pairs. 
-// - Request Vote 
-// - Append Entries
+// [RequestVoteRequest] is sent by a [Candidate] server 
+// to ask another server to vote for itself. 
 //
-
+// This message is sent when a New Election Timeout and the server
+// transitions from [Follower] to [Candidate]. 
+// 
+// [candidate_term] identifies the election term. The term uniquely
+// identifies an election round. 
+//
+// [candidate_last_log_index] and [candidate_last_log_term] are here to
+// indicate what is the most recent data replicated by the sender. This 
+// information is needed by the receiver of this message to determine is the 
+// candidate is up to date. 
+// 
 message RequestVoteRequest {
     required int32 candidate_term           = 1;
     required int32 candidate_id             = 2;
@@ -49,12 +68,64 @@ message RequestVoteRequest {
     required int32 candidate_last_log_term  = 4;
 }
 
+// [RequestVoteResponse] is the message expected to be sent by a server 
+// in reply to a [RequestVoteResponse]. 
+// 
+// In short it indicates whether or not the server has granted 
+// its vote for this election.
+//
 message RequestVoteResponse {
     required int32 voter_id     = 1; 
     required int32 voter_term   = 2; 
     required bool  vote_granted = 3; 
 }
 
+
+// [AppendEntriesResponse] is send by a [Leader] server to 
+// replicate data to the other servers. 
+// 
+// While data replication is the primary purpose of this message
+// it also has additional functionality. 
+//
+// Establishing Leadersip:
+//   Because only a [Leader] can send such a message, this message
+//   type is also an indication to other servers that the sender
+//   is the current [Leader]. Therefore a freshly elected server (ie which 
+//   transitioned from Candidate to Leader after receiving a majority
+//   of vote) will immediately send an [AppendEntriesRequest] to establish
+//   its leadership to the other servers. 
+// 
+// Heartbeat:
+//   In order for a leader to maintain its [Leader] role it must 
+//   continuously remind other servers of its current leadership. In fact
+//   if the Leader fails to do so, another server will eventually believe 
+//   that the Leader is no longer assuming its role. That server will
+//   consequently initiate a new election among the servers.
+//   The [Leader] is therefore sending empty AppendEntriesRequest at regular 
+//   time intervals to perpetuate its Leader role.
+//
+// [leader_term]/[leader_id] identifies the server. The [leader_term] is 
+// also used by the receiver of the message to either be aware of a new term or 
+// detect that Leader is from an older term and therefore reject the request. 
+// 
+// [prev_log_index]/[prev_log_term] indicates the [Leader] belief of what was 
+// the last replicated data on the receiver. This information is crucial for 
+// synching together a [Leader] and a [Follower]. 
+// In particular right after transitioning to [Leader], the server 
+// can only guess the replicated state on the other servers. 
+// In fact it first assumes that all other servers have replicated the exact
+// same data as it did. This is most likely incorrect and the first interaction
+// of a [Leader] and its [Followers] is to rectify this.
+//
+// [rev_log_entries] contains the data to be replicated. It's in reverse
+// order for performance reason only. (See note on Log Entries ordering). 
+// 
+// [leader_commit] indicates the latest data replicated by a majority of 
+// servers. This information is helpful for the receiver since it can now
+// assume that any data up to that index will be persisted forever. Note
+// that any data/log which have a later index than the commit index might 
+// later be invalidated. 
+//
 message AppendEntriesRequest {
     required int32 leader_term         = 1; 
     required int32 leader_id           = 2; 
@@ -64,6 +135,32 @@ message AppendEntriesRequest {
     required int32 leader_commit       = 6; 
 }
 
+// [AppendEntriesResponse] is the message send by a server in response
+// a previously received AppendEntriesRequest. 
+// 
+// Besides the id and term of the server sending this message, the main
+// content of the message the indication whether or not the append entry
+// was successfull. 
+//
+// In the case it was successfull then the server sends its 
+// [receiver_last_log_index] so that the [Leader] can update its own 
+// belief of what the last replicated data on that server. 
+//
+// An append entry can fail for 2 reasons:
+//
+// - Outdated Leader Term. 
+//   It is possible that a [Leader] has already been replaced by 
+//   another server during a new election. In such a case the [leader_term]
+//   will be less than the receiver_term. Since the response 
+//   contains the [receiver_term], this outdated [Leader] will
+//   realize it should no longer assume suc a role and will transition to 
+//   becoming a [Follower] in the current term. 
+// 
+// - Invalid [prev_log_index]/[prev_log_index]
+//   As previously mentioned in the [AppendEntriesRequest] it is possible
+//   that the [Leader] belief of the latest replicated data on the server
+//   is incorrect. 
+// 
 message AppendEntriesResponse {
     required int32 receiver_id      = 1; 
     required int32 receiver_term    = 2; 
@@ -79,16 +176,49 @@ message AppendEntriesResponse {
     } 
 }
 
-// State
-// -----
+// STATE
+// ----------------------------------------------------------------------------
+// 
+// In this section we will define the [State] of the servers. The [State] is 
+// composed into 2 parts
+//
+// - Common data
+//   This data is common to all the servers no matter what role they have.
+//
+// - Role based data
+//   Data specific to a particular role
 
+// State structure
+//
+// [id] 
+//   Id the logical id of the server. Its range is `[0; nb_of_server[`. 
+//     
+// [current_term]
+//   TODO.
+// 
+// [log] & [log_size]
+//   Data to be replicated by the RAFT consensus.
+//   [log_size] is simply an optimization, since [log] is represented
+//   as an OCaml list, computing the length is a linear operation.
+//
+// [commit_index]
+//   It's the latest log index which has been successfully replicated 
+//   on a majority of servers. 
+// 
+// [configuration] 
+//   Cluster configuration (number of server and various timeout 
+//   values). 
+// 
+// [role] 
+//   The current role of the server. [oneof] guarantees that 
+//   the server can only be in one role at a time.
+//
 message State {
   required int32 id           = 1;
   required int32 current_term = 2; 
   repeated LogEntry log       = 3; 
   required int32 log_size     = 10;
   required int32 commit_index = 4; 
-  required int32 last_applied = 5; 
 
   oneof role {
     LeaderState    leader    = 6;
@@ -148,7 +278,9 @@ message Configuration {
   required int32 max_nb_logs_per_message = 5;
 }
 
-// Timeout Events
+// TIMEOUT EVENTS
+// ----------------------------------------------------------------------------
+// 
 
 message TimeoutEvent {
   enum TimeOutType {
@@ -158,3 +290,20 @@ message TimeoutEvent {
   required double      timeout      = 1;
   required TimeOutType timeout_type = 2;
 }
+
+
+// Notes 
+// ---------------
+
+// - Ordering of Log Entries -
+//  
+// The default ordering of log entries is descending chronological
+// order. The latest log entry (with the highest index) is first
+// in the list. 
+// 
+// The reason for this ordering is to provide efficient usage of the 
+// list data structure. 
+//
+// If the log are ordered in reverse order then the field will be 
+// prefixed with [prev]. 
+//

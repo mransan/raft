@@ -167,7 +167,6 @@ and state = {
   log : log_entry list;
   log_size : int;
   commit_index : int;
-  last_applied : int;
   role : state_role;
   configuration : configuration;
 }
@@ -178,7 +177,6 @@ and state_mutable = {
   mutable log : log_entry list;
   mutable log_size : int;
   mutable commit_index : int;
-  mutable last_applied : int;
   mutable role : state_role;
   mutable configuration : configuration;
 }
@@ -402,7 +400,6 @@ let rec default_state
   ?log:((log:log_entry list) = [])
   ?log_size:((log_size:int) = 0)
   ?commit_index:((commit_index:int) = 0)
-  ?last_applied:((last_applied:int) = 0)
   ?role:((role:state_role) = Leader (default_leader_state ()))
   ?configuration:((configuration:configuration) = default_configuration ())
   () : state  = {
@@ -411,7 +408,6 @@ let rec default_state
   log;
   log_size;
   commit_index;
-  last_applied;
   role;
   configuration;
 }
@@ -422,7 +418,6 @@ and default_state_mutable () : state_mutable = {
   log = [];
   log_size = 0;
   commit_index = 0;
-  last_applied = 0;
   role = Leader (default_leader_state ());
   configuration = default_configuration ();
 }
@@ -659,7 +654,6 @@ let rec decode_state d =
     | Some (3, Pbrt.Bytes) -> v.log <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.log; loop ()
     | Some (10, Pbrt.Varint) -> v.log_size <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (4, Pbrt.Varint) -> v.commit_index <- (Pbrt.Decoder.int_as_varint d); loop ()
-    | Some (5, Pbrt.Varint) -> v.last_applied <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (6, Pbrt.Bytes) -> v.role <- Leader (decode_leader_state (Pbrt.Decoder.nested d)) ; loop ()
     | Some (7, Pbrt.Bytes) -> v.role <- Candidate (decode_candidate_state (Pbrt.Decoder.nested d)) ; loop ()
     | Some (8, Pbrt.Bytes) -> v.role <- Follower (decode_follower_state (Pbrt.Decoder.nested d)) ; loop ()
@@ -858,8 +852,6 @@ let rec encode_state (v:state) encoder =
   Pbrt.Encoder.int_as_varint v.log_size encoder;
   Pbrt.Encoder.key (4, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.commit_index encoder;
-  Pbrt.Encoder.key (5, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.last_applied encoder;
   (match v.role with
   | Leader x -> (
     Pbrt.Encoder.key (6, Pbrt.Bytes) encoder; 
@@ -1037,7 +1029,6 @@ and pp_state fmt (v:state) =
     Pbrt.Pp.pp_record_field "log" (Pbrt.Pp.pp_list pp_log_entry) fmt v.log;
     Pbrt.Pp.pp_record_field "log_size" Pbrt.Pp.pp_int fmt v.log_size;
     Pbrt.Pp.pp_record_field "commit_index" Pbrt.Pp.pp_int fmt v.commit_index;
-    Pbrt.Pp.pp_record_field "last_applied" Pbrt.Pp.pp_int fmt v.last_applied;
     Pbrt.Pp.pp_record_field "role" pp_state_role fmt v.role;
     Pbrt.Pp.pp_record_field "configuration" pp_configuration fmt v.configuration;
     Format.pp_close_box fmt ()
