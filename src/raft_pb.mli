@@ -101,17 +101,14 @@ and state = {
   configuration : configuration;
 }
 
-type follow_up_action_wait_for_next_rpc_time_out_type =
+type timeout_event_time_out_type =
   | New_leader_election 
   | Heartbeat 
 
-type follow_up_action_wait_for_next_rpc = {
+type timeout_event = {
   timeout : float;
-  timeout_type : follow_up_action_wait_for_next_rpc_time_out_type;
+  timeout_type : timeout_event_time_out_type;
 }
-
-type follow_up_action =
-  | Wait_for_rpc of follow_up_action_wait_for_next_rpc
 
 
 (** {2 Default values} *)
@@ -231,18 +228,15 @@ val default_state :
   state
 (** [default_state ()] is the default value for type [state] *)
 
-val default_follow_up_action_wait_for_next_rpc_time_out_type : unit -> follow_up_action_wait_for_next_rpc_time_out_type
-(** [default_follow_up_action_wait_for_next_rpc_time_out_type ()] is the default value for type [follow_up_action_wait_for_next_rpc_time_out_type] *)
+val default_timeout_event_time_out_type : unit -> timeout_event_time_out_type
+(** [default_timeout_event_time_out_type ()] is the default value for type [timeout_event_time_out_type] *)
 
-val default_follow_up_action_wait_for_next_rpc : 
+val default_timeout_event : 
   ?timeout:float ->
-  ?timeout_type:follow_up_action_wait_for_next_rpc_time_out_type ->
+  ?timeout_type:timeout_event_time_out_type ->
   unit ->
-  follow_up_action_wait_for_next_rpc
-(** [default_follow_up_action_wait_for_next_rpc ()] is the default value for type [follow_up_action_wait_for_next_rpc] *)
-
-val default_follow_up_action : unit -> follow_up_action
-(** [default_follow_up_action ()] is the default value for type [follow_up_action] *)
+  timeout_event
+(** [default_timeout_event ()] is the default value for type [timeout_event] *)
 
 
 (** {2 Protobuf Decoding} *)
@@ -291,14 +285,11 @@ val decode_configuration : Pbrt.Decoder.t -> configuration
 val decode_state : Pbrt.Decoder.t -> state
 (** [decode_state decoder] decodes a [state] value from [decoder] *)
 
-val decode_follow_up_action_wait_for_next_rpc_time_out_type : Pbrt.Decoder.t -> follow_up_action_wait_for_next_rpc_time_out_type
-(** [decode_follow_up_action_wait_for_next_rpc_time_out_type decoder] decodes a [follow_up_action_wait_for_next_rpc_time_out_type] value from [decoder] *)
+val decode_timeout_event_time_out_type : Pbrt.Decoder.t -> timeout_event_time_out_type
+(** [decode_timeout_event_time_out_type decoder] decodes a [timeout_event_time_out_type] value from [decoder] *)
 
-val decode_follow_up_action_wait_for_next_rpc : Pbrt.Decoder.t -> follow_up_action_wait_for_next_rpc
-(** [decode_follow_up_action_wait_for_next_rpc decoder] decodes a [follow_up_action_wait_for_next_rpc] value from [decoder] *)
-
-val decode_follow_up_action : Pbrt.Decoder.t -> follow_up_action
-(** [decode_follow_up_action decoder] decodes a [follow_up_action] value from [decoder] *)
+val decode_timeout_event : Pbrt.Decoder.t -> timeout_event
+(** [decode_timeout_event decoder] decodes a [timeout_event] value from [decoder] *)
 
 
 (** {2 Protobuf Toding} *)
@@ -347,14 +338,11 @@ val encode_configuration : configuration -> Pbrt.Encoder.t -> unit
 val encode_state : state -> Pbrt.Encoder.t -> unit
 (** [encode_state v encoder] encodes [v] with the given [encoder] *)
 
-val encode_follow_up_action_wait_for_next_rpc_time_out_type : follow_up_action_wait_for_next_rpc_time_out_type -> Pbrt.Encoder.t -> unit
-(** [encode_follow_up_action_wait_for_next_rpc_time_out_type v encoder] encodes [v] with the given [encoder] *)
+val encode_timeout_event_time_out_type : timeout_event_time_out_type -> Pbrt.Encoder.t -> unit
+(** [encode_timeout_event_time_out_type v encoder] encodes [v] with the given [encoder] *)
 
-val encode_follow_up_action_wait_for_next_rpc : follow_up_action_wait_for_next_rpc -> Pbrt.Encoder.t -> unit
-(** [encode_follow_up_action_wait_for_next_rpc v encoder] encodes [v] with the given [encoder] *)
-
-val encode_follow_up_action : follow_up_action -> Pbrt.Encoder.t -> unit
-(** [encode_follow_up_action v encoder] encodes [v] with the given [encoder] *)
+val encode_timeout_event : timeout_event -> Pbrt.Encoder.t -> unit
+(** [encode_timeout_event v encoder] encodes [v] with the given [encoder] *)
 
 
 (** {2 Formatters} *)
@@ -407,11 +395,8 @@ val pp_state_role : Format.formatter -> state_role -> unit
 val pp_state : Format.formatter -> state -> unit 
 (** [pp_state v] formats v] *)
 
-val pp_follow_up_action_wait_for_next_rpc_time_out_type : Format.formatter -> follow_up_action_wait_for_next_rpc_time_out_type -> unit 
-(** [pp_follow_up_action_wait_for_next_rpc_time_out_type v] formats v] *)
+val pp_timeout_event_time_out_type : Format.formatter -> timeout_event_time_out_type -> unit 
+(** [pp_timeout_event_time_out_type v] formats v] *)
 
-val pp_follow_up_action_wait_for_next_rpc : Format.formatter -> follow_up_action_wait_for_next_rpc -> unit 
-(** [pp_follow_up_action_wait_for_next_rpc v] formats v] *)
-
-val pp_follow_up_action : Format.formatter -> follow_up_action -> unit 
-(** [pp_follow_up_action v] formats v] *)
+val pp_timeout_event : Format.formatter -> timeout_event -> unit 
+(** [pp_timeout_event v] formats v] *)

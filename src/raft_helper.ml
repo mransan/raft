@@ -30,7 +30,8 @@ end
 module Follower = struct 
 
   let create ?current_leader ?current_term:(current_term = 0) ?voted_for ?log:(log = []) ~configuration ~now ~id () = 
-    let {election_timeout; _ } = configuration in 
+    let {election_timeout = t ; election_timeout_range = r; _ } = configuration in 
+    let timeout = t +. (Random.float r -. (r /. 2.)) in
     {
       id; 
       current_term; 
@@ -38,18 +39,23 @@ module Follower = struct
       log_size = List.length log;
       commit_index = 0; 
       last_applied = 0; 
-      role = Follower {voted_for; current_leader; election_deadline = now +. election_timeout};  
+      role = Follower {
+        voted_for; 
+        current_leader; 
+        election_deadline = now +.  timeout 
+      };  
       configuration; 
     }
 
   let become ?current_leader ~term ~now state = 
-    let {configuration = {election_timeout; _}; _}= state in 
+    let {configuration = {election_timeout = t; election_timeout_range = r; _}; _}= state in 
+    let timeout = t +. (Random.float r -. (r /. 2.)) in
     { state with 
 
       role = Follower {
         voted_for = None; 
         current_leader; 
-        election_deadline = now +. election_timeout;
+        election_deadline = now +. timeout;
       }; 
       current_term = term; 
   }
@@ -59,10 +65,11 @@ end
 module Candidate = struct 
 
   let become ~now state = 
-    let {election_timeout; _ } = state.configuration in 
+    let {election_timeout = t; election_timeout_range = r; _ } = state.configuration in 
+    let timeout = t +. (Random.float r -. (r /. 2.)) in
     let candidate_state = {
       vote_count = 1; 
-      election_deadline = now +. election_timeout
+      election_deadline = now +. timeout;
     } in 
     {state with 
      role = Candidate candidate_state; 
@@ -215,21 +222,21 @@ module Configuration = struct
 
 end 
 
-module Follow_up_action = struct
+module Timeout_event = struct
 
   let existing_election_wait election_deadline now = 
-    Wait_for_rpc {
+    {
       timeout      = election_deadline -. now; 
       timeout_type = New_leader_election; 
     }
   
   let make_heartbeat_wait timeout = 
-    Wait_for_rpc {
+    {
       timeout = timeout; 
       timeout_type = Heartbeat;
     }
 
-  let default state now = 
+  let next state now = 
     match state.role with
     | Follower {election_deadline; _} ->
       existing_election_wait election_deadline  now  
