@@ -26,7 +26,7 @@ package raft;
 //
 // - Request Vote
 //   The [Request Vote] messages are used for leader election. The RAFT 
-//   protocol relies on a leader server coordinating the state modifications 
+//   protocol relies on a [Leader] server to coordinate the state modifications 
 //   and ensuring replication to all the other servers. 
 //
 // - Append Entries
@@ -49,8 +49,8 @@ message Message {
 // [RequestVoteRequest] is sent by a [Candidate] server 
 // to ask another server to vote for itself. 
 //
-// This message is sent when a New Election Timeout and the server
-// transitions from [Follower] to [Candidate]. 
+// This message is sent when a New Election Timeout event happened 
+// and the server transitions from [Follower] to [Candidate]. 
 // 
 // [candidate_term] identifies the election term. The term uniquely
 // identifies an election round. 
@@ -71,7 +71,7 @@ message RequestVoteRequest {
 // in reply to a [RequestVoteRequest]. 
 // 
 // In short, it indicates whether or not the server has granted 
-// its vote for this election.
+// its vote for the requested election.
 //
 message RequestVoteResponse {
     required int32 voter_id     = 1; 
@@ -98,7 +98,7 @@ message RequestVoteResponse {
 //   continuously remind other servers of its current leadership. In fact
 //   if the [Leader] fails to do so, another server will eventually believe 
 //   that the Leader is no longer assuming its role. That server will
-//   consequently initiate a new election among the servers.
+//   consequently initiate a new election.
 //   The [Leader] is therefore sending empty [AppendEntriesRequest] at regular 
 //   time intervals to perpetuate its [Leader] role.
 //
@@ -106,7 +106,7 @@ message RequestVoteResponse {
 // also used by the receiver of the message to either be aware of a new term or 
 // detect that Leader is from an older term and therefore reject the request. 
 // 
-// [prev_log_index]/[prev_log_term] keep track of the [Leader] belief about  
+// [prev_log_index]/[prev_log_term] variables keep track of the [Leader] belief about  
 // the last replicated data on the receiver. This information is crucial for 
 // syncing together a [Leader] and a [Follower]. 
 // This is particularly true at the time a server becomes a [Leader]; it 
@@ -135,13 +135,13 @@ message AppendEntriesRequest {
 // [AppendEntriesRequest]. 
 // 
 // Besides the [receiver_id] and [receiver_term] of the message sender, the main
-// content of the message focuses on the success or failure of the append operation.
+// content of the message is the success or failure of the append operation.
 //
 // In the case it was successful, the server sends its 
 // [receiver_last_log_index] so that the [Leader] can update its own 
 // belief of what was the last replicated data on that server. 
 //
-// An append entry can fail for 2 reasons:
+// A failure can happen for 2 reasons:
 //
 // - Outdated Leader Term. 
 //   It is possible that a [Leader] has already been replaced by 
@@ -324,6 +324,9 @@ message FollowerState {
   required double election_deadline = 3;
 }
 
+// [ReceiverHeartbeat] : data structure to 
+// keep track of the hearbeat deadline for each
+// server 
 message ReceiverHeartbeat {
   required int32 server_id           = 1; 
   required float heartbeat_deadline  = 2; 
@@ -334,6 +337,39 @@ message ServerIndex {
   required int32 server_log_index = 2; 
 }
 
+// [Configuration] 
+// 
+// The RAFT protocol can be configured based on the 
+// application needs. 
+// 
+// First the [nb_of_server] that makes up the cluster. 
+//
+// Second new elections are configured with 2 parameters:
+//
+// [election_timeout]
+//   This is the average time that it will take a server
+//   to start an election after receiving the last request
+//   from the [Leader]. 
+//
+// [election_timeout_range]
+//   In order to guarantee a stable and fast election
+//   mechanism it's has been demonstrated that the election
+//   timeout must be randomized. This avoid race condition 
+//   were multiple servers become Candidate at the same
+//   time. Each new election timeout is calculated using the 
+//   following formula:
+//   `timeout = election_timeout + Random[-range/2 , +range/2]` 
+//
+// [hearbeat_timeout]
+//   This is the maximum amount of time that a [Leader] must
+//   wait between 2 [AppendEntriesRequest]. For the RAFT 
+//   protocol to be stable: 
+//     hearbeat_timeout << election_timeout 
+// 
+// [max_nb_logs_per_message]
+//   Throttling of the number of message to be sent per
+//   [AppendEntriesRequest].
+// 
 message Configuration {
   required int32  nb_of_server           = 1;
   required double election_timeout       = 2;  
@@ -348,7 +384,32 @@ message Configuration {
 // TIMEOUT EVENTS
 // ----------------------------------------------------------------------------
 // 
-
+// A RAFT server should re-act to 3 categories of event
+//
+// - Client Request
+//   When a client application contacts a server to append an entry.
+//
+// - Server Message
+//   When another RAFT servers sent a message. This could be any 
+//   of the 4 messages defined previously
+//
+// - Timeout Event
+//   The RAFT protocol requires each server to set appropriate 
+//   timeout and defines specific action to be taken by the 
+//   server in the case the timeout event happened.
+//
+// The RAFT protocol defines 2 types of timeout:
+// 
+// - New Election
+//   When this timeout happened the server starts a new election.
+//   Only [Follower] and [Candidate] can set those timeouts. 
+//
+// - Heartbeat 
+//   When this timout happened it means that one or more servers
+//   have not received a request from the [Leader] for the maximum 
+//   allowed time. The server (which can only be a [Leader]) must
+//   then send a new [AppendEntriesRequest].  
+//
 message TimeoutEvent {
   enum TimeOutType {
     NEW_LEADER_ELECTION = 1;
