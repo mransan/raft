@@ -1,6 +1,5 @@
 # A Functional Implementation of the RAFT protocol
 
-
 ## Introduction
 
 > In this serie of blog posts we will implement the consensus protocol RAFT in a purely functional style. 
@@ -9,7 +8,7 @@
 
 **Functional Programming** is great and this implementation documents a concrete use case for a protocol implementation
 
-**OCaml** language is elegant, well proven and really fast. No OCaml knowledge is required for this blog posts and if you are interesting in learning this language with a concrete use case rather than iterating through the Language features then stay tuned. We'll only cover a very small fraction of the language and its ecosystem but hopefuly it will make you want to lean more.
+**OCaml** language is elegant, well proven and really fast. No OCaml knowledge is required for this blog posts and if you are interesting in learning this language with a concrete use case rather than iterating through the language features then stay tuned. We'll only cover a very small fraction of the language and its ecosystem but hopefuly it will make you want to lean more.
 
 Here are the main technology we'll be using:
 
@@ -23,7 +22,9 @@ Here are the main technology we'll be using:
 
 Consensus protocols ensure that participating servers will eventually be consistent even if certain failure happened. Such protocol can differ with regards to the state they manage as well as the type of failure they are resilient to. 
 
-**RAFT** protocol ensures the consistent execution of a `state machine` and it is resilient to `fail-stop` failures. 
+**RAFT** protocol ensures the consistent execution of a `state machine` and it is resilient to `fail-stop` failures. `fail-stop` failures are essentially server crashes or a server not receiving messages. **RAFT** protocol does not support Byzantine failure which is when a server is acting maliciously.
+
+In the next section we will look into details about what is a state machine with a concrete and simple example implemented in OCaml.
 
 #### State Machine 
 
@@ -91,8 +92,7 @@ OCaml is a functional language; you can create anonymous function using `(fun x 
 
 Finally we see that record fields access is using the classic `.` (dot) syntax. (`yvar.value`). 
 
-
-
+> Notice the lack of type annotation in the above code! In fact the OCaml compiler infer all the types and guarantees type safety. The syntax is minimal without sacrifying program correctness.
 
 
 
