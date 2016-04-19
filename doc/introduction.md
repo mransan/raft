@@ -112,5 +112,24 @@ Record fields access using the classic `.` (dot) syntax. (`yvar.value`).
 
 ## Reaching consensus for a State machine
 
-Because a state machine has a deterministic execution, in order to get a replicated state on all the servers, the consensus protocol must ensure the correct ordered replication of the commands. 
+Because a state machine has a deterministic execution, in order to get a replicated state on all the servers, the consensus protocol must solely ensure the correct ordered replication of the commands. 
+
+The **RAFT** protocol is agnostic of the type of command; in fact for our implementation we will define the command as a byte sequence. Each command is wrapped by the RAFT protocol into a `log entry` data structure which uniquely index and stricly order each command. 
+
+This `log entry` is a fundamental part of the RAFT protocol and used throughout messages and state specification. Let's therefore introduce our first Protobuf message:
+
+```JavaScript
+message LogEntry {
+  required int32 index = 1; 
+  required int32 term  = 2; 
+  required bytes data  = 3; 
+}
+```
+
+The [term] field can be ignored for now as it will be explained later. The [index] field is a unique and strickly increasing value for each command. [data] is a placeholder field the application state machine commands. 
+
+
+}
+```
+
 
