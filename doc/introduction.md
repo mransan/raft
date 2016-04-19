@@ -127,9 +127,3 @@ message LogEntry {
 ```
 
 The [term] field can be ignored for now as it will be explained later. The [index] field is a unique and strickly increasing value for each command. [data] is a placeholder field the application state machine commands. 
-
-
-}
-```
-
-
