@@ -98,7 +98,7 @@ This `match with` expression performs a proof by case logic. The OCaml compiler 
 
 **`v::state`**
 
-The expression `v::state` is simply the builtin syntax for list apending to the head of a list. 
+The expression `v::state` is simply the builtin syntax for to append a value at the head of the list.
 
 **`fun x -> ...`**
 
@@ -107,6 +107,8 @@ OCaml is a functional language; you can create anonymous function using `(fun x 
 **`yvar.value`**
 
 Finally we see that record fields access is using the classic `.` (dot) syntax. (`yvar.value`). 
+
+
 
 > Notice the lack of type annotation in the above code! In fact the OCaml compiler infer all the types and guarantees type safety. The syntax is minimal without sacrifying program correctness.
 
