@@ -7,7 +7,7 @@
 
 **Consensus algorithms** are interesting protocols which are particularly relevant with modern distributed architetures. The RAFT protocol proposes a relatively simple to understand approach and offers a great introduction to the consensus problem. 
 
-The benefit of **Functional Programming** have been discussed (and argued over) numerous time, the focus here is rather to provide an implementation of a protocol with a functional approach.
+The benefit of **Functional Programming** have been discussed (and argued over) numerous time, the focus here is rather to provide a concrete implementation of a protocol with a functional approach.
 
 **OCaml** language is elegant, well proven and really fast. No OCaml knowledge is required for these blog posts and if you are interested in learning this language with a concrete use case rather than iterating through the language features then stay tuned. We'll only cover a very small fraction of the language and its ecosystem but hopefuly it will make you want to lean more.
 
