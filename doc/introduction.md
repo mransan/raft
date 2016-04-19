@@ -109,3 +109,8 @@ OCaml is a functional language; you can create anonymous function using `(fun x 
 Record fields access using the classic `.` (dot) syntax. (`yvar.value`). 
 
 > Notice the lack of type annotation in the above code! In fact the OCaml compiler infer all the types and guarantees type safety. The syntax is minimal without sacrifying program correctness.
+
+## Reaching consensus for a State machine
+
+Because a state machine has a deterministic execution, in order to get a replicated state on all the servers, the consensus protocol must ensure the correct ordered replication of the commands. 
+
