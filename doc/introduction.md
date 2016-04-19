@@ -2,13 +2,14 @@
 
 ## Introduction
 
-> In this serie of blog posts we will implement the consensus protocol RAFT in a purely functional style. 
+> In this serie of blog posts we will implement the consensus protocol RAFT in 
+> a purely functional style. 
 
-**Consensus algorithms** are interesting and recent protocols which are particularly relevant with modern distributed architetures. The RAFT protocol is relatively simple to understand and offers a great introduction to the consensus problem. 
+**Consensus algorithms** are interesting protocols which are particularly relevant with modern distributed architetures. The RAFT protocol proposes a relatively simple to understand approach and offers a great introduction to the consensus problem. 
 
-**Functional Programming** is great and this implementation documents a concrete use case for a protocol implementation
+The benefit of **Functional Programming** have been discussed (and argued over) numerous time, the focus here is rather to provide an implementation of a protocol with a functional approach.
 
-**OCaml** language is elegant, well proven and really fast. No OCaml knowledge is required for this blog posts and if you are interesting in learning this language with a concrete use case rather than iterating through the language features then stay tuned. We'll only cover a very small fraction of the language and its ecosystem but hopefuly it will make you want to lean more.
+**OCaml** language is elegant, well proven and really fast. No OCaml knowledge is required for these blog posts and if you are interested in learning this language with a concrete use case rather than iterating through the language features then stay tuned. We'll only cover a very small fraction of the language and its ecosystem but hopefuly it will make you want to lean more.
 
 Here are the main technology we'll be using:
 
@@ -22,7 +23,7 @@ Here are the main technology we'll be using:
 
 Consensus protocols ensure that participating servers will eventually be consistent even if certain failure happened. Such protocol can differ with regards to the state they manage as well as the type of failure they are resilient to. 
 
-**RAFT** protocol ensures the consistent execution of a `state machine` and it is resilient to `fail-stop` failures. `fail-stop` failures are essentially server crashes or a server not receiving messages. **RAFT** protocol does not support Byzantine failure which is when a server is acting maliciously.
+**RAFT** protocol ensures the consistent execution of a `state machine` and is resilient to `fail-stop` failures. `fail-stop` failures are essentially server crashes or a server not receiving messages. **RAFT** protocol does not support Byzantine failures which is when a server is acting maliciously.
 
 In the next section we will look into details about what is a state machine with a concrete and simple example implemented in OCaml.
 
@@ -30,28 +31,34 @@ In the next section we will look into details about what is a state machine with
 
 A `state machine` is composed of a state and a series of command to be executed on the state. Each command has a payload and executing the command will modify the state. 
 
-For instance if we want to represent a simple algebra state machine we could have the following:
+For instance if we want to represent a (limited) algebra state machine we could have the following:
 ```OCaml
+(** Named variable  *)
 type var = {
   name : string; 
   value : float;
 } 
 
+(** State of the state machine *)
 type state = var list 
 
+(** Command of the state machine  *)
 type cmd = 
   | Store          of var 
   | Add_and_assign of string * string * string 
                   (* (lhs , rhs , new_variable_name) *)
 ```
 
-Let's stop here for a second and look at our first OCaml code. The code above demonstrates the use of the 3 most widely used OCaml type system capability:
+Let's stop here for a second and look at our first OCaml code. The code above demonstrates the use of the 3 most widely used OCaml types
 
-* **Records**: Similar to a C `struct` 
-* **List**: List is a builtin type in OCaml and represents a singly linked list. It's an immutable data structure.
-* **Variant**: Type to represent a choice. `cmd` can either be `Store` or `Add_and_assign`. Each choice is called a constructor. A constructor can have zero or many arguments. 
+* **Records** (`type var = {...}`): Similar to a C `struct` 
+* **List** (`type state = var list`): List is a builtin type in OCaml and represents a singly linked list. It's an immutable data structure.
+* **Variant** (`type cmd = |... |... `): Type to represent a choice. `cmd` can either be `Store` or `Add_and_assign`. Each choice is called a constructor. A constructor can have zero or many arguments. 
 
-The `Store x` will simply add the given variable `x` to the state, while the `Add_and_assign ("x", "y", "z")` will add the values associated with `"x"` and `"y"` and store the result in a variable with name `"z"`. 
+`Store x` adds the given variable `x` to the state.
+
+`Add_and_assign ("x", "y", "z")` sums the values associated with `"x"` and `"y"` and stores the result in a variable with name `"z"`. 
+
 Here is a concrete example of a sequence of commands and the expected state:
 
 ```OCaml
@@ -61,8 +68,7 @@ let cmds = [
   Add_and_assign ("x", "y", "z"); 
 ]
 ```
-
-We would then expect the following state 
+After exectution of the above commands on an initial empty list state, we would then expect the resulting state:
 ```OCaml
 let expected_state = [
   {name = "z"; value = 5.}; 
@@ -84,11 +90,21 @@ let execute cmd state =
     {name = zname; value = xvar.value +. yvar.value} :: state
 ```
 
-First we see the `match cmd with | ... | ...` construct which performs a proof by case logic. The OCaml compiler includes special support to also detect missing cases. This construct is called **pattern matching** and is heavily used in OCaml. 
+Let's look into more details at a few constructs:
+
+**`match cmd with | Store ..-> ... | ...`**
+
+This `match with` expression performs a proof by case logic. The OCaml compiler has special support to detect missing cases which helps a lot for finding bugs early. This construct is called **pattern matching** and is heavily used in OCaml. 
+
+**`v::state`**
 
 The expression `v::state` is simply the builtin syntax for list apending to the head of a list. 
 
+**`fun x -> ...`**
+
 OCaml is a functional language; you can create anonymous function using `(fun x -> ...)` expression. 
+
+**`yvar.value`**
 
 Finally we see that record fields access is using the classic `.` (dot) syntax. (`yvar.value`). 
 
