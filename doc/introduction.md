@@ -1,5 +1,5 @@
 # A Functional Implementation of the RAFT protocol
----
+
 
 ## Introduction
 
