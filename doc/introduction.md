@@ -59,7 +59,7 @@ Let's stop here for a second and look at our first OCaml code. The code above de
 
 `Add_and_assign ("x", "y", "z")` sums the values associated with `"x"` and `"y"` and stores the result in a variable with name `"z"`. 
 
-Here is a concrete example of a sequence of commands and the expected state:
+Here is an example of a sequence of commands:
 
 ```OCaml
 let cmds = [
@@ -98,7 +98,7 @@ This `match with` expression performs a proof by case logic. The OCaml compiler 
 
 **`v::state`**
 
-The expression `v::state` is simply the builtin syntax for to append a value (`v`) at the head of the list (`state`).
+The expression `v::state` is simply the builtin syntax for to append a value (`v`) at the head of the list (`state`). 
 
 **`fun x -> ...`**
 
