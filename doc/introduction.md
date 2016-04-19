@@ -58,6 +58,7 @@ let cmds = [
   Store {name = "x"; value = 1.}; 
   Store {name = "y"; value = 4.}; 
   Add_and_assign ("x", "y", "z"); 
+]
 ```
 
 We would then expect the following state 
@@ -68,8 +69,7 @@ let expected_state = [
   {name = "x"; value = 1.}; 
 ]
 ```
-
-As far as OCaml is concerned we've just learned how create values of type we previously defined. 
+As far as OCaml is concerned we've just learned how to create values of the types we previously defined. 
 
 Let's now write our first function in OCaml which will perform the execution of the state machine command:
 
@@ -82,6 +82,15 @@ let execute cmd state =
     let yvar = List.find (fun v -> v.name = yname) state in 
     {name = zname; value = xvar.value +. yvar.value} :: state
 ```
+
+First we see the `match cmd with | ... | ...` construct which performs a proof by case logic. The OCaml compiler includes special support to also detect missing cases. This construct is called **pattern matching** and is heavily used in OCaml. 
+
+The expression `v::state` is simply the builtin syntax for list apending to the head of a list. 
+
+OCaml is a functional language; you can create anonymous function using `(fun x -> ...)` expression. 
+
+Finally we see that record fields access is using the classic `.` (dot) syntax. (`yvar.value`). 
+
 
 
 
