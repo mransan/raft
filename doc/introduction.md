@@ -9,19 +9,19 @@
 
 The benefit of **Functional Programming** have been discussed (and argued over) numerous time, the focus here is rather to provide a concrete implementation of a protocol with a functional approach.
 
-**OCaml** language is elegant, well proven and really fast. No OCaml knowledge is required for these blog posts and if you are interested in learning this language with a concrete use case rather than iterating through the language features then stay tuned. We'll only cover a very small fraction of the language and its ecosystem but hopefuly it will make you want to lean more.
+**OCaml** language is elegant, well proven and really fast. No OCaml knowledge is required for these blog posts and if you are interested in learning this language through a concrete application then stay tuned. We'll only cover a very small fraction of the language and its ecosystem and hopefuly it will make you want to lean more.
 
 Here are the main technology we'll be using:
 
-* Protobuf for the protocol messages and state 
-* `ocaml-protoc` to compile Protobuf message files to OCaml 
-* OCaml core language
-* Lwt OCaml library for concurrent programming (with futures and promises)
+* [Google Protobuf](https://developers.google.com/protocol-buffers): Language agnostic message speficications. We'll use that format for both the protocol messages and state specifications.
+* [OCaml-protoc](https://github.com/mransan/ocaml-protoc): OCaml compiler for protobuf messages.
+* [OCaml](http://ocaml.org/) core language
+* [Lwt](http://ocsigen.org/lwt/):OCaml library for concurrent programming (with futures and promises)
 * Unix UDP for the transport protocol
 
 ## Consensus Protocols
 
-Consensus protocols ensure that participating servers will eventually be consistent even if certain failure happened. Such protocol can differ with regards to the state they manage as well as the type of failure they are resilient to. 
+The goal of a consensus protocols is to ensure that participating servers will eventually be consistent even if certain failure happened. Such protocol can differ with regards to the state they manage as well as the type of failure they are resilient to. 
 
 **RAFT** protocol ensures the consistent execution of a `state machine` and is resilient to `fail-stop` failures. `fail-stop` failures are essentially server crashes or a server not receiving messages. **RAFT** protocol does not support Byzantine failures which is when a server is acting maliciously.
 
@@ -90,7 +90,7 @@ let execute cmd state =
     {name = zname; value = xvar.value +. yvar.value} :: state
 ```
 
-Let's look into more details at a few constructs:
+Let's look into more details at a few constructs that the OCaml language offers:
 
 **`match cmd with | Store ..-> ... | ...`**
 
@@ -98,7 +98,7 @@ This `match with` expression performs a proof by case logic. The OCaml compiler 
 
 **`v::state`**
 
-The expression `v::state` is simply the builtin syntax for to append a value at the head of the list.
+The expression `v::state` is simply the builtin syntax for to append a value (`v`) at the head of the list (`state`).
 
 **`fun x -> ...`**
 
@@ -106,12 +106,6 @@ OCaml is a functional language; you can create anonymous function using `(fun x 
 
 **`yvar.value`**
 
-Finally we see that record fields access is using the classic `.` (dot) syntax. (`yvar.value`). 
-
-
+Record fields access using the classic `.` (dot) syntax. (`yvar.value`). 
 
 > Notice the lack of type annotation in the above code! In fact the OCaml compiler infer all the types and guarantees type safety. The syntax is minimal without sacrifying program correctness.
-
-
-
-
