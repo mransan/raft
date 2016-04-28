@@ -1072,6 +1072,92 @@ let () =
   ()
 
 
+let ()  = 
+  (* 
+   * Verify the correct transition from follower to candidate
+   * as well as the valid vote from a follower and 
+   * subsequent conversion to leader by the candidate. 
+   * 
+   *)
+
+  let server0 = initial_state ~now 0 in 
+  let server1 = initial_state ~now 1 in 
+
+  let server0, msgs = Raft_logic.Message.handle_new_election_timeout server0 now in 
+  
+  assert(State.is_candidate server0); 
+    (* Because there is a new election timeout we would expect the server0 to 
+     * become a candidate. 
+     *)
+  assert(1 = server0.current_term); 
+    (* Since a new election was started, the [current_term] must be 
+     * incremented.
+     *)
+  assert(2 = List.length msgs);  
+    (* Upon becoming a candidate the sever0 is expected to send a `RequestVote` 
+     * message to all the other servers. Since we are in a cluster of 3, 2 messages
+     * are then expected.
+     *)
+
+  let msg_to_server1 = 
+    match List.find (fun (_, id) -> id = 1) msgs with
+    | (msg, _ ) -> msg 
+    | exception Not_found -> assert(false) 
+  in 
+
+  (*
+   * Let's now assume the [msg_to_server1] was correctly transmitted between 
+   * server, so let's handle it.
+   *)
+
+  let now = now +. 0.001 in 
+
+  let server1, msgs = Raft_logic.Message.handle_message server1 msg_to_server1 now in 
+
+  assert(1 = server1.current_term); 
+    (* Server0 (Candidate) send a higher term to server1 which is expected to 
+     * increase its own [current_term]. 
+     *)
+
+  begin match server1.role with
+  | Follower {voted_for; current_leader; election_deadline; } -> begin 
+    (* Server1 should still be a follower. 
+     *)
+    assert(voted_for = (Some 0)); 
+    (* Because server1 did not previously vote for a candidate it should 
+     * grant its vote to server0
+     *) 
+    assert(current_leader = None); 
+    (* Granting vote should not affect server1 belief of which server is the leader. 
+     *)
+    assert(election_deadline = now +. default_configuration.election_timeout); 
+    (* Election deadline should be updated.
+     *)
+  end 
+  | _ -> assert(false)
+  end;
+
+  begin match msgs with
+  | (msg, 0)::[]  -> (
+      (* A single response to server 0 is expected from server1.
+       *)
+    begin match msg with
+    | Request_vote_response {voter_id = 1; voter_term = 1; vote_granted = true} -> () 
+      (* 
+       * Make sure that the response is a granted vote. 
+       *)
+
+    | _ -> assert(false)
+    end
+  ) 
+  | _ -> assert(false)
+  end; 
+
+  ()
+
+
+
+
 let () = 
 
   (*
