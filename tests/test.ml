@@ -1137,52 +1137,138 @@ let ()  =
   | _ -> assert(false)
   end;
 
-  begin match msgs with
-  | (msg, 0)::[]  -> (
-      (* A single response to server 0 is expected from server1.
-       *)
-    begin match msg with
-    | Request_vote_response {voter_id = 1; voter_term = 1; vote_granted = true} -> () 
-      (* 
-       * Make sure that the response is a granted vote. 
-       *)
+  let msg = 
+    match msgs with
+    | (msg, 0)::[]  -> (
+        (* A single response to server 0 is expected from server1.
+         *)
+      begin match msg with
+      | Request_vote_response {voter_id = 1; voter_term = 1; vote_granted = true} -> 
+        msg 
+        (* 
+         * Make sure that the response is a granted vote. 
+         *)
 
-    | _ -> assert(false)
-    end
-  ) 
-  | _ -> assert(false)
-  end; 
-
-  ()
-
-
-
-
-let () = 
-
-  (*
-   * This test verifies the Message.append_entries_request_for_all 
-   * function for a leader and a follower. 
-   * 
-   * In the case of the leader we expect 2 messages to be sent to the 
-   * other 2 servers while none for the follower.
-   *
-   *)
+      | _ -> assert(false)
+      end
+    ) 
+    | _ -> assert(false) 
+  in
 
   (* 
-  let server0 = 
-    Leader.become (initial_state ~current_term:1 0) now 
-    |> Leader.add_log foo
+   * Let's now make this response communicated to the server0 (Candidate)
+   *)
+
+  let now = now +. 0.001 in 
+  let server0, msgs = Raft_logic.Message.handle_message server0 msg now in 
+
+  assert(State.is_leader server0); 
+    (*
+     * Because a single vote is enough to reach a majority, server0
+     * becomes a Leader.
+     *)
+
+  assert(1 = server0.current_term); 
+    (* 
+     * Becoming a Leader should not affect the term. (Only 
+     * a new election). 
+     *)
+  begin match server0.role with
+  | Leader {next_index; match_index; receiver_heartbeats; } -> (
+    assert(2 = List.length next_index); 
+    assert(2 = List.length match_index); 
+    assert(2 = List.length receiver_heartbeats); 
+      (* 
+       * The leader maintain various state for each of the 
+       * other servers. 
+       *)
+      List.iter (fun {server_log_index;_ } -> 
+        assert(1 = server_log_index); 
+      ) next_index; 
+      List.iter (fun {server_log_index;_ } -> 
+        assert(0 = server_log_index); 
+      ) match_index; 
+      List.iter (fun {heartbeat_deadline;_ } -> 
+        assert(now +. default_configuration.hearbeat_timeout  = heartbeat_deadline); 
+      ) receiver_heartbeats; 
+  )
+  | _ -> assert(false)
+  end;
+
+  assert(2 = List.length msgs); 
+    (*
+     * Upon becoming a Leader a server must immediately
+     * send an [AppendEntry] request to all the other servers
+     * to establish its leadership. 
+     *)
+
+  List.iter (fun (msg, _ ) -> 
+    match msg with
+    | Append_entries_request r -> 
+      let {
+        leader_term;  
+        leader_id;
+        prev_log_index;
+        prev_log_term;
+        rev_log_entries;
+        leader_commit;
+      } = r in 
+      assert(1 = leader_term);
+      assert(0 = leader_id);
+      assert(0 = prev_log_index);
+      assert(0 = prev_log_term);
+      assert(0 = List.length rev_log_entries); 
+        (*
+         * We have not yet added any log to the [Leader] so
+         * no new entries are sent to the other servers. 
+         *)
+      assert(0 = leader_commit);
+    | _ -> assert(false);
+  ) msgs;
+
+
+  let msg = 
+    match List.find (fun (_, id) -> id = 1) msgs with
+    | (msg, _) -> msg 
+    | exception Not_found -> assert(false)
   in 
 
-  let messages = Logic.Message.append_entries_request_for_all server0 in 
-  assert(2 = List.length messages); 
-  assert(List.exists (fun (_, id) -> id = 1) messages);
-  assert(List.exists (fun (_, id) -> id = 2) messages);
-  
-  let server1 = initial_state ~current_term:1 1 in
-  let messages = Logic.Message.append_entries_request_for_all server1 in 
-  assert(0 = List.length messages); 
-  *)
+  let now = now +. 0.001 in 
+  let server1, msgs = Raft_logic.Message.handle_message server1 msg now in 
+
+  begin match server1.role with
+  | Follower {
+    voted_for = None ; 
+    current_leader = Some 0;  
+    election_deadline; 
+  } ->
+    (*
+     * We see that the follower correctly records that it has now
+     * a current leader which is server0. 
+     *)
+    
+    assert(election_deadline = now +. default_configuration.election_timeout)
+    (*
+     * Because it just receive a message from the [Leader], the
+     * [election_deadline] is extended for another [election_timeout] amount
+     * of time. 
+     *)
+  | _ -> assert(false) 
+  end;
+
+  assert(1 = List.length msgs);
+    (*
+     * The server1 is sending an append entry response 
+     *)
+    
+  begin match msgs with
+  | (Append_entries_response {receiver_id; receiver_term; result}, 0) :: [] -> ( 
+    assert(1 = receiver_id);
+    assert(1 = receiver_term); 
+    assert(Success {receiver_last_log_index = 0} = result);
+  )
+  | _ -> assert(false)
+  end;
 
   ()
+
