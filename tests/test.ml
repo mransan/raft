@@ -1071,8 +1071,13 @@ let () =
 
   ()
 
+let msg_for_server msgs id = 
+  match List.find (fun (_, server_id) -> id = server_id) msgs with
+  | (msg, _) -> msg 
+  | exception Not_found -> assert(false)
 
 let ()  = 
+
   (* 
    * Verify the correct transition from follower to candidate
    * as well as the valid vote from a follower and 
@@ -1083,27 +1088,36 @@ let ()  =
   let server0 = initial_state ~now 0 in 
   let server1 = initial_state ~now 1 in 
 
+  (*
+   * Let's simulate an election timeout for server0, 
+   *)
   let server0, msgs = Raft_logic.Message.handle_new_election_timeout server0 now in 
   
   assert(State.is_candidate server0); 
-    (* Because there is a new election timeout we would expect the server0 to 
-     * become a candidate. 
+    (* When an election timeout happen the server should start a new election
+     * and become a candidate.
      *)
+
   assert(1 = server0.current_term); 
     (* Since a new election was started, the [current_term] must be 
      * incremented.
      *)
-  assert(2 = List.length msgs);  
-    (* Upon becoming a candidate the sever0 is expected to send a `RequestVote` 
-     * message to all the other servers. Since we are in a cluster of 3, 2 messages
-     * are then expected.
-     *)
 
-  let msg_to_server1 = 
-    match List.find (fun (_, id) -> id = 1) msgs with
-    | (msg, _ ) -> msg 
-    | exception Not_found -> assert(false) 
-  in 
+  assert(2 = List.length msgs);  
+  List.iter (fun (msg, _) -> 
+    match msg with 
+    | Request_vote_request r -> ( 
+        assert(r.candidate_term = 1); 
+        assert(r.candidate_id = 0);
+        assert(r.candidate_last_log_index = 0);
+        assert(r.candidate_last_log_term = 0); 
+    ) 
+    | _ -> assert(false)
+  ) msgs;
+    (* Upon becoming a candidate the sever0 is expected to send a `RequestVote` 
+     * message to all the other servers. Since we are in a cluster 
+     * of 3, 2 messages should be sent from  by the new [Candidate].
+     *)
 
   (*
    * Let's now assume the [msg_to_server1] was correctly transmitted between 
@@ -1112,11 +1126,13 @@ let ()  =
 
   let now = now +. 0.001 in 
 
-  let server1, msgs = Raft_logic.Message.handle_message server1 msg_to_server1 now in 
+  let server1, msgs = 
+    let msg = msg_for_server msgs 1 in  
+    Raft_logic.Message.handle_message server1 msg now in 
 
   assert(1 = server1.current_term); 
-    (* Server0 (Candidate) send a higher term to server1 which is expected to 
-     * increase its own [current_term]. 
+    (* Server0 (Candidate) sent a higher term to server1 which is expected to 
+     * update its own [current_term] and be a follower (which it was already). 
      *)
 
   begin match server1.role with
@@ -1173,6 +1189,7 @@ let ()  =
      * Becoming a Leader should not affect the term. (Only 
      * a new election). 
      *)
+
   begin match server0.role with
   | Leader {next_index; match_index; receiver_heartbeats; } -> (
     assert(2 = List.length next_index); 
@@ -1182,6 +1199,7 @@ let ()  =
        * The leader maintain various state for each of the 
        * other servers. 
        *)
+
       List.iter (fun {server_log_index;_ } -> 
         assert(1 = server_log_index); 
       ) next_index; 
@@ -1226,25 +1244,24 @@ let ()  =
     | _ -> assert(false);
   ) msgs;
 
-
-  let msg = 
-    match List.find (fun (_, id) -> id = 1) msgs with
-    | (msg, _) -> msg 
-    | exception Not_found -> assert(false)
-  in 
-
   let now = now +. 0.001 in 
-  let server1, msgs = Raft_logic.Message.handle_message server1 msg now in 
+  let server1, msgs = 
+    let msg = msg_for_server msgs 1 in  
+    Raft_logic.Message.handle_message server1 msg now 
+  in
 
   begin match server1.role with
   | Follower {
-    voted_for = None ; 
+    voted_for = Some 0; 
     current_leader = Some 0;  
     election_deadline; 
   } ->
     (*
      * We see that the follower correctly records that it has now
      * a current leader which is server0. 
+     *
+     * [voted_for] is still assigned to server0 since the current term
+     * has not changed.  
      *)
     
     assert(election_deadline = now +. default_configuration.election_timeout)
@@ -1270,5 +1287,250 @@ let ()  =
   | _ -> assert(false)
   end;
 
-  ()
+  (*
+   * Let's now start server2 and assume that it has not received
+   * the previous messages from server0. 
+   * 
+   * It will start an election but we should see that because there
+   * is already a valid leader for the term its election will fail.
+   *)
 
+  let server2 = initial_state ~now 2 in 
+  let server2, request_vote_msgs = 
+    Raft_logic.Message.handle_new_election_timeout server2 now 
+  in
+
+  assert(State.is_candidate server2); 
+  assert(1 = server2.current_term); 
+  assert(2 = List.length request_vote_msgs);
+
+  let now = now +. 0.001 in
+  let server1, msgs = 
+    let msg = msg_for_server request_vote_msgs 1 in 
+    Raft_logic.Message.handle_message server1 msg now 
+  in 
+
+  begin match msgs with
+  | (Request_vote_response r, 2)::[] -> ( 
+    let {
+      voter_id;
+      voter_term;
+      vote_granted;
+    } = r in
+    assert(false = vote_granted);
+      (* 
+       * Server1 has already voted for server0 in this election
+       * term, so it should deny its vote to server2. 
+       *)
+    
+    assert(1 = voter_id);
+    assert(1 = voter_term);
+  )
+  | _ -> assert(false)
+  end;
+
+  (*
+   * Next we are communicating the response from server1 
+   * to server2 and make sure that it does not become a [Leader]
+   * but rather continue to be a Candidate. 
+   *)
+
+  let now = now +. 0.001 in 
+
+  let server2, msgs = 
+    let msg = msg_for_server msgs 2 in 
+    Raft_logic.Message.handle_message server2 msg now 
+  in 
+
+  assert(State.is_candidate server2); 
+    (* 
+     * Despite the vote not being granted by server1, server2
+     * should still be the same Candidate. 
+     *) 
+
+  assert(1 = server2.current_term);
+    (* 
+     * No new election should have been started. 
+     *)
+
+  assert([] = msgs);
+    (* 
+     * Server2 is still a candidate but for the time being 
+     * has no message to send to server1. 
+     *)
+
+  (*
+   * Let's now verify that server0 being the leader 
+   *)
+  let server0, msgs = 
+    let msg = msg_for_server request_vote_msgs 0 in 
+    Raft_logic.Message.handle_message server0 msg now 
+  in
+  
+  assert(State.is_leader server0); 
+    (* 
+     * Server0 is still a [Leader] and should not be affected
+     * by a Candidate for the same term. 
+     *
+     * (This would be different if the Candidate was for a later
+     * term)
+     *)
+  
+  begin match msgs with
+  | (Request_vote_response r, 2) :: [] -> (
+
+    let {
+      voter_id;
+      voter_term;
+      vote_granted;
+    } = r in 
+    assert(0 = voter_id); 
+    assert(1 = voter_term); 
+    assert(false = vote_granted);
+      (* 
+       * Server0 being the [Leader] for term 1, it should 
+       * not grant its vote. 
+       *)
+  ) 
+  | _ -> assert(false)
+  end;
+
+  let now = now +. 0.002 in 
+
+  (*
+   * Let's now communicate this latter response from server0
+   * to server2
+   *)
+  let server2, msgs = 
+    let msg = msg_for_server msgs 2 in 
+    Raft_logic.Message.handle_message server2 msg now 
+  in
+
+  assert(State.is_candidate server2); 
+    (*
+     * Yes despite all other server denying their vote, server2
+     * is still a [Candidate]. It should not take any further 
+     * action until its election timeout has elapsed. 
+     *)
+  assert([] = msgs);
+
+
+  (*
+   * Since the heartbeat timeout is usually much shorter 
+   * than a new election timeout, it's likely that server0
+   * (ie the current [Leader]) will send heartbeats to the other 
+   * 2 servers. 
+   *) 
+
+  (*
+   * First let's make sure that even because the heartbeat deadline
+   * for any server has not been reached, a heartbeat timeout should not 
+   * trigger new messages. 
+   *) 
+
+  let server0, msgs = Raft_logic.Message.handle_heartbeat_timeout server0 now in 
+
+  assert([] = msgs); 
+    (*
+     * Heartbeat messages are only sent to servers which have not recveived a
+     * message for at least the [hearbeat_timeout] amount of time. 
+     * It's not the case since [hearbeat_timeout] is 0.02. 
+     *)
+
+  let now = now +. default_configuration.hearbeat_timeout in  
+
+  let server0, hb_msgs = Raft_logic.Message.handle_heartbeat_timeout server0 now in 
+
+  assert(2 = List.length hb_msgs);
+    (*
+     * Because we added [hearbeat_timeout] to the previous time, we know for 
+     * sure that heartbeats messages are past due for all of the followers. 
+     *)
+  List.iter (fun (msg, _) ->
+    match msg with
+    | Append_entries_request r -> (
+      assert(r.leader_term = 1);
+      assert(r.leader_id = 0);
+      assert(r.prev_log_index = 0);
+      assert(r.prev_log_term = 0);
+      assert(r.rev_log_entries = []);
+      assert(r.leader_commit = 0);
+    )
+    | _ -> assert(false);
+  ) hb_msgs;
+
+  (*
+   * Let's first make the heartbeat message be handled by server 2
+   * which is still a candidate. 
+   *
+   * However upon receiving the [Append_entries] request from a [Leader]
+   * with a current term at least equal or superior to itself, it should 
+   * convert to a [Follower].
+   *)
+  let now = now +. 0.001 in 
+  let server2, msgs = 
+    let msg = msg_for_server hb_msgs 2 in  
+    Raft_logic.Message.handle_message server2 msg now 
+  in
+  
+  assert(State.is_follower server2); 
+  assert(1 = server2.current_term);
+    (* 
+     * Receiving an [Append_entries] request with a term at least equal
+     * or supperior to one [current_term] means that the sender is a valid
+     * [Leader] for that term and therefore the recipient must become a 
+     * [Follower].
+     *)
+
+  begin match server2.role with
+  | Follower fs -> (
+    assert(fs.voted_for = Some 2);
+      (* 
+       * For that term, since this server was also a candidate it 
+       * did already vote for itself. 
+       *)
+    assert(fs.current_leader = Some 0);
+      (* 
+       * server2 is now aware that server0 is the [Leader] for 
+       * term 1
+       *)
+    assert(fs.election_deadline = now +.  default_configuration.election_timeout); 
+  )
+  | _ -> assert(false);
+  end;
+
+  assert(1 = List.length msgs);
+    (* 
+     * Response for the [Append_entries]
+     *)
+  begin match msgs with 
+  | ((Append_entries_response r), _) :: []  -> (
+    assert(r.receiver_id = 2);
+    assert(r.receiver_term = 1);
+    assert(r.result = Success { receiver_last_log_index = 0 });
+  ) 
+  | _ -> assert(false)
+  end;
+
+  (* 
+   * Server1 was already a follower and aware of server0 leadership
+   * the new heartbeat would not change that. 
+   *)
+
+  let server1, msgs = 
+    let msg =  msg_for_server hb_msgs 1 in 
+    Raft_logic.Message.handle_message server1 msg now
+  in 
+
+  assert(State.is_follower server1); 
+  assert(1 = List.length msgs);
+  begin match msgs with
+  | (Append_entries_response r, 0)::[] -> (
+    assert(r.receiver_id = 1);
+    assert(r.receiver_term = 1);
+    assert(r.result = Success { receiver_last_log_index = 0 });
+  )
+  | _ -> assert(false)
+  end;
+
+  ()

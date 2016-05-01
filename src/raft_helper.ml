@@ -47,17 +47,27 @@ module Follower = struct
     }
 
   let become ?current_leader ~term ~now state = 
-    let {configuration = {election_timeout = t; election_timeout_range = r; _}; _}= state in 
-    let timeout = t +. (Random.float r -. (r /. 2.)) in
-    { state with 
+    let {configuration = {election_timeout = t; election_timeout_range = r; _}; _} = state in 
+    let election_deadline  = now +. t +. (Random.float r -. (r /. 2.)) in
 
-      role = Follower {
-        voted_for = None; 
+    let role = match state.role with
+      | Follower follower_state -> Follower {follower_state with
         current_leader; 
-        election_deadline = now +. timeout;
-      }; 
-      current_term = term; 
-  }
+        election_deadline;
+      }
+      | Candidate _ when state.current_term = term -> 
+        Follower {
+          voted_for = Some state.id;
+          current_leader; 
+          election_deadline; 
+        }
+      | _ -> Follower {
+        voted_for = None;
+        current_leader; 
+        election_deadline;
+      }
+    in 
+    { state with current_term = term; role } 
 
 end 
 
