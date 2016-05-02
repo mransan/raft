@@ -427,7 +427,6 @@ module Append_entries = struct
 
           let configuration = state.configuration in 
 
-
           let leader_state, nb_of_replications = Leader.update_receiver_last_log_index 
             ~server_id:receiver_id 
             ~log_index:receiver_last_log_index 
@@ -568,5 +567,59 @@ module Message = struct
       (state, msgs)
     | _ -> 
       (state, [])
-        
+
+  type new_log_response = 
+    | Appended of Raft_pb.state * message_to_send list
+    | Forward_to_leader of int 
+    | Delay 
+
+  let handle_add_log_entry state data now = 
+    match state.role with
+    | Follower {current_leader = None ; _ }
+    | Candidate _ -> 
+      Delay 
+      (* Server in the middle of an election with no [Leader] 
+       * agreed upon yet 
+       *)
+    
+    | Follower {current_leader = Some leader_id; _ } -> 
+      Forward_to_leader leader_id 
+      (* The [Leader] should be the one centralizing all the 
+       * new log entries. 
+       *)
+
+    | Leader _ -> 
+      let state = Leader.add_log data state in 
+      begin match state.role with
+      | Follower  _ | Candidate _ -> assert(false) 
+        (* We don't expect the [Leader.add_log] functions to 
+         * change the role. 
+         *)
+
+      | Leader ({receiver_connections; _ } as leader_state) -> 
+
+        let msgs_to_send = List.fold_left (fun msgs receiver_connection -> 
+          let {
+            server_id; 
+            outstanding_request; _ } = receiver_connection
+          in 
+
+          if outstanding_request
+          then msgs
+            (* We do not send new log entries to server which already 
+             * have requests sent to them. 
+             *)
+          else 
+            let msg = make_append_entries_for_server state leader_state server_id in
+            (Append_entries_request msg, server_id)::msgs
+        ) [] receiver_connections in 
+
+        let leader_state = record_requests_sent 
+          state.configuration leader_state msgs_to_send now 
+        in 
+        let state = {state with role = Leader leader_state } in 
+        Appended (state, msgs_to_send) 
+
+      end (* match state.role *) 
+
 end (* Message *)  

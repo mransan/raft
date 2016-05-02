@@ -115,7 +115,7 @@ module Leader : sig
       Any subsequent logical actions like creating Append Entries request is 
       left to the caller. 
     *) 
-
+  
   val update_receiver_last_log_index : 
     server_id:int -> 
     log_index:int -> 

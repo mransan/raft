@@ -1504,7 +1504,8 @@ let ()  =
      * Response for the [Append_entries]
      *)
   begin match msgs with 
-  | ((Append_entries_response r), _) :: []  -> (
+  | ((Append_entries_response r), server_id) :: []  -> (
+    assert(server_id = 0); 
     assert(r.receiver_id = 2);
     assert(r.receiver_term = 1);
     assert(r.result = Success { receiver_last_log_index = 0 });
@@ -1528,7 +1529,14 @@ let ()  =
   in 
 
   assert(State.is_follower server1); 
+   (* No change in the role, server0 is a valid [Leader], 
+    * server1 stays a [Follower]. 
+    *)
+
   assert(1 = List.length msgs);
+   (* Single [Append_entries_response] expected. 
+    *)
+
   begin match msgs with
   | (Append_entries_response r, 0)::[] -> (
     assert(r.receiver_id = 1);
@@ -1537,7 +1545,26 @@ let ()  =
   )
   | _ -> assert(false)
   end;
+  
+  let now = now +. 0.001 in 
 
+  (* 
+   * Let's handle the response from server1 in server0
+   *
+   * Note that it's important for the rest of the test that
+   * we explicitely handle the response from server1 in server0. 
+   * Each [Leader] is keeping track of whether or not there is an 
+   * [outstanding_request] for each server. This later affect
+   * the behavior of the [Leader] upon add a log entry. 
+   *
+   *)
+  let server0, msgs = 
+    let msg = msg_for_server msgs 0 in 
+    Raft_logic.Message.handle_message server0 msg now 
+  in  
+
+  assert(State.is_leader server0); 
+  
   let now = now +. 0.001 in 
 
   (*
@@ -1545,28 +1572,44 @@ let ()  =
    * the corresponding [Append_entry] request to the other servers. 
    *)
 
-  let server0 = 
+  let new_log_response = 
     let data = Bytes.of_string "Message1" in 
-    Raft_helper.Leader.add_log data server0
+    Raft_logic.Message.handle_add_log_entry server0 data now 
   in
 
-  (* 
-   * TODO: Right now our implementation relies
-   * on the fact that [Append_entry] messages are sent after 
-   * a heartbeat timeout even though there are pending log entry waiting to be
-   * synchronized. This type of behavior favors throughput rather 
-   * than latency by bulking the log entries into fewer [Append_entries]. 
-   *
-   * The best is to let the client application decide and give them a way to get
-   * [Append_entries] messages for servers not based on whether their timeout
-   * has expired but rather based on the fact that they have not received a 
-   * log entry. 
-   *)
-  let now = now +. default_configuration.hearbeat_timeout in 
- 
-  let server0, data1_msgs= Raft_logic.Message.handle_heartbeat_timeout server0 now in 
+  let server0, data1_msgs = 
+    let open Raft_logic.Message in 
+    match new_log_response with
+    | Appended (x, y) -> (x, y) 
+      (* 
+       * server0 is the [Leader] and is therefore expected to 
+       * handle the new log entry. 
+       *)
+
+    | Delay | Forward_to_leader _ -> assert(false)
+  in 
 
   assert(2 = List.length data1_msgs);
+    (* 
+     * Both follower have no outstanding request, therefore they 
+     * should get a new [Append_entries_request] message with the new 
+     * log
+     *)
+
+  assert(1 = List.length server0.log);
+    (* 
+     * The new log entry should have been created
+     *)
+
+  begin match server0.log with
+  | {index = 1; term = 1; _ } :: []  -> ()
+    (* 
+     * Log should start as 1 and be set to the current 
+     * term (ie 1.)
+     *)
+
+  | _ -> assert(false)
+  end;
 
   List.iter (fun (msg, _) -> 
     match msg with
@@ -1598,7 +1641,19 @@ let ()  =
   assert(State.is_follower server1); 
     (* 
      * No change of role for server1, [Append_entries] only 
-     * mean server0 is still the [Leader]. 
+     * re-inforce that server0 is the [Leader]. 
+     *)
+
+  assert(0 = server1.commit_index); 
+    (* 
+     * While server1 has successfully replicated the log entry 
+     * with [index = 1], it cannot assume that this latter log 
+     * entry has been commited (ie that it has been replicated on 
+     * a majority of servers). 
+     *
+     * Therefore the [commit_index] is still 0. 
+     *
+     * It will be updated upon receiving the next [Append_entries_request]
      *)
 
   begin match msgs with
@@ -1613,10 +1668,277 @@ let ()  =
   | _ -> assert(false)
   end;
 
-  (* TODO handle the response from server1 in server0 [Leader] 
-   * and make the sure the commit index is correctly updated. 
+  let server0, msgs = 
+    let msg = msg_for_server msgs 0  in 
+    Raft_logic.Message.handle_message server0 msg now 
+  in 
+
+  assert(State.is_leader server0); 
+  assert(1 = server0.commit_index); 
+    (* 
+     * server1 has replicated the log successfully so this means
+     * that a majority of servers have done the replication. 
+     * The [Leader] commit_index can now be updated to that latest 
+     * log index (ie 1). 
+     *
+     *)
+  
+  (* 
+   * On purpose we are not propagating the [Append_entries_request] from
+   * server0 to server2 which contains the log entry [1]. 
    *
-   * Then repeat with server2. 
+   * This is to test that:
+   * - On the next log entry being added to [server0] no message should 
+   *   be sent to server2 which still has an outstanding request 
+   * - On the next heartbeat timeout server2 should then receive an 
+   *   [Append_entries_request] with both log entry. 
+   *
    *)
+
+  let now = now +. 0.001 in 
+
+  let new_log_response = 
+    let data = Bytes.of_string "Message2" in 
+    Raft_logic.Message.handle_add_log_entry server0 data now
+  in
+
+  let server0, data2_msg = 
+    let open Raft_logic.Message in 
+    match new_log_response with
+    | Delay | Forward_to_leader _ -> assert(false) 
+    | Appended (x, y) -> (x, y)
+  in
+
+  assert(State.is_leader server0); 
+  
+  assert(2 = List.length server0.log); 
+    (* 
+     * The second log entry should have been appended to the 
+     * server log. 
+     *) 
+
+  begin match List.hd server0.log with 
+  | {index = 2; term = 1; _ }  -> () 
+    (* 
+     * Make sure the index is incremented by 
+     * 1.
+     *)
+  | _ -> assert(false) 
+  end;
+
+  assert(1 = server0.commit_index); 
+    (* 
+     * The new log entry (with index [2]) should not be commited
+     * since no request/response interaction has yet been done. 
+     *)
+
+  assert(1 = List.length data2_msg); 
+    (* 
+     * Since server2 has an outstanding request, it should not 
+     * be sent an additional request. 
+     *
+     *)
+
+  begin match data2_msg with 
+  | (Append_entries_request r, 1) :: []  -> (
+    assert(r.leader_term = 1);
+    assert(r.leader_id = 0);
+    assert(r.prev_log_index = 1); 
+      (* 
+       * server0 [Leader] knowns that the server1 has successfully
+       * inserver the log entry with [index = 1] and therefore 
+       * will send [prev_log_index] with value 1.
+       *)
+    assert(r.prev_log_term = 1); 
+    assert(1 = List.length r.rev_log_entries);  
+    assert(r.leader_commit = 1); 
+  ) 
+  | _ -> assert(false)
+  end;
+
+  let now = now +. 0.001 in 
+
+  let server1, msgs = 
+    let msg = msg_for_server data2_msg 1 in 
+    Raft_logic.Message.handle_message server1 msg now 
+  in 
+
+  assert(State.is_follower server1); 
+
+  assert(2 = List.length server1.log); 
+    (* 
+     * server1 should have correctly replicated the log 
+     * with [index = 2]. 
+     *)
+
+  assert(1 = server1.commit_index); 
+    (* 
+     * The [Append_entries_request] contained the [commit_index] 
+     * of the [Leader] and therefore server1 has 
+     * updated its own. 
+     *)
+
+  assert(1 = List.length msgs); 
+    (* 
+     * Only a single response to server0 should be 
+     * sent back. 
+     *)
+
+  begin match msgs with
+  | (Append_entries_response r, 0) :: [] -> (
+    assert(r.receiver_id  = 1);
+    assert(r.receiver_term = 1); 
+    assert(r.result = Success {receiver_last_log_index = 2; }); 
+  ) 
+  | _ -> assert(false) 
+  end;
+
+  let now = now +. 0.001 in 
+
+  let server0, msgs = 
+    let msg = msg_for_server msgs 0  in 
+    Raft_logic.Message.handle_message server0 msg now 
+  in
+
+  assert(State.is_leader server0); 
+
+  assert(2 = server0.commit_index); 
+    (* 
+     * A successfull replication is enough for a majority. 
+     *)
+
+  
+  (* 
+   * Let's now look at what happens after a heartbeat timeout. 
+   *
+   * For server1, the [Leader] should only sent an empty [Append_entries_request]
+   * since it knows that server1 has successfully replicated all of its logs. 
+   *
+   * For server2 however, none of the log have been replicated. In fact as far 
+   * as server0 [Leader] is concerned there is still an outstanding request. Realistically
+   * this request could either have been lost or server2 or the response could have never been 
+   * received by server0. In either case (right now it's the first one) RAFT should work!
+   *
+   *)
+
+  let now = now +. default_configuration.hearbeat_timeout in 
+
+  let server0, msgs = Raft_logic.Message.handle_heartbeat_timeout server0 now in 
+
+  assert(2 = List.length msgs); 
+
+  begin match msg_for_server msgs 1 with
+  | Append_entries_request r -> (
+    assert(r.leader_term = 1); 
+    assert(r.leader_id = 0); 
+    assert(r.prev_log_term = 1); 
+    assert(r.rev_log_entries = []);
+      (*
+       * As expected no new log entry should be sent
+       * since they all have been previously and [server1]
+       * replied successfully. 
+       *)
+    
+    assert(r.prev_log_index = 2); 
+      (*
+       * Confirmation of the above statement, server0 [Leader]
+       * knows that log with [index = 2] has been replicated. 
+       *)
+    assert(r.leader_commit = 2);
+  ) 
+  | _ -> assert(false)
+  end;
+
+  begin match msg_for_server msgs 2 with
+  | Append_entries_request r -> (
+    assert(r.leader_term = 1); 
+    assert(r.leader_id = 0); 
+    assert(r.prev_log_term = 0); 
+    assert(List.length r.rev_log_entries = 2);
+      (*
+       * server2 has nevery replied to serve0 [Leader] and therefore 
+       * must receive all the logs added so far. 
+       *)
+    
+    assert(r.prev_log_index = 0); 
+      (*
+       * Confirmation of the above statement, server0 [Leader]
+       * has never received confirmation that server2 has replicated 
+       * the data. 
+       *)
+    assert(r.leader_commit = 2);
+  ) 
+  | _ -> assert(false)
+  end;
+
+  let now =  now +. 0.001 in 
+
+  let server1, server1_response = 
+    let msg = msg_for_server msgs 1 in
+    Raft_logic.Message.handle_message server1 msg now 
+  in 
+  
+  assert(State.is_follower server1); 
+  assert(2 = server1.commit_index); 
+   (* 
+    * server1 is updating its commit index based on latest 
+    * [leader_commit] value of 2 in the request it received. 
+    *)
+
+  assert(1 = List.length server1_response); 
+   (* 
+    * Only a single response is expected.
+    *)
+  
+  let server2, server2_response = 
+    let msg = msg_for_server msgs 2 in
+    Raft_logic.Message.handle_message server2 msg now 
+  in 
+  
+  assert(State.is_follower server2); 
+  assert(2 = server2.commit_index); 
+   (* 
+    * server2 is updating its commit index based on latest 
+    * [leader_commit] value of 2 in the request it received. 
+    *)
+
+  assert(2 = List.length server2.log); 
+   (* 
+    * server2 should have caught up with server0 and replicated
+    * all the logs. 
+    *)
+  
+  assert(1 = List.length server2_response); 
+   (* 
+    * Only a single response is expected.
+    *)
+
+  begin match server2_response with
+  | (Append_entries_response r, 0)::[] -> (
+    assert(r.receiver_id = 2); 
+    assert(r.receiver_term = 1); 
+    assert(r.result = Success {receiver_last_log_index = 2; }); 
+      (* 
+       * server2 has successfully replicated the 2 log entries 
+       *) 
+  ) 
+  | _ -> assert(false)
+  end;
+
+  let server0 = 
+    let server0, _ = 
+      let msg = msg_for_server server1_response 0  in 
+      Raft_logic.Message.handle_message server0 msg now 
+    in 
+    let server0, _ = 
+      let msg = msg_for_server server2_response 0  in 
+      Raft_logic.Message.handle_message server0 msg now 
+    in 
+    server0
+  in 
+
+  assert(State.is_leader server0); 
+  assert(2 = server0.commit_index); 
+  assert(2 = List.length server0.log);
 
   ()
