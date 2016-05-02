@@ -95,12 +95,12 @@ let make_append_entries_for_server state {next_index; _ } receiver_id =
  * all the servers with past deadlines. 
  *)
 let make_heartbeat_requests state leader_state now = 
-  let {receiver_heartbeats; _} = leader_state in 
+  let {receiver_connections; _} = leader_state in 
   let server_to_send = List.fold_left (fun acc {server_id; heartbeat_deadline;} ->
     if now >= heartbeat_deadline
     then server_id::acc
     else acc
-  ) [] receiver_heartbeats
+  ) [] receiver_connections
   in 
   List.map (fun server_id -> 
     let request = make_append_entries_for_server state leader_state server_id in 
@@ -110,9 +110,9 @@ let make_heartbeat_requests state leader_state now =
 (* Helper function to update the heartbeat deadline for the servers
  * that we are sending messages to. 
  *)
-let update_receivers_deadline configuration leader_state msgs_to_send now = 
+let record_requests_sent configuration leader_state msgs_to_send now = 
   List.fold_left (fun leader_state (_, server_id) -> 
-    Raft_helper.Leader.update_receiver_deadline 
+    Raft_helper.Leader.record_request_sent 
         ~server_id ~now ~configuration leader_state
   ) leader_state msgs_to_send
   
@@ -409,16 +409,24 @@ module Append_entries = struct
       (state, [])
   
     else 
-      match result with
-      | Success {receiver_last_log_index} -> 
-        (* Log entries were successfully inserted by the receiver... 
-         * let's update our leader state about that receiver
-         *)
+      match state.role with
+      | Follower _
+      | Candidate _ -> (state, []) 
 
-        begin match state.role with
-        | Leader leader_state ->
+      | Leader leader_state ->
+
+        let leader_state = 
+          Leader.record_response_received ~server_id:receiver_id leader_state 
+        in 
+
+        begin match result with
+        | Success {receiver_last_log_index} -> 
+          (* Log entries were successfully inserted by the receiver... 
+           * let's update our leader state about that receiver
+           *)
 
           let configuration = state.configuration in 
+
 
           let leader_state, nb_of_replications = Leader.update_receiver_last_log_index 
             ~server_id:receiver_id 
@@ -473,7 +481,7 @@ module Append_entries = struct
           let msgs = msg1 @ msg2 in 
 
           let leader_state = 
-            update_receivers_deadline configuration leader_state msgs now 
+            record_requests_sent configuration leader_state msgs now 
               (* 
                * We assume the msgs will be sent and therefore the 
                * heartbeat deadline of all servers which we send messages
@@ -486,10 +494,6 @@ module Append_entries = struct
 
           (state, msgs)
 
-        | _ -> (state, [])
-
-        end (* match state.role *)
-
       | Failure ->
         (* 
          * The receiver log is not matching this server current belief. 
@@ -497,18 +501,16 @@ module Append_entries = struct
          * log index and retry the append. 
          *
          *)
-        begin match state.role with
-        | Leader leader_state ->
-          let configuration = state.configuration in 
-          let leader_state = Leader.decrement_next_index ~server_id:receiver_id leader_state in 
-          let req  = make_append_entries_for_server state leader_state receiver_id in
-          let msgs = [(Append_entries_request req, receiver_id)] in 
-          let leader_state = update_receivers_deadline configuration leader_state msgs now in  
-          let state  = {state with role = Leader leader_state} in 
-          (state,msgs)
-        | _ ->
-          (state, [])
-        end 
+        let configuration = state.configuration in 
+        let leader_state = Leader.decrement_next_index ~server_id:receiver_id leader_state in 
+        let req  = make_append_entries_for_server state leader_state receiver_id in
+        let msgs = [(Append_entries_request req, receiver_id)] in 
+        let leader_state = record_requests_sent configuration leader_state msgs now in  
+        let state  = {state with role = Leader leader_state} in 
+        (state,msgs)
+      
+      end (* match result *) 
+
 
 end (* Append_entries *)
 
@@ -559,10 +561,8 @@ module Message = struct
     match state.role with
     | Leader leader_state -> 
       let msgs = make_heartbeat_requests state leader_state now in 
-      let leader_state = List.fold_left (fun leader_state (_, server_id) -> 
-        Raft_helper.Leader.update_receiver_deadline 
-            ~server_id ~now ~configuration leader_state
-      ) leader_state msgs
+      let leader_state = record_requests_sent 
+        configuration leader_state msgs now 
       in 
       let state = {state with role = Leader leader_state} in 
       (state, msgs)

@@ -130,15 +130,23 @@ module Leader : sig
       determine if it can be considered commited. 
     *)
 
-  val update_receiver_deadline : 
+  val record_request_sent : 
     server_id:int -> 
     now:float -> 
     configuration:Raft_pb.configuration ->
     Raft_pb.leader_state -> 
     Raft_pb.leader_state
-  (** [update_receiver_deadline ~server_id ~now ~configuration leader_state] returns 
-      the new leader state with the [server_id] heartbeat deadline updated. 
+  (** [record_request_sent ~server_id ~now ~configuration leader_state] returns 
+    * the new leader state with the [server_id] heartbeat deadline updated. 
     *)
+
+  val record_response_received : 
+    server_id:int -> 
+    Raft_pb.leader_state -> 
+    Raft_pb.leader_state 
+  (** [record_response_received ~server_id leader_state] keeps track of the 
+    * fact that there are no more outstanding request for [server_id].
+    *) 
 
   val decrement_next_index : server_id:int -> Raft_pb.leader_state -> Raft_pb.leader_state 
   (** [decrement_next_index state receiver_id] decrement the next index for [receiver_id]. 
