@@ -1512,6 +1512,11 @@ let ()  =
   | _ -> assert(false)
   end;
 
+  let server0, msgs = 
+    let msg = msg_for_server msgs 0 in 
+    Raft_logic.Message.handle_message server0 msg now 
+  in  
+
   (* 
    * Server1 was already a follower and aware of server0 leadership
    * the new heartbeat would not change that. 
@@ -1532,5 +1537,86 @@ let ()  =
   )
   | _ -> assert(false)
   end;
+
+  let now = now +. 0.001 in 
+
+  (*
+   * Let's now add a log entry to the [Leader] and trigger
+   * the corresponding [Append_entry] request to the other servers. 
+   *)
+
+  let server0 = 
+    let data = Bytes.of_string "Message1" in 
+    Raft_helper.Leader.add_log data server0
+  in
+
+  (* 
+   * TODO: Right now our implementation relies
+   * on the fact that [Append_entry] messages are sent after 
+   * a heartbeat timeout even though there are pending log entry waiting to be
+   * synchronized. This type of behavior favors throughput rather 
+   * than latency by bulking the log entries into fewer [Append_entries]. 
+   *
+   * The best is to let the client application decide and give them a way to get
+   * [Append_entries] messages for servers not based on whether their timeout
+   * has expired but rather based on the fact that they have not received a 
+   * log entry. 
+   *)
+  let now = now +. default_configuration.hearbeat_timeout in 
+ 
+  let server0, data1_msgs= Raft_logic.Message.handle_heartbeat_timeout server0 now in 
+
+  assert(2 = List.length data1_msgs);
+
+  List.iter (fun (msg, _) -> 
+    match msg with
+    | Append_entries_request r -> (
+      assert(r.leader_term = 1);
+      assert(r.leader_id = 0);
+      assert(r.prev_log_index = 0);
+      assert(r.prev_log_term = 0); 
+      assert(1 = List.length r.rev_log_entries); 
+        (* 
+         * Contains the log entry to be synchronized.
+         *)
+      begin match r.rev_log_entries with
+      | {index = 1; term =1; _} :: [] -> ()
+      | _ -> assert(false)
+      end;
+      assert(r.leader_commit = 0);
+    )
+    | _ -> assert(false)
+  ) data1_msgs;  
+
+  let now = now +. 0.001 in 
+
+  let server1, msgs = 
+    let msg = msg_for_server data1_msgs 1 in 
+    Raft_logic.Message.handle_message server1 msg now 
+  in
+
+  assert(State.is_follower server1); 
+    (* 
+     * No change of role for server1, [Append_entries] only 
+     * mean server0 is still the [Leader]. 
+     *)
+
+  begin match msgs with
+  | (Append_entries_response r, 0) :: [] -> (
+    assert(r.receiver_id = 1);
+    assert(r.receiver_term = 1);
+    assert(r.result = Success { receiver_last_log_index = 1; });  
+     (* 
+      * server1 has correctly replicated the log entry which has index1. 
+      *)
+  ) 
+  | _ -> assert(false)
+  end;
+
+  (* TODO handle the response from server1 in server0 [Leader] 
+   * and make the sure the commit index is correctly updated. 
+   *
+   * Then repeat with server2. 
+   *)
 
   ()
