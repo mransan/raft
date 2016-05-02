@@ -84,7 +84,6 @@ end (* Append_entries *)
 
 module Message : sig 
 
-
   val handle_message : 
     Raft_pb.state -> 
     Raft_pb.message -> 
@@ -110,5 +109,31 @@ module Message : sig
   (** [handle_heartbeat_timeout state now] computes the necessary messages
       to send in the case of a heartbeat. 
    *)
+
+  type new_log_response = 
+    | Appended of Raft_pb.state * message_to_send list
+      (** The new log can correctly be handled by this server (ie it is 
+        * a valid [Leader] and new [Append_entries] request message can be 
+        * sent to follower servers. 
+        *)
+    | Forward_to_leader of int 
+      (** If the current server is not a [Leader], the new log entry should 
+        * not be handled by this server but rather forwarded to the current [Leader]
+        * which id is returned. 
+        *)
+
+    | Delay 
+      (** The current state of the system (as this server is aware) does not 
+        * seem to be in a configuration that can handle the the log. 
+        * For instance during an election it is possible that this server
+        * is a [Candidate] waiting for more votes. Another scenario would be 
+        * that this server is a [Follower] which has not yet received confirmation
+        * from a valid [Leader]
+        *)
   
+  val handle_add_log_entry : Raft_pb.state -> bytes -> time -> new_log_response 
+  (** [handle_add_log_entry state data now] processes [data] and return the follow
+   *   up response. See [new_log_response] for more information. 
+   *)
+
 end 
