@@ -98,16 +98,20 @@ module Leader = struct
     
     let {nb_of_server; hearbeat_timeout} = state.configuration in 
   
-    let rec aux ((next_index, match_index, receiver_heartbeats) as acc) = function
+    let rec aux ((next_index, match_index, receiver_connections) as acc) = function
       | (-1) -> acc
       |  i   -> 
         if i = state.id
         then 
-          aux (next_index, match_index, receiver_heartbeats) (i -1)
+          aux (next_index, match_index, receiver_connections) (i -1)
         else 
           let next      = {server_id = i; server_log_index = last_log_index + 1} in
           let match_    = {server_id = i; server_log_index = 0 } in 
-          let heartbeat = {server_id = i; heartbeat_deadline = now +. hearbeat_timeout} in 
+          let connection= {
+            server_id = i; 
+            heartbeat_deadline = now +. hearbeat_timeout;
+            outstanding_request = false;
+          } in 
             (* 
              * Here the expectation is that after becoming a leader
              * the client application will send a message to all the receivers
@@ -115,11 +119,19 @@ module Leader = struct
              * to [now + timeout] rather than [now].
              *
              *)
-          aux (next::next_index, match_::match_index, heartbeat::receiver_heartbeats) (i - 1)
+          let next_index = next :: next_index in 
+          let match_index = match_ :: match_index  in 
+          let receiver_connections = connection :: receiver_connections in
+          aux (next_index, match_index, receiver_connections) (i - 1)
     in 
-    let next_index, match_index, receiver_heartbeats = aux ([], [], []) (nb_of_server - 1) in 
+    let next_index, match_index, receiver_connections = aux ([], [], []) (nb_of_server - 1) in 
     
-    {state with role = Leader {next_index; match_index; receiver_heartbeats}}
+    {state with 
+      role = Leader {
+        next_index; 
+        match_index; 
+        receiver_connections;
+     }}
 
 
   let find_server_log_index server_index receiver_id = 
@@ -180,36 +192,47 @@ module Leader = struct
       
       ({leader_state with next_index; match_index}, nb_of_replications) 
 
-  let update_receiver_deadline ~server_id ~now ~configuration leader_state = 
 
-    let {receiver_heartbeats;_ } = leader_state in 
-    let receiver_id = server_id in 
+  let update_receiver_connection ~receiver_id ~f leader_state = 
+    let {receiver_connections;_ } = leader_state in 
 
-    let receiver_heartbeats = List.fold_left (fun acc receiver_heartbeat -> 
+    let receiver_connections = List.fold_left (fun acc receiver_connection -> 
+      if receiver_connection.server_id = receiver_id
+      then (f receiver_connection)::acc
+      else receiver_connection::acc
+    ) []  receiver_connections in
 
-      let receiver_heartbeats = acc in 
-      let {heartbeat_deadline; server_id}  = receiver_heartbeat in 
+    {leader_state with receiver_connections}
 
-      let receiver_heartbeat = 
-        if server_id = receiver_id
-        then {receiver_heartbeat with heartbeat_deadline = configuration.hearbeat_timeout +. now} 
-        else  receiver_heartbeat 
-      in 
-      
-      receiver_heartbeat::receiver_heartbeats
+  let record_request_sent ~server_id ~now ~configuration leader_state = 
 
-    ) [] receiver_heartbeats in 
+    update_receiver_connection 
+      ~receiver_id:server_id 
+      ~f:(fun receiver_connection ->
+        {receiver_connection with
+          heartbeat_deadline =  configuration.hearbeat_timeout +. now; 
+          outstanding_request = true;
+        }
+      ) 
+      leader_state
 
-    {leader_state with receiver_heartbeats}
-
-
-  let min_heartbeat_timout ~now {receiver_heartbeats; _ } = 
+  let record_response_received ~server_id leader_state = 
+    
+    update_receiver_connection 
+      ~receiver_id:server_id 
+      ~f:(fun receiver_connection ->
+        
+        {receiver_connection with outstanding_request = false;}
+      ) 
+      leader_state
+    
+  let min_heartbeat_timout ~now {receiver_connections; _ } = 
 
     let min_heartbeat_deadline = List.fold_left (fun min_deadline {heartbeat_deadline; _ } -> 
         if heartbeat_deadline < min_deadline
         then heartbeat_deadline
         else min_deadline
-      ) max_float receiver_heartbeats
+      ) max_float receiver_connections
     in 
     min_heartbeat_deadline -. now 
 

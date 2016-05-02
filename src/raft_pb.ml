@@ -96,26 +96,28 @@ and server_index_mutable = {
   mutable server_log_index : int;
 }
 
-type receiver_heartbeat = {
+type receiver_connection = {
   server_id : int;
   heartbeat_deadline : float;
+  outstanding_request : bool;
 }
 
-and receiver_heartbeat_mutable = {
+and receiver_connection_mutable = {
   mutable server_id : int;
   mutable heartbeat_deadline : float;
+  mutable outstanding_request : bool;
 }
 
 type leader_state = {
   next_index : server_index list;
   match_index : server_index list;
-  receiver_heartbeats : receiver_heartbeat list;
+  receiver_connections : receiver_connection list;
 }
 
 and leader_state_mutable = {
   mutable next_index : server_index list;
   mutable match_index : server_index list;
-  mutable receiver_heartbeats : receiver_heartbeat list;
+  mutable receiver_connections : receiver_connection list;
 }
 
 type candidate_state = {
@@ -313,33 +315,36 @@ and default_server_index_mutable () : server_index_mutable = {
   server_log_index = 0;
 }
 
-let rec default_receiver_heartbeat 
+let rec default_receiver_connection 
   ?server_id:((server_id:int) = 0)
   ?heartbeat_deadline:((heartbeat_deadline:float) = 0.)
-  () : receiver_heartbeat  = {
+  ?outstanding_request:((outstanding_request:bool) = false)
+  () : receiver_connection  = {
   server_id;
   heartbeat_deadline;
+  outstanding_request;
 }
 
-and default_receiver_heartbeat_mutable () : receiver_heartbeat_mutable = {
+and default_receiver_connection_mutable () : receiver_connection_mutable = {
   server_id = 0;
   heartbeat_deadline = 0.;
+  outstanding_request = false;
 }
 
 let rec default_leader_state 
   ?next_index:((next_index:server_index list) = [])
   ?match_index:((match_index:server_index list) = [])
-  ?receiver_heartbeats:((receiver_heartbeats:receiver_heartbeat list) = [])
+  ?receiver_connections:((receiver_connections:receiver_connection list) = [])
   () : leader_state  = {
   next_index;
   match_index;
-  receiver_heartbeats;
+  receiver_connections;
 }
 
 and default_leader_state_mutable () : leader_state_mutable = {
   next_index = [];
   match_index = [];
-  receiver_heartbeats = [];
+  receiver_connections = [];
 }
 
 let rec default_candidate_state 
@@ -563,18 +568,19 @@ let rec decode_server_index d =
   let v:server_index = Obj.magic v in
   v
 
-let rec decode_receiver_heartbeat d =
-  let v = default_receiver_heartbeat_mutable () in
+let rec decode_receiver_connection d =
+  let v = default_receiver_connection_mutable () in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Varint) -> v.server_id <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (2, Pbrt.Bits32) -> v.heartbeat_deadline <- (Pbrt.Decoder.float_as_bits32 d); loop ()
+    | Some (3, Pbrt.Varint) -> v.outstanding_request <- (Pbrt.Decoder.bool d); loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
-  let v:receiver_heartbeat = Obj.magic v in
+  let v:receiver_connection = Obj.magic v in
   v
 
 let rec decode_leader_state d =
@@ -582,13 +588,13 @@ let rec decode_leader_state d =
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
-      v.receiver_heartbeats <- List.rev v.receiver_heartbeats;
+      v.receiver_connections <- List.rev v.receiver_connections;
       v.match_index <- List.rev v.match_index;
       v.next_index <- List.rev v.next_index;
     )
     | Some (1, Pbrt.Bytes) -> v.next_index <- (decode_server_index (Pbrt.Decoder.nested d)) :: v.next_index; loop ()
     | Some (2, Pbrt.Bytes) -> v.match_index <- (decode_server_index (Pbrt.Decoder.nested d)) :: v.match_index; loop ()
-    | Some (3, Pbrt.Bytes) -> v.receiver_heartbeats <- (decode_receiver_heartbeat (Pbrt.Decoder.nested d)) :: v.receiver_heartbeats; loop ()
+    | Some (3, Pbrt.Bytes) -> v.receiver_connections <- (decode_receiver_connection (Pbrt.Decoder.nested d)) :: v.receiver_connections; loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -779,11 +785,13 @@ let rec encode_server_index (v:server_index) encoder =
   Pbrt.Encoder.int_as_varint v.server_log_index encoder;
   ()
 
-let rec encode_receiver_heartbeat (v:receiver_heartbeat) encoder = 
+let rec encode_receiver_connection (v:receiver_connection) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.server_id encoder;
   Pbrt.Encoder.key (2, Pbrt.Bits32) encoder; 
   Pbrt.Encoder.float_as_bits32 v.heartbeat_deadline encoder;
+  Pbrt.Encoder.key (3, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.bool v.outstanding_request encoder;
   ()
 
 let rec encode_leader_state (v:leader_state) encoder = 
@@ -797,8 +805,8 @@ let rec encode_leader_state (v:leader_state) encoder =
   ) v.match_index;
   List.iter (fun x -> 
     Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_receiver_heartbeat x) encoder;
-  ) v.receiver_heartbeats;
+    Pbrt.Encoder.nested (encode_receiver_connection x) encoder;
+  ) v.receiver_connections;
   ()
 
 let rec encode_candidate_state (v:candidate_state) encoder = 
@@ -965,11 +973,12 @@ let rec pp_server_index fmt (v:server_index) =
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
-let rec pp_receiver_heartbeat fmt (v:receiver_heartbeat) = 
+let rec pp_receiver_connection fmt (v:receiver_connection) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "server_id" Pbrt.Pp.pp_int fmt v.server_id;
     Pbrt.Pp.pp_record_field "heartbeat_deadline" Pbrt.Pp.pp_float fmt v.heartbeat_deadline;
+    Pbrt.Pp.pp_record_field "outstanding_request" Pbrt.Pp.pp_bool fmt v.outstanding_request;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
@@ -979,7 +988,7 @@ let rec pp_leader_state fmt (v:leader_state) =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "next_index" (Pbrt.Pp.pp_list pp_server_index) fmt v.next_index;
     Pbrt.Pp.pp_record_field "match_index" (Pbrt.Pp.pp_list pp_server_index) fmt v.match_index;
-    Pbrt.Pp.pp_record_field "receiver_heartbeats" (Pbrt.Pp.pp_list pp_receiver_heartbeat) fmt v.receiver_heartbeats;
+    Pbrt.Pp.pp_record_field "receiver_connections" (Pbrt.Pp.pp_list pp_receiver_connection) fmt v.receiver_connections;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

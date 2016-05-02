@@ -273,9 +273,9 @@ message LogEntry {
 //   heartbeat message be sent.
 //  
 message LeaderState {
-  repeated ServerIndex       next_index          = 1;  
-  repeated ServerIndex       match_index         = 2;  
-  repeated ReceiverHeartbeat receiver_heartbeats = 3;
+  repeated ServerIndex        next_index          = 1;  
+  repeated ServerIndex        match_index         = 2;  
+  repeated ReceiverConnection receiver_connections= 3;
 }
 
 // [CandidateState]
@@ -324,12 +324,22 @@ message FollowerState {
   required double election_deadline = 3;
 }
 
-// [ReceiverHeartbeat] : data structure to 
-// keep track of the hearbeat deadline for each
-// server 
-message ReceiverHeartbeat {
+// [ReceiverConnection] 
+// 
+// Data structure to keep track of the connection state for 
+// a particular receiver. 
+// 
+// [heartbeat_deadline] is used to keep track of when should 
+//   the next heartbeat sent. 
+// 
+// [outstanding_request] is used to keep track if a request 
+//   was previously sent to this server but no request was received
+//   yet.
+// 
+message ReceiverConnection {
   required int32 server_id           = 1; 
-  required float heartbeat_deadline  = 2; 
+  required float heartbeat_deadline  = 2;
+  required bool  outstanding_request = 3;
 }
 
 message ServerIndex {

@@ -55,15 +55,16 @@ type server_index = {
   server_log_index : int;
 }
 
-type receiver_heartbeat = {
+type receiver_connection = {
   server_id : int;
   heartbeat_deadline : float;
+  outstanding_request : bool;
 }
 
 type leader_state = {
   next_index : server_index list;
   match_index : server_index list;
-  receiver_heartbeats : receiver_heartbeat list;
+  receiver_connections : receiver_connection list;
 }
 
 type candidate_state = {
@@ -173,17 +174,18 @@ val default_server_index :
   server_index
 (** [default_server_index ()] is the default value for type [server_index] *)
 
-val default_receiver_heartbeat : 
+val default_receiver_connection : 
   ?server_id:int ->
   ?heartbeat_deadline:float ->
+  ?outstanding_request:bool ->
   unit ->
-  receiver_heartbeat
-(** [default_receiver_heartbeat ()] is the default value for type [receiver_heartbeat] *)
+  receiver_connection
+(** [default_receiver_connection ()] is the default value for type [receiver_connection] *)
 
 val default_leader_state : 
   ?next_index:server_index list ->
   ?match_index:server_index list ->
-  ?receiver_heartbeats:receiver_heartbeat list ->
+  ?receiver_connections:receiver_connection list ->
   unit ->
   leader_state
 (** [default_leader_state ()] is the default value for type [leader_state] *)
@@ -264,8 +266,8 @@ val decode_message : Pbrt.Decoder.t -> message
 val decode_server_index : Pbrt.Decoder.t -> server_index
 (** [decode_server_index decoder] decodes a [server_index] value from [decoder] *)
 
-val decode_receiver_heartbeat : Pbrt.Decoder.t -> receiver_heartbeat
-(** [decode_receiver_heartbeat decoder] decodes a [receiver_heartbeat] value from [decoder] *)
+val decode_receiver_connection : Pbrt.Decoder.t -> receiver_connection
+(** [decode_receiver_connection decoder] decodes a [receiver_connection] value from [decoder] *)
 
 val decode_leader_state : Pbrt.Decoder.t -> leader_state
 (** [decode_leader_state decoder] decodes a [leader_state] value from [decoder] *)
@@ -317,8 +319,8 @@ val encode_message : message -> Pbrt.Encoder.t -> unit
 val encode_server_index : server_index -> Pbrt.Encoder.t -> unit
 (** [encode_server_index v encoder] encodes [v] with the given [encoder] *)
 
-val encode_receiver_heartbeat : receiver_heartbeat -> Pbrt.Encoder.t -> unit
-(** [encode_receiver_heartbeat v encoder] encodes [v] with the given [encoder] *)
+val encode_receiver_connection : receiver_connection -> Pbrt.Encoder.t -> unit
+(** [encode_receiver_connection v encoder] encodes [v] with the given [encoder] *)
 
 val encode_leader_state : leader_state -> Pbrt.Encoder.t -> unit
 (** [encode_leader_state v encoder] encodes [v] with the given [encoder] *)
@@ -372,8 +374,8 @@ val pp_message : Format.formatter -> message -> unit
 val pp_server_index : Format.formatter -> server_index -> unit 
 (** [pp_server_index v] formats v] *)
 
-val pp_receiver_heartbeat : Format.formatter -> receiver_heartbeat -> unit 
-(** [pp_receiver_heartbeat v] formats v] *)
+val pp_receiver_connection : Format.formatter -> receiver_connection -> unit 
+(** [pp_receiver_connection v] formats v] *)
 
 val pp_leader_state : Format.formatter -> leader_state -> unit 
 (** [pp_leader_state v] formats v] *)
