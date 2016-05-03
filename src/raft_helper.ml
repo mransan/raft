@@ -165,10 +165,9 @@ module Leader = struct
     }
 
   let add_logs datas state = 
-    let last_log_index = State.last_log_index state in
 
-    let rec aux term last_log_index log = function
-      | [] -> log 
+    let rec aux term last_log_index log log_size = function
+      | [] -> (log, log_size)  
       | data::tl -> 
         let last_log_index = last_log_index + 1 in 
         let log = {
@@ -176,11 +175,19 @@ module Leader = struct
           term;
           data;
         } :: log in 
-        aux term last_log_index log tl 
+        aux term last_log_index log (log_size + 1) tl 
     in 
-    {state with 
-      log = aux state.current_term last_log_index state.log datas 
-    }
+
+    let log, log_size = 
+      let term = state.current_term in 
+      let last_log_index = State.last_log_index state in 
+      let log = state.log in 
+      let log_size = state.log_size in 
+
+      aux term last_log_index log log_size datas 
+    in 
+
+    {state with log; log_size; }
     
   let update_receiver_last_log_index ~server_id ~log_index leader_state = 
     let receiver_id = server_id in 

@@ -84,46 +84,48 @@ module Leader : sig
 
   val become : Raft_pb.state -> float -> Raft_pb.state 
   (** [become state] returns the new state with a Leader role. 
-      
-       While only candidate with a majority are allowed by the protocol to 
-       become a leader, this function does not perform any checks but simply 
-       initialize the role of Leader. 
-
-       The calling application is responsible to ensure that it is correct
-       to become a leader. 
+    *  
+    *   While only candidate with a majority are allowed by the protocol to 
+    *   become a leader, this function does not perform any checks but simply 
+    *   initialize the role of Leader. 
+    *   
+    *   The calling application is responsible to ensure that it is correct
+    *   to become a leader. 
     *)
 
   val next_index_for_receiver : Raft_pb.state -> int -> int option
   (** [next_index_for_receiver state receiver_id] returns the next index 
-      for the given receiver id. 
-
-      If [state] role is not a leader or if [receiver_id] is not valid, 
-      then [None] is returned. 
+    *  for the given receiver id. 
+    *
+    *  If [state] role is not a leader or if [receiver_id] is not valid, 
+    *  then [None] is returned. 
     *)
   
   val match_index_for_receiver : Raft_pb.state -> int -> int option
   (** [match_index_for_receiver state receiver_id] returns the match index 
-      for the given receiver id. 
-
-      If [state] role is not a leader or if [receiver_id] is not valid, 
-      then [None] is returned. 
+    *  for the given receiver id. 
+    *
+    *  If [state] role is not a leader or if [receiver_id] is not valid, 
+    *  then [None] is returned. 
     *)
 
   val add_log : bytes -> Raft_pb.state -> Raft_pb.state 
   (** [add_log log_data state] adds [log_data] to the log of the [state]. 
-       
-      Any subsequent logical actions like creating Append Entries request is 
-      left to the caller. 
+    *   
+    *  Any subsequent logical actions like creating Append Entries request is 
+    *  left to the caller. 
     *) 
   
   val add_logs : bytes list -> Raft_pb.state -> Raft_pb.state 
   (** [add_logs datas state] adds [datas] to the log of the [state]. 
-      
-      Note that the logs are in reverse chronological order (in other 
-      [List.hd datas] is the latest entry.
-       
-      Any subsequent logical actions like creating Append Entries request is 
-      left to the caller. 
+    * 
+    * Note that the logs are in chronological order 
+    * 
+    *   In other word [List.hd datas] is the earliest entry 
+    *   and should be appended first to the server logs.
+    *  
+    * Any subsequent logical actions like creating Append Entries request is 
+    * left to the caller. 
     *) 
   
   val update_receiver_last_log_index : 
@@ -132,12 +134,12 @@ module Leader : sig
     Raft_pb.leader_state -> 
     (Raft_pb.leader_state * int) 
   (** [update_receiver_last_log_index leader_state receiver_id last_log_index] updates the leader
-      state with the [last_log_index] information received from a server. (Both [next_index]
-      and [match_index] are updated. 
-
-      The function returns [(state, nb_of_replication)]. The [nb_of_replication] is 
-      useful for the application to determine how many servers have replicated the log and therefore
-      determine if it can be considered commited. 
+    *  state with the [last_log_index] information received from a server. (Both [next_index]
+    *  and [match_index] are updated. 
+    *
+    *  The function returns [(state, nb_of_replication)]. The [nb_of_replication] is 
+    *  useful for the application to determine how many servers have replicated the log and therefore
+    *  determine if it can be considered commited. 
     *)
 
   val record_request_sent : 
