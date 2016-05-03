@@ -573,7 +573,7 @@ module Message = struct
     | Forward_to_leader of int 
     | Delay 
 
-  let handle_add_log_entry state data now = 
+  let handle_add_log_entries state datas now = 
     match state.role with
     | Follower {current_leader = None ; _ }
     | Candidate _ -> 
@@ -589,7 +589,7 @@ module Message = struct
        *)
 
     | Leader _ -> 
-      let state = Leader.add_log data state in 
+      let state = Leader.add_logs datas state in 
       begin match state.role with
       | Follower  _ | Candidate _ -> assert(false) 
         (* We don't expect the [Leader.add_log] functions to 

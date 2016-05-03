@@ -116,6 +116,16 @@ module Leader : sig
       left to the caller. 
     *) 
   
+  val add_logs : bytes list -> Raft_pb.state -> Raft_pb.state 
+  (** [add_logs datas state] adds [datas] to the log of the [state]. 
+      
+      Note that the logs are in reverse chronological order (in other 
+      [List.hd datas] is the latest entry.
+       
+      Any subsequent logical actions like creating Append Entries request is 
+      left to the caller. 
+    *) 
+  
   val update_receiver_last_log_index : 
     server_id:int -> 
     log_index:int -> 

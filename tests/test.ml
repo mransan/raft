@@ -1574,7 +1574,7 @@ let ()  =
 
   let new_log_response = 
     let data = Bytes.of_string "Message1" in 
-    Raft_logic.Message.handle_add_log_entry server0 data now 
+    Raft_logic.Message.handle_add_log_entries server0 [data] now 
   in
 
   let server0, data1_msgs = 
@@ -1699,7 +1699,7 @@ let ()  =
 
   let new_log_response = 
     let data = Bytes.of_string "Message2" in 
-    Raft_logic.Message.handle_add_log_entry server0 data now
+    Raft_logic.Message.handle_add_log_entries server0 [data] now
   in
 
   let server0, data2_msg = 

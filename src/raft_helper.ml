@@ -163,7 +163,25 @@ module Leader = struct
       }::state.log;
       log_size = state.log_size + 1;
     }
-   
+
+  let add_logs datas state = 
+    let last_log_index = State.last_log_index state in
+
+    let rec aux term last_log_index log = function
+      | [] -> log 
+      | data::tl -> 
+        let last_log_index = last_log_index + 1 in 
+        let log = {
+          index = last_log_index;
+          term;
+          data;
+        } :: log in 
+        aux term last_log_index log tl 
+    in 
+    {state with 
+      log = aux state.current_term last_log_index state.log datas 
+    }
+    
   let update_receiver_last_log_index ~server_id ~log_index leader_state = 
     let receiver_id = server_id in 
     if log_index = 0
