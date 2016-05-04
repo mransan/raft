@@ -12,7 +12,7 @@ endif
 
 test: 
 	$(OCB) test.native
-	time ./test.native 
+	export OCAMLRUNPARAM="b" && ./test.native 
 
 gen:
 	ocaml-protoc -ml_out src src/raft.proto

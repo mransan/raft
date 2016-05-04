@@ -12,58 +12,38 @@ type time = float
   
 type message_to_send = Raft_pb.message * int 
   
+let rec keep_first_n l = function
+  | 0 -> []
+  | n -> 
+    begin match l with 
+    | hd::tl -> hd::(keep_first_n tl (n - 1))
+    | []     -> [] 
+    end
+
+let rev_log_entries_since_index last_index log = 
+
+  let rec aux rev_log_entries  = function
+    | [] ->
+     if last_index = 0 
+     then (0, rev_log_entries)
+     else failwith "[Raft_logic] Internal error invalid log index"
+
+    | {index; term; _ }::tl when index = last_index -> 
+      (term, rev_log_entries) 
+
+    | hd::tl -> aux (hd::rev_log_entries) tl  
+  in
+
+  aux [] log 
+  
 (* Helper function to collect all the log entries
  * up until (and including) the log with given 
  * index. 
  *)
 let collect_log_since_index last_index log max_nb_message = 
-
-  let rec keep_first_n l = function
-    | 0 -> []
-    | n -> 
-      begin match l with 
-      | hd::tl -> hd::(keep_first_n tl (n - 1))
-      | [] -> assert(false)
-      end
-  in 
-
-  (*
-   * In the case of a last_index because a lot lower than the 
-   * latest log index then the linear operation 
-   * below is really expensive. 
-   * 
-   * TODO
-   * An optimization could be to keep track for each server of that
-   * [reverse log entries] value and only use the actual log value
-   * when we are done sending all the reverse log entries.
-   *
-   *)
-
-  let rec aux count rev_log_entries = function
-    | [] -> 
-      if last_index = 0
-      then 
-        if count > max_nb_message
-        then
-          (0, keep_first_n rev_log_entries max_nb_message) 
-        else
-          (0, rev_log_entries)
-      else 
-        failwith "[Raft_logic] Internal error invalid log index"
-
-    | ({index;term;data = _ } as entry)::tl -> 
-      if index = last_index 
-      then 
-        if count > max_nb_message
-        then
-          (term, keep_first_n rev_log_entries max_nb_message) 
-        else 
-          (term, rev_log_entries)
-      else 
-        aux (count + 1) (entry::rev_log_entries) tl  
-  in 
-  aux 0 [] log 
-
+  let last_term, rev_log_entries = rev_log_entries_since_index last_index log in 
+  (last_term, keep_first_n rev_log_entries max_nb_message) 
+    
 let make_append_entries prev_log_index state =  
   let max = state.configuration.max_nb_logs_per_message in
   let (prev_log_term, rev_log_entries) = 
