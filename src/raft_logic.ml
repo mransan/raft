@@ -294,13 +294,12 @@ module Append_entries = struct
       {receiver_term = state.current_term; receiver_id = state.id; result;}
     in 
     
-    
     if leader_term < state.current_term 
     then 
       (* This request is coming from a leader lagging behind...
        *)
       
-      (state, make_response state Failure)
+      (state, make_response state Term_failure)
   
     else 
       (* This request is coming from a legetimate leader, 
@@ -362,6 +361,17 @@ module Append_entries = struct
         let response = make_response state (Success {receiver_last_log_index; }) in 
         (state, response)
       in
+
+      let make_log_failure_with_latest_log = function
+        | [] -> Log_failure {
+          receiver_last_log_index = 0;
+          receiver_last_log_term = 0;
+        }
+        | {index; term; _ }::_ -> Log_failure {
+          receiver_last_log_index = index;
+          receiver_last_log_term = term;
+        } 
+      in
   
       let rec aux post_logs = function 
         | [] -> 
@@ -374,7 +384,7 @@ module Append_entries = struct
             (* [case 1] The prev_log_index is not found in the state log. 
              * This server is lagging behind. 
              *)
-            (state, make_response state Failure)
+            (state, make_response state (make_log_failure_with_latest_log []))
   
         | ({index; term; _ }::tl as log) when index = prev_log_index && 
                                                term = prev_log_term -> 
@@ -390,11 +400,25 @@ module Append_entries = struct
            * As far as the leader is concerned it's like [case 1] now. 
            *)
           let new_state = {state with log} in 
-          (new_state, make_response state Failure)
-        |  hd::tl -> aux (hd::post_logs) tl 
-  
+          (new_state, make_response state (make_log_failure_with_latest_log log))
+
+        |  hd::tl -> aux (hd::post_logs) tl  
+
       in 
-      aux [] state.log 
+      match state.log with
+      | {index; _}::tl when prev_log_index > index -> 
+        (* 
+         * This is the case when a new [Leader] which has more log entries
+         * than this server sends a first [Append_entries_request]. It initializes 
+         * its belief of thie server [last_log_index] to its own [last_log_index]. 
+         * 
+         * However this server does not have as many log entries. 
+         *
+         * In such a case, we send failure right away. 
+         *)
+        (state, make_response state (make_log_failure_with_latest_log state.log))
+
+      | _ -> aux [] state.log 
   
   let handle_response state ({receiver_term; _ } as response) now = 
     
@@ -422,6 +446,7 @@ module Append_entries = struct
         begin match result with
         | Success {receiver_last_log_index} -> 
           (* Log entries were successfully inserted by the receiver... 
+           *   
            * let's update our leader state about that receiver
            *)
 
@@ -493,7 +518,7 @@ module Append_entries = struct
 
           (state, msgs)
 
-      | Failure ->
+      | Log_failure log_failure -> 
         (* 
          * The receiver log is not matching this server current belief. 
          * If a leader this server should decrement the next 
@@ -501,12 +526,18 @@ module Append_entries = struct
          *
          *)
         let configuration = state.configuration in 
-        let leader_state = Leader.decrement_next_index ~server_id:receiver_id leader_state in 
+        let leader_state = Leader.decrement_next_index ~log_failure ~server_id:receiver_id state leader_state in 
         let req  = make_append_entries_for_server state leader_state receiver_id in
         let msgs = [(Append_entries_request req, receiver_id)] in 
         let leader_state = record_requests_sent configuration leader_state msgs now in  
         let state  = {state with role = Leader leader_state} in 
         (state,msgs)
+
+      | Term_failure  -> assert(false)
+        (* 
+         * This should have already been detected when comparing the receiver_term with 
+         * the [state.current_term]. 
+         *)
       
       end (* match result *) 
 

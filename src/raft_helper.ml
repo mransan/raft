@@ -261,11 +261,66 @@ module Leader = struct
     in 
     min_heartbeat_deadline -. now 
 
-  let decrement_next_index ~server_id ({next_index; _ } as leader_state) = 
+  let decrement_next_index ~log_failure ~server_id state ({next_index; } as leader_state) = 
     let receiver_id = server_id in 
+    let {receiver_last_log_index ; receiver_last_log_term } = log_failure in 
+
+    let latest_log_index, latest_log_term = match state.log with
+      | [] -> (0, 0) 
+      | {index; term; data = _} :: _ -> (index, term)
+    in
+
+    assert(receiver_last_log_index < latest_log_index);  
+      (* 
+       * This is an invariant. When receiving the [Append_entries]
+       * request, in case of [Log_failure] the server is responsible
+       * to find the earlier log entry to synchronize with the [Leader]. 
+       *
+       * We could handle this case as well. 
+       *)
+
+    (* 
+     * Next step is to make sur that both the [receiver_last_log_index]
+     * and [receiver_last_log_term] are matching an entry in the [Leader] 
+     * log.   
+     *
+     * In the case it is then it means that the log entry sent 
+     * by the receiver is the good common log entry to synchronize the [Leader]
+     * and this [Follower]. 
+     *
+     * In the case there is no match then we jump back to a previous term to 
+     * find a entry to synchronize upon.
+     *)
+    let receiver_last_log_index = 
+      let rec aux = function 
+        | [] -> 0 
+        | {index; term; _}::tl -> 
+          if index > receiver_last_log_index
+          then aux tl 
+          else 
+            if term = receiver_last_log_term
+            then 
+              (* all good we verify the server has the matching 
+               * log
+               *) 
+              receiver_last_log_index
+            else 
+              (* Same index but different term, in this case, 
+               * let's just go back to the last index of the previous term
+               *)
+              let rec aux = function 
+                | [] -> 0 
+                | {index; term; _}::tl when term <> receiver_last_log_term -> index
+                | _::tl -> aux tl 
+              in 
+              aux tl 
+      in
+      aux state.log
+    in
+
     let next_index = List.map (fun ({server_id; server_log_index; } as s) -> 
       if server_id = receiver_id
-      then {s with server_log_index = server_log_index - 1} 
+      then {s with server_log_index = receiver_last_log_index + 1} 
       else s
     ) next_index in
     {leader_state with next_index }
