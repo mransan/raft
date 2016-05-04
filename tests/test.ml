@@ -1024,7 +1024,7 @@ let () =
     assert(1 = List.length server1.log);
     assert_current_leader server1 0; 
     begin match response.result with
-    | Failure -> assert(false)
+    | Term_failure | Log_failure _ -> assert(false)
     | Success {receiver_last_log_index} -> assert(1 = receiver_last_log_index) 
     end
   ); 

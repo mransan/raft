@@ -294,13 +294,12 @@ module Append_entries = struct
       {receiver_term = state.current_term; receiver_id = state.id; result;}
     in 
     
-    
     if leader_term < state.current_term 
     then 
       (* This request is coming from a leader lagging behind...
        *)
       
-      (state, make_response state Failure)
+      (state, make_response state Term_failure)
   
     else 
       (* This request is coming from a legetimate leader, 
@@ -362,6 +361,17 @@ module Append_entries = struct
         let response = make_response state (Success {receiver_last_log_index; }) in 
         (state, response)
       in
+
+      let make_log_failure_with_latest_log = function
+        | [] -> Log_failure {
+          receiver_last_log_index = 0;
+          receiver_last_log_term = 0;
+        }
+        | {index; term; _ }::_ -> Log_failure {
+          receiver_last_log_index = index;
+          receiver_last_log_term = term;
+        } 
+      in
   
       let rec aux post_logs = function 
         | [] -> 
@@ -374,7 +384,7 @@ module Append_entries = struct
             (* [case 1] The prev_log_index is not found in the state log. 
              * This server is lagging behind. 
              *)
-            (state, make_response state Failure)
+            (state, make_response state (make_log_failure_with_latest_log []))
   
         | ({index; term; _ }::tl as log) when index = prev_log_index && 
                                                term = prev_log_term -> 
@@ -390,8 +400,17 @@ module Append_entries = struct
            * As far as the leader is concerned it's like [case 1] now. 
            *)
           let new_state = {state with log} in 
-          (new_state, make_response state Failure)
+          (new_state, make_response state (make_log_failure_with_latest_log log))
+
         |  hd::tl -> aux (hd::post_logs) tl 
+          (* 
+           * TODO: add optimization:
+           *
+           * Confirm that we can rely on the monotically increasing log index 
+           * values and in such a case you can quickly exit in the case
+           * the [prev_log_index] is greater than the [hd] index. 
+           *
+           *)
   
       in 
       aux [] state.log 
@@ -493,7 +512,7 @@ module Append_entries = struct
 
           (state, msgs)
 
-      | Failure ->
+      | Log_failure log_failure -> 
         (* 
          * The receiver log is not matching this server current belief. 
          * If a leader this server should decrement the next 
@@ -501,7 +520,7 @@ module Append_entries = struct
          *
          *)
         let configuration = state.configuration in 
-        let leader_state = Leader.decrement_next_index ~server_id:receiver_id leader_state in 
+        let leader_state = Leader.decrement_next_index2 ~log_failure ~server_id:receiver_id leader_state in 
         let req  = make_append_entries_for_server state leader_state receiver_id in
         let msgs = [(Append_entries_request req, receiver_id)] in 
         let leader_state = record_requests_sent configuration leader_state msgs now in  

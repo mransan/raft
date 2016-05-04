@@ -270,6 +270,26 @@ module Leader = struct
     ) next_index in
     {leader_state with next_index }
 
+  let decrement_next_index2 ~log_failure ~server_id ({next_index; } as leader_state) = 
+    let receiver_id = server_id in 
+    let {receiver_last_log_index ; _ } = log_failure in 
+
+    (* 
+     * TODO Add verification. 
+     *
+     * Here we blindly assume that the receiver_last_log_index is indeed 
+     * a log index (and term) which exists in the [Leader] (ie this server) log. 
+     * 
+     * The recovery strategy would be to take the last index in the previous 
+     * term. 
+     *)
+    let next_index = List.map (fun ({server_id; server_log_index; } as s) -> 
+      if server_id = receiver_id
+      then {s with server_log_index = receiver_last_log_index + 1} 
+      else s
+    ) next_index in
+    {leader_state with next_index }
+
 end 
 
 module Configuration = struct

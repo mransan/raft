@@ -34,9 +34,15 @@ type append_entries_response_success_data = {
   receiver_last_log_index : int;
 }
 
+type append_entries_response_failure_data = {
+  receiver_last_log_index : int;
+  receiver_last_log_term : int;
+}
+
 type append_entries_response_result =
-  | Failure
   | Success of append_entries_response_success_data
+  | Log_failure of append_entries_response_failure_data
+  | Term_failure
 
 and append_entries_response = {
   receiver_id : int;
@@ -155,6 +161,13 @@ val default_append_entries_response_success_data :
   append_entries_response_success_data
 (** [default_append_entries_response_success_data ()] is the default value for type [append_entries_response_success_data] *)
 
+val default_append_entries_response_failure_data : 
+  ?receiver_last_log_index:int ->
+  ?receiver_last_log_term:int ->
+  unit ->
+  append_entries_response_failure_data
+(** [default_append_entries_response_failure_data ()] is the default value for type [append_entries_response_failure_data] *)
+
 
 val default_append_entries_response : 
   ?receiver_id:int ->
@@ -256,6 +269,9 @@ val decode_append_entries_request : Pbrt.Decoder.t -> append_entries_request
 val decode_append_entries_response_success_data : Pbrt.Decoder.t -> append_entries_response_success_data
 (** [decode_append_entries_response_success_data decoder] decodes a [append_entries_response_success_data] value from [decoder] *)
 
+val decode_append_entries_response_failure_data : Pbrt.Decoder.t -> append_entries_response_failure_data
+(** [decode_append_entries_response_failure_data decoder] decodes a [append_entries_response_failure_data] value from [decoder] *)
+
 
 val decode_append_entries_response : Pbrt.Decoder.t -> append_entries_response
 (** [decode_append_entries_response decoder] decodes a [append_entries_response] value from [decoder] *)
@@ -309,6 +325,9 @@ val encode_append_entries_request : append_entries_request -> Pbrt.Encoder.t -> 
 val encode_append_entries_response_success_data : append_entries_response_success_data -> Pbrt.Encoder.t -> unit
 (** [encode_append_entries_response_success_data v encoder] encodes [v] with the given [encoder] *)
 
+val encode_append_entries_response_failure_data : append_entries_response_failure_data -> Pbrt.Encoder.t -> unit
+(** [encode_append_entries_response_failure_data v encoder] encodes [v] with the given [encoder] *)
+
 
 val encode_append_entries_response : append_entries_response -> Pbrt.Encoder.t -> unit
 (** [encode_append_entries_response v encoder] encodes [v] with the given [encoder] *)
@@ -361,6 +380,9 @@ val pp_append_entries_request : Format.formatter -> append_entries_request -> un
 
 val pp_append_entries_response_success_data : Format.formatter -> append_entries_response_success_data -> unit 
 (** [pp_append_entries_response_success_data v] formats v] *)
+
+val pp_append_entries_response_failure_data : Format.formatter -> append_entries_response_failure_data -> unit 
+(** [pp_append_entries_response_failure_data v] formats v] *)
 
 val pp_append_entries_response_result : Format.formatter -> append_entries_response_result -> unit 
 (** [pp_append_entries_response_result v] formats v] *)

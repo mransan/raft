@@ -165,6 +165,12 @@ module Leader : sig
        
       This function is usally called upon an append entry failure response. 
     *)
+  
+  val decrement_next_index2 : 
+    log_failure:Raft_pb.append_entries_response_failure_data -> 
+    server_id:int -> 
+    Raft_pb.leader_state -> 
+    Raft_pb.leader_state
 
 end (* Leader  *) 
 

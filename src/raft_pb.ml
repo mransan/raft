@@ -64,9 +64,20 @@ and append_entries_response_success_data_mutable = {
   mutable receiver_last_log_index : int;
 }
 
+type append_entries_response_failure_data = {
+  receiver_last_log_index : int;
+  receiver_last_log_term : int;
+}
+
+and append_entries_response_failure_data_mutable = {
+  mutable receiver_last_log_index : int;
+  mutable receiver_last_log_term : int;
+}
+
 type append_entries_response_result =
-  | Failure
   | Success of append_entries_response_success_data
+  | Log_failure of append_entries_response_failure_data
+  | Term_failure
 
 and append_entries_response = {
   receiver_id : int;
@@ -283,11 +294,24 @@ and default_append_entries_response_success_data_mutable () : append_entries_res
   receiver_last_log_index = 0;
 }
 
+let rec default_append_entries_response_failure_data 
+  ?receiver_last_log_index:((receiver_last_log_index:int) = 0)
+  ?receiver_last_log_term:((receiver_last_log_term:int) = 0)
+  () : append_entries_response_failure_data  = {
+  receiver_last_log_index;
+  receiver_last_log_term;
+}
+
+and default_append_entries_response_failure_data_mutable () : append_entries_response_failure_data_mutable = {
+  receiver_last_log_index = 0;
+  receiver_last_log_term = 0;
+}
+
 
 let rec default_append_entries_response 
   ?receiver_id:((receiver_id:int) = 0)
   ?receiver_term:((receiver_term:int) = 0)
-  ?result:((result:append_entries_response_result) = Failure)
+  ?result:((result:append_entries_response_result) = Success (default_append_entries_response_success_data ()))
   () : append_entries_response  = {
   receiver_id;
   receiver_term;
@@ -297,7 +321,7 @@ let rec default_append_entries_response
 and default_append_entries_response_mutable () : append_entries_response_mutable = {
   receiver_id = 0;
   receiver_term = 0;
-  result = Failure;
+  result = Success (default_append_entries_response_success_data ());
 }
 
 let rec default_message () : message = Request_vote_request (default_request_vote_request ())
@@ -520,6 +544,20 @@ let rec decode_append_entries_response_success_data d =
   let v:append_entries_response_success_data = Obj.magic v in
   v
 
+let rec decode_append_entries_response_failure_data d =
+  let v = default_append_entries_response_failure_data_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+    )
+    | Some (1, Pbrt.Varint) -> v.receiver_last_log_index <- (Pbrt.Decoder.int_as_varint d); loop ()
+    | Some (2, Pbrt.Varint) -> v.receiver_last_log_term <- (Pbrt.Decoder.int_as_varint d); loop ()
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:append_entries_response_failure_data = Obj.magic v in
+  v
+
 
 let rec decode_append_entries_response d =
   let v = default_append_entries_response_mutable () in
@@ -529,8 +567,9 @@ let rec decode_append_entries_response d =
     )
     | Some (1, Pbrt.Varint) -> v.receiver_id <- (Pbrt.Decoder.int_as_varint d); loop ()
     | Some (2, Pbrt.Varint) -> v.receiver_term <- (Pbrt.Decoder.int_as_varint d); loop ()
-    | Some (3, Pbrt.Bytes) -> v.result <- Failure; Pbrt.Decoder.empty_nested d ; loop ()
     | Some (4, Pbrt.Bytes) -> v.result <- Success (decode_append_entries_response_success_data (Pbrt.Decoder.nested d)) ; loop ()
+    | Some (5, Pbrt.Bytes) -> v.result <- Log_failure (decode_append_entries_response_failure_data (Pbrt.Decoder.nested d)) ; loop ()
+    | Some (6, Pbrt.Bytes) -> v.result <- Term_failure; Pbrt.Decoder.empty_nested d ; loop ()
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -741,6 +780,13 @@ let rec encode_append_entries_response_success_data (v:append_entries_response_s
   Pbrt.Encoder.int_as_varint v.receiver_last_log_index encoder;
   ()
 
+let rec encode_append_entries_response_failure_data (v:append_entries_response_failure_data) encoder = 
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.receiver_last_log_index encoder;
+  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.receiver_last_log_term encoder;
+  ()
+
 
 let rec encode_append_entries_response (v:append_entries_response) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
@@ -748,13 +794,17 @@ let rec encode_append_entries_response (v:append_entries_response) encoder =
   Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.receiver_term encoder;
   (match v.result with
-  | Failure -> (
-    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.empty_nested encoder;
-  )
   | Success x -> (
     Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.nested (encode_append_entries_response_success_data x) encoder;
+  )
+  | Log_failure x -> (
+    Pbrt.Encoder.key (5, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_append_entries_response_failure_data x) encoder;
+  )
+  | Term_failure -> (
+    Pbrt.Encoder.key (6, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.empty_nested encoder;
   )
   );
   ()
@@ -942,10 +992,20 @@ let rec pp_append_entries_response_success_data fmt (v:append_entries_response_s
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
+let rec pp_append_entries_response_failure_data fmt (v:append_entries_response_failure_data) = 
+  let pp_i fmt () =
+    Format.pp_open_vbox fmt 1;
+    Pbrt.Pp.pp_record_field "receiver_last_log_index" Pbrt.Pp.pp_int fmt v.receiver_last_log_index;
+    Pbrt.Pp.pp_record_field "receiver_last_log_term" Pbrt.Pp.pp_int fmt v.receiver_last_log_term;
+    Format.pp_close_box fmt ()
+  in
+  Pbrt.Pp.pp_brk pp_i fmt ()
+
 let rec pp_append_entries_response_result fmt (v:append_entries_response_result) =
   match v with
-  | Failure  -> Format.fprintf fmt "Failure"
   | Success x -> Format.fprintf fmt "@[Success(%a)@]" pp_append_entries_response_success_data x
+  | Log_failure x -> Format.fprintf fmt "@[Log_failure(%a)@]" pp_append_entries_response_failure_data x
+  | Term_failure  -> Format.fprintf fmt "Term_failure"
 
 and pp_append_entries_response fmt (v:append_entries_response) = 
   let pp_i fmt () =
