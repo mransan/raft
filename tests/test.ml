@@ -595,12 +595,14 @@ let () =
     (* server1 term was lower than the leader and should
      * therefore have updated its current term to match.
      *)
+
   assert(0 = List.length server1.log);
     (* The append entry should have been rejected by the 
      * follower and consequently none of the log
      * entries should have been appended by the 
      * follower
      *)
+
   assert(0 = server1.commit_index); 
     (* No new entries and therefore even if the 
        leader commit index is larger than the follower 
@@ -612,11 +614,14 @@ let () =
                last_log_index = 0
          and therefore commit_index = 0
      *)
-  assert((Some 3) = Leader.next_index_for_receiver server0 1);
+
+  assert((Some 1) = Leader.next_index_for_receiver server0 1);
     (* 
-     * Because the server1 denied the append entry, 
-     * the leader is supposed to decrement its belief of 
-     * what the next log index is for that follower. 
+     * When rejecting the [Append_entries] request from server0 [Leader], 
+     * server1 sent its [receiver_last_log_index] and term in the response.
+     *
+     * This information is used by server0 [Leader] to update its [next_index]
+     * information for that server1. 
      *)
 
   begin match msgs_to_send with
@@ -628,9 +633,10 @@ let () =
     assert(1 = receiver_id);
     assert(0 = r.leader_id);
     assert(2 = r.leader_term);
-    assert(2 = r.prev_log_index);
-    assert(1 = r.prev_log_term);
+    assert(0 = r.prev_log_index);
+    assert(0 = r.prev_log_term);
     assert(3 = r.leader_commit);
+    assert(3 = List.length r.rev_log_entries);
   )
   | _ -> assert(false)
   end;
@@ -645,59 +651,9 @@ let () =
 
   let (server0, msgs_to_send, next_event), server1, _, now = 
     append_entry_communication ~from:server0 ~to_:server1 ~now () in
-  assert(now = 0.004); 
-  assert((Some 2) = Leader.next_index_for_receiver server0 1);
   
-  begin match msgs_to_send with
-  | (Append_entries_request r, receiver_id)::[] -> (
-    (* The server1 is lagging by 3 log and will therefore 3 
-     * append entry iteration for a successful handling.
-     *) 
-    assert(1 = receiver_id);
-    assert(0 = r.leader_id);
-    assert(2 = r.leader_term);
-    assert(1 = r.prev_log_index);
-    assert(1 = r.prev_log_term);
-    assert(3 = r.leader_commit);
-  )
-  | _ -> assert(false)
-  end;
-
-  let (server0, msgs_to_send, next_event), server1, _, now = 
-    append_entry_communication ~from:server0 ~to_:server1 ~now () in
-  assert(now = 0.006); 
-  assert((Some 1) = Leader.next_index_for_receiver server0 1);
-  begin match msgs_to_send with
-  | (Append_entries_request r, receiver_id)::[] -> (
-     (* Now the leader has the correct believe of what should 
-      * be the next log index for the server1, next roundtrip
-      * should be successful.
-      *)
-    assert(1 = receiver_id);
-    assert(0 = r.leader_id);
-    assert(2 = r.leader_term);
-    assert(0 = r.prev_log_index);
-    assert(0 = r.prev_log_term);
-    assert(3 = r.leader_commit);
-  )
-  | _ -> assert(false)
-  end;
-
-  let (server0, msgs_to_send, next_event), server1, _, now = 
-    append_entry_communication ~from:server0 ~to_:server1 ~now () in
-  assert(now = 0.008); 
-  assert(3 = List.length server1.log); 
-  assert(3 = server1.commit_index); 
-    (* The server1 has successfully appended the 3 log it 
-       was missing
-
-       Because the leader had a commit index of 3, the follower 
-       having inserted up to index 3 will also have its 
-       commit index set to 3.
-     *)
-
-  assert([] = msgs_to_send);
-
+  assert(now = 0.004); 
+  assert(msgs_to_send = []); 
   assert((Some 4) = Leader.next_index_for_receiver server0 1);
   assert((Some 3) = Leader.match_index_for_receiver server0 1);
     (* As a concequence of the server1 successfully inserting

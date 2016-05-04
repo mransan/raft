@@ -160,15 +160,10 @@ module Leader : sig
     * fact that there are no more outstanding request for [server_id].
     *) 
 
-  val decrement_next_index : server_id:int -> Raft_pb.leader_state -> Raft_pb.leader_state 
-  (** [decrement_next_index state receiver_id] decrement the next index for [receiver_id]. 
-       
-      This function is usally called upon an append entry failure response. 
-    *)
-  
-  val decrement_next_index2 : 
-    log_failure:Raft_pb.append_entries_response_failure_data -> 
+  val decrement_next_index : 
+    log_failure:Raft_pb.append_entries_response_log_failure_data -> 
     server_id:int -> 
+    Raft_pb.state -> 
     Raft_pb.leader_state -> 
     Raft_pb.leader_state
 

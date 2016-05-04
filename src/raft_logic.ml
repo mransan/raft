@@ -402,18 +402,23 @@ module Append_entries = struct
           let new_state = {state with log} in 
           (new_state, make_response state (make_log_failure_with_latest_log log))
 
-        |  hd::tl -> aux (hd::post_logs) tl 
-          (* 
-           * TODO: add optimization:
-           *
-           * Confirm that we can rely on the monotically increasing log index 
-           * values and in such a case you can quickly exit in the case
-           * the [prev_log_index] is greater than the [hd] index. 
-           *
-           *)
-  
+        |  hd::tl -> aux (hd::post_logs) tl  
+
       in 
-      aux [] state.log 
+      match state.log with
+      | {index; _}::tl when prev_log_index > index -> 
+        (* 
+         * This is the case when a new [Leader] which has more log entries
+         * than this server sends a first [Append_entries_request]. It initializes 
+         * its belief of thie server [last_log_index] to its own [last_log_index]. 
+         * 
+         * However this server does not have as many log entries. 
+         *
+         * In such a case, we send failure right away. 
+         *)
+        (state, make_response state (make_log_failure_with_latest_log state.log))
+
+      | _ -> aux [] state.log 
   
   let handle_response state ({receiver_term; _ } as response) now = 
     
@@ -441,6 +446,7 @@ module Append_entries = struct
         begin match result with
         | Success {receiver_last_log_index} -> 
           (* Log entries were successfully inserted by the receiver... 
+           *   
            * let's update our leader state about that receiver
            *)
 
@@ -520,12 +526,18 @@ module Append_entries = struct
          *
          *)
         let configuration = state.configuration in 
-        let leader_state = Leader.decrement_next_index2 ~log_failure ~server_id:receiver_id leader_state in 
+        let leader_state = Leader.decrement_next_index ~log_failure ~server_id:receiver_id state leader_state in 
         let req  = make_append_entries_for_server state leader_state receiver_id in
         let msgs = [(Append_entries_request req, receiver_id)] in 
         let leader_state = record_requests_sent configuration leader_state msgs now in  
         let state  = {state with role = Leader leader_state} in 
         (state,msgs)
+
+      | Term_failure  -> assert(false)
+        (* 
+         * This should have already been detected when comparing the receiver_term with 
+         * the [state.current_term]. 
+         *)
       
       end (* match result *) 
 

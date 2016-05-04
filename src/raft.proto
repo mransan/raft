@@ -161,12 +161,13 @@ message AppendEntriesResponse {
     required int32 receiver_term    = 2; 
     
     oneof result {
-      SuccessData success      = 4; 
-      FailureData log_failure  = 5; 
+      SuccessData success         = 4; 
+      LogFailureData log_failure  = 5; 
         // This failure happens in the case the [prev_log_index] and 
         // [prev_log_term] in the [AppendEntriesRequet] are not 
         // matching the receiver log. 
-      NoData      term_failure = 6; 
+
+      NoData      term_failure   = 6; 
         // This failure can happen because the sender [current_term]
         // is outdated compared to the receiver.
     }
@@ -174,9 +175,7 @@ message AppendEntriesResponse {
     message NoData {
     }
 
-    // TODO Change name
-    //
-    message FailureData {
+    message LogFailureData {
       required int32 receiver_last_log_index = 1; 
       required int32 receiver_last_log_term  = 2;
     }
