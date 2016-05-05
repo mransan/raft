@@ -43,11 +43,78 @@ let make_append_entries prev_log_index (cache:rev_log_cache) state =
   } in
   (cache, request)
 
-  (*
-let compute_append_entries state ({indices; _ } as leader_state) = 
-  let leader_state, msgs_to_send = List.fold_left (fun (leader_state, msgs_to_send) server_index 
-  *)
+(* Helper function to update the heartbeat deadline for the servers
+ * that we are sending messages to. 
+ *)
+let record_requests_sent configuration leader_state msgs_to_send now = 
+  List.fold_left (fun leader_state (_, server_id) -> 
+    Raft_helper.Leader.record_request_sent 
+        ~server_id ~now ~configuration leader_state
+  ) leader_state msgs_to_send
 
+let compute_append_entries state {indices} now = 
+
+  let indices, msgs_to_send = List.fold_left (fun (indices, msgs_to_send) server_index -> 
+    let {
+      server_id;
+      heartbeat_deadline; 
+      outstanding_request; 
+      next_index; 
+      cache; _ } = server_index in 
+
+    let shoud_send_request = 
+      if now >= heartbeat_deadline
+      then 
+        (*
+         * The heartbeat deadline is past due, the [Leader] must 
+         * sent an [Append_entries] request. 
+         *)
+        true
+      else
+        if outstanding_request
+        then false
+          (* 
+           * In case of outstanding request there is no point 
+           * in sending request to that server. 
+           * Even if the outstanding request was lost and it would 
+           * be good to send a new request, this would happen
+           * at the next heartbeat. 
+           *)
+        else 
+          let prev_index = next_index - 1 in 
+          let last_log_index = Raft_helper.State.last_log_index state in  
+          if prev_index == last_log_index
+          then false 
+            (* 
+             * The receipient has the most recent data so no need 
+             * to send a request. 
+             *)
+          else true
+            (* 
+             * The recipient has missing data.
+             *)
+    in
+
+    if shoud_send_request
+    then 
+      let cache, request = make_append_entries (next_index - 1) cache state in 
+      let indices = {server_index with cache}::indices in 
+      let msgs_to_send = (Append_entries_request request, server_id)::msgs_to_send in 
+      (indices, msgs_to_send)
+    else
+      (server_index::indices, msgs_to_send)
+
+  ) ([], []) indices in
+
+  let leader_state = {indices} in 
+  let leader_state = record_requests_sent state.configuration leader_state msgs_to_send now in 
+
+  (leader_state, msgs_to_send)
+
+
+(* TODO Remove this one when all the unit tests
+ * are migrated to the [Message] module 
+ *)
 let make_append_entries_for_server state {indices} receiver_id = 
 
   let indices, req = List.fold_left (fun (indices, req) ({server_id; next_index; cache;_ } as index) -> 
@@ -64,41 +131,6 @@ let make_append_entries_for_server state {indices} receiver_id =
   | None -> failwith "[Raft_logic] Invalid receiver_id"
   | Some req -> 
     ({indices}, req)
-
-(* This helper function create heartbeat requests for 
- * all the servers with past deadlines. 
- *)
-let make_heartbeat_requests state ({indices} as leader_state) now = 
-  let servers_to_send = List.fold_left (fun acc {server_id; heartbeat_deadline;} ->
-      if now >= heartbeat_deadline
-      then server_id::acc
-      else acc
-    ) [] indices
-  in 
-
-  List.fold_left (fun (leader_state, msgs_to_send) {server_id; cache=_; _ } -> 
-    if List.mem server_id servers_to_send 
-    then 
-      let leader_state, msg_to_send = 
-        let leader_state, r = make_append_entries_for_server state leader_state server_id in
-        leader_state, (Append_entries_request r, server_id)
-      in
-      (leader_state, msg_to_send::msgs_to_send)
-      
-    else 
-      (leader_state, msgs_to_send)
-  ) (leader_state, []) leader_state.indices 
-
-
-(* Helper function to update the heartbeat deadline for the servers
- * that we are sending messages to. 
- *)
-let record_requests_sent configuration leader_state msgs_to_send now = 
-  List.fold_left (fun leader_state (_, server_id) -> 
-    Raft_helper.Leader.record_request_sent 
-        ~server_id ~now ~configuration leader_state
-  ) leader_state msgs_to_send
-  
 
 (** {2 Request Vote} *) 
 
@@ -456,54 +488,12 @@ module Append_entries = struct
           in  
           let state = {state with commit_index} in 
 
-          (* 
-           * We now compute the next messages to send.
-           *
-           * First we see if the server that we just receive the response
-           * from has missing entries. This is needed because we might have 
-           * previously throttled the number of log sent due to the 
-           * max_nb_message parameter in the configuration. 
-           *
-           *)
-          let leader_state, req1 = 
-            make_append_entries_for_server state leader_state receiver_id
-          in 
 
-          let msg1 = match req1.rev_log_entries with
-            | [] -> []
-            | _  -> [(Append_entries_request req1, receiver_id)]
-          in 
-
-          (* 
-           * Second we check that if we others servers are past their 
-           * heartbeat deadlines. 
-           *
-           * The reason we compute those requests here rather than 
-           * waiting for a heartbeat timeout is that the server 
-           * event loop might be continuously receiving responses from 
-           * servers and the [Timeout] event never triggered. 
-           *
-           * Furthermore at this stage we know that we are a leader 
-           * and therefore expected to send heartbeat requests.
-           *
-           *)
-          let leader_state, msg2 = make_heartbeat_requests state leader_state now in 
-
-          let msgs = msg1 @ msg2 in 
-
-          let leader_state = 
-            record_requests_sent configuration leader_state msgs now 
-              (* 
-               * We assume the msgs will be sent and therefore the 
-               * heartbeat deadline of all servers which we send messages
-               * to need to be updated.
-               *
-               *)
-          in
+          let leader_state, msgs_to_send = compute_append_entries state leader_state now in  
 
           let state = {state with role = Leader leader_state} in
 
-          (state, msgs)
+          (state, msgs_to_send)
 
       | Log_failure log_failure -> 
         (* 
@@ -512,11 +502,8 @@ module Append_entries = struct
          * log index and retry the append. 
          *
          *)
-        let configuration = state.configuration in 
         let leader_state = Leader.decrement_next_index ~log_failure ~server_id:receiver_id state leader_state in 
-        let leader_state, req = make_append_entries_for_server state leader_state receiver_id in
-        let msgs_to_send = [(Append_entries_request req, receiver_id)] in 
-        let leader_state = record_requests_sent configuration leader_state msgs_to_send now in  
+        let leader_state, msgs_to_send = compute_append_entries state leader_state now in 
         let state  = {state with role = Leader leader_state} in 
         (state,msgs_to_send)
 
@@ -577,10 +564,7 @@ module Message = struct
   let handle_heartbeat_timeout ({role; configuration; _ } as state) now = 
     match state.role with
     | Leader leader_state -> 
-      let leader_state, msgs_to_send = make_heartbeat_requests state leader_state now in 
-      let leader_state = record_requests_sent 
-        configuration leader_state msgs_to_send now 
-      in 
+      let leader_state, msgs_to_send = compute_append_entries state leader_state now in 
       let state = {state with role = Leader leader_state} in 
       (state, msgs_to_send)
     | _ -> 
@@ -616,28 +600,7 @@ module Message = struct
 
       | Leader ({indices} as leader_state) -> 
 
-        let leader_state, msgs_to_send = List.fold_left (fun (leader_state, msgs) receiver_connection -> 
-          let {
-            server_id; 
-            outstanding_request; _ } = receiver_connection
-          in 
-
-          if outstanding_request
-          then (leader_state, msgs)
-            (* We do not send new log entries to server which already 
-             * have requests sent to them. 
-             *)
-
-          else 
-            let leader_state, req = make_append_entries_for_server state leader_state server_id in
-            let msgs = (Append_entries_request req, server_id)::msgs in
-            (leader_state, msgs) 
-
-        ) (leader_state, []) indices in 
-
-        let leader_state = record_requests_sent 
-          state.configuration leader_state msgs_to_send now 
-        in 
+        let leader_state, msgs_to_send = compute_append_entries state leader_state now in 
         let state = {state with role = Leader leader_state } in 
         Appended (state, msgs_to_send) 
 
