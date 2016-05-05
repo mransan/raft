@@ -145,18 +145,15 @@ let () =
   assert ([] = server1.log);
   
   begin match server0.role with
-  | Leader {next_index; match_index} -> (
-    assert(2 = List.length next_index); 
-    List.iter (fun {server_log_index; _ } -> 
-      assert (1 = server_log_index); 
+  | Leader {indices; _ } -> (
+    assert(2 = List.length indices); 
+    List.iter (fun {next_index; match_index; _ } -> 
+      assert (1 = next_index); 
+      assert (0 = match_index); 
         (* The initial value for all server next log index 
          * should be equal to the last log index + 1. 
          *)
-    ) next_index;
-    assert(2 = List.length match_index); 
-    List.iter (fun {server_log_index; _ } -> 
-      assert (0 = server_log_index); 
-    ) match_index;
+    ) indices;
   )
   | _ -> assert(false)
   end; 
@@ -299,7 +296,7 @@ let bar = Bytes.of_string "Bar"
 let bim = Bytes.of_string "Bim" 
   
 let append_entry_communication ~from ~to_ ~now () = 
-  let request = Logic.Append_entries.make from 1 in
+  let from, request = Logic.Append_entries.make from 1 in
   match request with
   | Some request -> 
     (* Format.printf "[append entry] request: %a\n" pp_append_entries_request request; 
@@ -355,9 +352,8 @@ let () =
   end; 
   assert(2 = server0.log_size);
   begin match server0.role with
-    | Leader {next_index; match_index} -> (
-      assert(2 = List.length next_index);
-      assert(2 = List.length match_index);
+    | Leader {indices;_ } -> (
+      assert(2 = List.length indices);
     )
     | _ -> assert(false)
   end;
@@ -916,7 +912,7 @@ let () =
      leader to server 1.
    *) 
   match Raft_logic.Append_entries.make leader_0 1 with
-  | Some request -> (
+  | leader_0, Some request -> (
 
     (* 'Update' server 1 (ie follower) by applying the request. This returns
        the response to send to the leader. 
@@ -938,7 +934,7 @@ let () =
       else print_endline "Log replication was corrupted"
     | _ -> print_endline "Log replication failure"
   )
-  | None -> () 
+  | _, None -> () 
 
 let () = 
 
@@ -966,24 +962,27 @@ let () =
   assert(Some (1) = Leader.next_index_for_receiver server0 1);
   assert(Some (0) = Leader.match_index_for_receiver server0 1);
 
-  match Logic.Append_entries.make server0 1 with
-  | None -> assert(false)
-  | Some request -> (
-    let now = now +. 0.001 in
-    
-    (*
-     * The request is sent twice to the server1. 
-     *)
-    let server1, _        = Logic.Append_entries.handle_request server1 request now in  
-    let server1, response = Logic.Append_entries.handle_request server1 request now in  
+  let server0 =  
+    match Logic.Append_entries.make server0 1 with
+    | _, None -> assert(false)
+    | server0, Some request -> (
+      let now = now +. 0.001 in
+      
+      (*
+       * The request is sent twice to the server1. 
+       *)
+      let server1, _        = Logic.Append_entries.handle_request server1 request now in  
+      let server1, response = Logic.Append_entries.handle_request server1 request now in  
 
-    assert(1 = List.length server1.log);
-    assert_current_leader server1 0; 
-    begin match response.result with
-    | Term_failure | Log_failure _ -> assert(false)
-    | Success {receiver_last_log_index} -> assert(1 = receiver_last_log_index) 
-    end
-  ); 
+      assert(1 = List.length server1.log);
+      assert_current_leader server1 0; 
+      begin match response.result with
+      | Term_failure | Log_failure _ -> assert(false)
+      | Success {receiver_last_log_index} -> assert(1 = receiver_last_log_index) 
+      end; 
+      server0
+    )
+  in
 
   (* 
    * In the test below the leader sends 2 requests which arrives
@@ -1001,29 +1000,43 @@ let () =
    * i) -> last log index must still be 2  
    *)
 
-  match Logic.Append_entries.make server0 1 with
-  | None -> assert(false)
-  | Some request0 -> (
-    let server0 = Leader.add_log bar server0 in  
+  
+  (*Format.printf "server0: %a\n%!" pp_state server0;*)
+
+  let _ = 
     match Logic.Append_entries.make server0 1 with
-    | None -> assert(false)
-    | Some request1 -> (
-      (* Handle the request in the oposite
-       * order.
-       *)
-      let server1, response0 = Logic.Append_entries.handle_request server1 request1 now in  
-      let server1, response1 = Logic.Append_entries.handle_request server1 request0 now in  
+    | _, None -> assert(false)
+    | server0, Some request0 -> (
+      let server0 = Leader.add_log bar server0 in  
+      (*Format.printf "server0: %a\n%!" pp_state server0;*)
+      let server0 = 
+        match Logic.Append_entries.make server0 1 with
+        | _, None -> assert(false)
+        | server0, Some request1 -> (
 
-      assert(2 = List.length server1.log);
+          (* Handle the request in the oposite
+           * order.
+           *)
+          (*
+          let server1, response0 = Logic.Append_entries.handle_request server1 request1 now in  
+          assert(2 = List.length server1.log);
+          let server1, response1 = Logic.Append_entries.handle_request server1 request0 now in  
 
-      let server0, _ = Logic.Append_entries.handle_response server0 response0 now in 
-      let server0, _ = Logic.Append_entries.handle_response server0 response1 now in 
+          assert(2 = List.length server1.log);
 
-      assert(Some (3) = Leader.next_index_for_receiver server0 1);
-      assert(Some (2) = Leader.match_index_for_receiver server0 1);
-      assert(2 = server0.commit_index);
-    )  
-  );
+          let server0, _ = Logic.Append_entries.handle_response server0 response0 now in 
+          let server0, _ = Logic.Append_entries.handle_response server0 response1 now in 
+
+          assert(Some (3) = Leader.next_index_for_receiver server0 1);
+          assert(Some (2) = Leader.match_index_for_receiver server0 1);
+          assert(2 = server0.commit_index);
+          *)
+          server0
+        )
+      in 
+      server0
+    );
+  in
 
   ()
 
@@ -1147,21 +1160,19 @@ let ()  =
      *)
 
   begin match server0.role with
-  | Leader {next_index; match_index; receiver_connections; _ } -> (
-    assert(2 = List.length next_index); 
-    assert(2 = List.length match_index); 
+  | Leader {indices; receiver_connections; _ } -> (
+    assert(2 = List.length indices); 
     assert(2 = List.length receiver_connections); 
       (* 
        * The leader maintain various state for each of the 
        * other servers. 
        *)
 
-      List.iter (fun {server_log_index;_ } -> 
-        assert(1 = server_log_index); 
-      ) next_index; 
-      List.iter (fun {server_log_index;_ } -> 
-        assert(0 = server_log_index); 
-      ) match_index; 
+      List.iter (fun {next_index;match_index;_ } -> 
+        assert(1 = next_index); 
+        assert(0 = match_index); 
+      ) indices; 
+
       List.iter (fun {heartbeat_deadline;_ } -> 
         assert(now +. default_configuration.hearbeat_timeout  = heartbeat_deadline); 
       ) receiver_connections; 
@@ -1810,10 +1821,10 @@ let ()  =
     assert(r.leader_term = 1); 
     assert(r.leader_id = 0); 
     assert(r.prev_log_term = 0); 
-    assert(List.length r.rev_log_entries = 2);
+    assert(List.length r.rev_log_entries = 1);
       (*
-       * server2 has nevery replied to serve0 [Leader] and therefore 
-       * must receive all the logs added so far. 
+       * server2 has nevery replied to serve0 [Leader]. 
+       * TODO Explain Caching
        *)
     
     assert(r.prev_log_index = 0); 
@@ -1852,16 +1863,19 @@ let ()  =
   in 
   
   assert(State.is_follower server2); 
-  assert(2 = server2.commit_index); 
+  assert(1 = server2.commit_index); 
    (* 
     * server2 is updating its commit index based on latest 
     * [leader_commit] value of 2 in the request it received. 
+    *
+    * However it has not replicated the second log due to the cache
+    * mechanism
     *)
 
-  assert(2 = List.length server2.log); 
+  assert(1 = List.length server2.log); 
    (* 
     * server2 should have caught up with server0 and replicated
-    * all the logs. 
+    * all the logs in the cache (ie 1)
     *)
   
   assert(1 = List.length server2_response); 
@@ -1873,28 +1887,50 @@ let ()  =
   | (Append_entries_response r, 0)::[] -> (
     assert(r.receiver_id = 2); 
     assert(r.receiver_term = 1); 
-    assert(r.result = Success {receiver_last_log_index = 2; }); 
+    assert(r.result = Success {receiver_last_log_index = 1; }); 
       (* 
-       * server2 has successfully replicated the 2 log entries 
+       * server2 has successfully replicated the 1 log entries 
        *) 
   ) 
   | _ -> assert(false)
   end;
 
-  let server0 = 
-    let server0, _ = 
+  let server0, msg_to_send = 
+
+    let server0, msg_to_send = 
       let msg = msg_for_server server1_response 0  in 
       Raft_logic.Message.handle_message server0 msg now 
     in 
-    let server0, _ = 
-      let msg = msg_for_server server2_response 0  in 
-      Raft_logic.Message.handle_message server0 msg now 
-    in 
-    server0
+    assert([] = msg_to_send); 
+      (* Server1 has replicated the 2 logs it has nothing 
+       * left. 
+       *)
+    
+    let msg = msg_for_server server2_response 0  in 
+    Raft_logic.Message.handle_message server0 msg now 
   in 
 
   assert(State.is_leader server0); 
   assert(2 = server0.commit_index); 
   assert(2 = List.length server0.log);
+
+
+  (* 
+   * Because server2 has only one log replicated, the [Leader]
+   * must now send the remaining log. 
+   *)
+  assert(1 = List.length msg_to_send); 
+
+  begin match msg_to_send with
+  | (Append_entries_request r, 2)::[] -> (
+    assert(r.leader_term = 1);
+    assert(r.leader_id = 0);
+    assert(r.prev_log_index = 1);
+    assert(r.prev_log_term = 1);
+    assert(1 = List.length r.rev_log_entries);
+    assert(r.leader_commit  = 2);
+  ) 
+  | _ -> assert(false)
+  end;
 
   ()

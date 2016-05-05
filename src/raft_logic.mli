@@ -56,7 +56,7 @@ module Append_entries : sig
   val make : 
     Raft_pb.state -> 
     int -> 
-    Raft_pb.append_entries_request option
+    (Raft_pb.state * Raft_pb.append_entries_request option)
   (** [make state server_id] create an `AppendEntry` request for 
       [server_id].
    *)

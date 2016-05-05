@@ -287,9 +287,8 @@ message LogEntry {
 //   heartbeat message be sent.
 //  
 message LeaderState {
-  repeated ServerIndex        next_index          = 1;  
-  repeated ServerIndex        match_index         = 2;  
-  repeated ReceiverConnection receiver_connections= 3;
+  repeated ServerIndex        indices = 1;  
+  repeated ReceiverConnection receiver_connections= 2;
 }
 
 // [CandidateState]
@@ -358,7 +357,9 @@ message ReceiverConnection {
 
 message ServerIndex {
   required int32 server_id        = 1; 
-  required int32 server_log_index = 2; 
+  required int32 next_index       = 2; 
+  required int32 match_index      = 3; 
+  required RevLogCache cache      = 4;
 }
 
 // [Configuration] 

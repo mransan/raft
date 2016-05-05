@@ -27,6 +27,59 @@ module State = struct
 
 end 
 
+module Rev_log_cache = struct 
+
+  type t = rev_log_cache
+
+  let make since log = 
+    
+    let last_index = 
+      match (log:log_entry list) with
+      | {index;_}::_ -> index
+      | _ -> 0
+    in
+    
+    let rec aux rev_log_entries  = function
+      | [] ->
+       if since = 0 
+       then 
+         { prev_index = 0; prev_term  = 0; rev_log_entries; last_index; }
+       else 
+         failwith "[Raft_logic] Internal error invalid log index"
+  
+      | {index; term; _ }::tl when index = since -> 
+       { prev_index = index; prev_term  = term; rev_log_entries; last_index; }
+  
+      | hd::tl -> aux (hd::rev_log_entries) tl  
+    in
+  
+    aux [] log 
+  
+  let contains_next_of i {last_index; prev_index;_ } = 
+    prev_index <= i && i < last_index
+
+  let sub since ({prev_index; rev_log_entries; _} as t) = 
+    if since = prev_index 
+    then t 
+    else 
+      let rec aux = function
+        | [] ->
+          failwith "[Raft_logic] Internal error invalid log index"
+          (* 
+           * The caller should have called [contains_next_of] 
+           * to ensure that this cache contains data next to [since].
+           *)
+
+        | {index; term; _}::tl when index = since ->
+          {t with prev_index = index; prev_term = term; rev_log_entries = tl; } 
+
+        | _::tl ->
+          aux tl 
+      in 
+      aux rev_log_entries 
+
+end (* Rev_log_cache *) 
+
 module Follower = struct 
 
   let create ?current_leader ?current_term:(current_term = 0) ?voted_for ?log:(log = []) ~configuration ~now ~id () = 
@@ -98,60 +151,76 @@ module Leader = struct
     
     let {nb_of_server; hearbeat_timeout} = state.configuration in 
   
-    let rec aux ((next_index, match_index, receiver_connections) as acc) = function
+    let rec aux ((indices, receiver_connections) as acc) = function
       | (-1) -> acc
       |  i   -> 
         if i = state.id
         then 
-          aux (next_index, match_index, receiver_connections) (i -1)
+          aux (indices, receiver_connections) (i -1)
         else 
-          let next      = {server_id = i; server_log_index = last_log_index + 1} in
-          let match_    = {server_id = i; server_log_index = 0 } in 
-          let connection= {
+          let next_index = last_log_index + 1 in 
+          let match_index = 0 in 
+          let cache = Rev_log_cache.make last_log_index state.log in 
+
+          let index:server_index = {
             server_id = i; 
-            heartbeat_deadline = now +. hearbeat_timeout;
-            outstanding_request = false;
+            next_index; 
+            match_index; 
+            cache; 
           } in 
-            (* 
-             * Here the expectation is that after becoming a leader
-             * the client application will send a message to all the receivers
-             * and therefore the heartbeat_deadline is set 
-             * to [now + timeout] rather than [now].
-             *
-             *)
-          let next_index = next :: next_index in 
-          let match_index = match_ :: match_index  in 
-          let receiver_connections = connection :: receiver_connections in
-          aux (next_index, match_index, receiver_connections) (i - 1)
+
+          let connection = {
+            server_id = i; 
+            outstanding_request = false;
+            heartbeat_deadline = now +. hearbeat_timeout;
+              (* 
+               * Here the expectation is that after becoming a leader
+               * the client application will send a message to all the receivers
+               * and therefore the heartbeat_deadline is set 
+               * to [now + timeout] rather than [now].
+               *
+               *)
+          } in 
+          aux (index::indices, connection::receiver_connections) (i - 1)
     in 
-    let next_index, match_index, receiver_connections = aux ([], [], []) (nb_of_server - 1) in 
+    let indices, receiver_connections = aux ([], []) (nb_of_server - 1) in 
     
     {state with 
       role = Leader {
-        next_index; 
-        match_index; 
+        indices; 
         receiver_connections;
      }}
 
 
-  let find_server_log_index server_index receiver_id = 
+  let find_server_index indices receiver_id = 
     let is_server = fun ({server_id; _ }:server_index) -> 
       server_id = receiver_id
     in 
-    begin match List.find is_server server_index with
-    | {server_log_index; _ } -> Some server_log_index
+    begin match List.find is_server indices with
+    | x -> Some x 
     | exception Not_found -> None 
     end 
 
   let next_index_for_receiver {role; _ } receiver_id = 
     match role with
-    | Leader {next_index; _ } -> find_server_log_index next_index receiver_id 
+    | Leader {indices; _ } -> begin match find_server_index indices receiver_id with
+      | None -> None 
+      | Some {next_index; _ } -> Some next_index 
+    end 
     | _ -> None 
   
   let match_index_for_receiver {role; _ } receiver_id = 
     match role with
-    | Leader {match_index; _ } -> find_server_log_index match_index receiver_id 
+    | Leader {indices; _ } -> begin match find_server_index indices receiver_id with
+      | None -> None 
+      | Some {match_index; _ } -> Some match_index
+    end 
     | _ -> None 
+  
+  let cache_for_receiver {indices; _ } receiver_id = 
+    match find_server_index indices receiver_id with
+    | None -> failwith "Invalid receiver_id" 
+    | Some {cache; _} -> cache 
 
   let add_log data state = 
     let last_log_index = State.last_log_index state in
@@ -194,38 +263,36 @@ module Leader = struct
     if log_index = 0
     then (leader_state, 0)
     else 
-      let {next_index; match_index; } = leader_state in 
-      let update_server_index_value server_index v = 
-        List.map (fun ({server_id; server_log_index = _ } as s) -> 
-          if server_id = receiver_id 
-          then {s with server_log_index = v}
-          else s  
-        ) server_index 
-      in 
+      let {indices; _ } = leader_state in 
 
-      let next_index = update_server_index_value next_index (log_index + 1) in 
-      let match_index = update_server_index_value match_index log_index in 
+      let indices = 
+        List.map (fun ({server_id; next_index = _ } as s) -> 
+          if server_id = receiver_id 
+          then {s with next_index = log_index + 1; match_index = log_index; }
+          else s  
+        ) indices
+      in 
 
       (* Calculate the number of server which also have replicated that 
          log entry
        *)
-      let nb_of_replications = List.fold_left (fun n {server_log_index; _ } -> 
-        if server_log_index >= log_index 
+      let nb_of_replications = List.fold_left (fun n {match_index; _ } -> 
+        if match_index >= log_index 
         then n + 1 
         else n
-      ) 0 match_index in 
+      ) 0 indices in 
       
-      ({leader_state with next_index; match_index}, nb_of_replications) 
+      ({leader_state with indices }, nb_of_replications) 
 
 
   let update_receiver_connection ~receiver_id ~f leader_state = 
     let {receiver_connections;_ } = leader_state in 
 
-    let receiver_connections = List.fold_left (fun acc receiver_connection -> 
+    let receiver_connections = List.fold_left (fun acc (receiver_connection:receiver_connection) -> 
       if receiver_connection.server_id = receiver_id
       then (f receiver_connection)::acc
       else receiver_connection::acc
-    ) []  receiver_connections in
+    ) [] receiver_connections in
 
     {leader_state with receiver_connections}
 
@@ -261,7 +328,7 @@ module Leader = struct
     in 
     min_heartbeat_deadline -. now 
 
-  let decrement_next_index ~log_failure ~server_id state ({next_index; } as leader_state) = 
+  let decrement_next_index ~log_failure ~server_id state ({indices; _ } as leader_state) = 
     let receiver_id = server_id in 
     let {receiver_last_log_index ; receiver_last_log_term } = log_failure in 
 
@@ -318,12 +385,13 @@ module Leader = struct
       aux state.log
     in
 
-    let next_index = List.map (fun ({server_id; server_log_index; } as s) -> 
+    let indices = List.map (fun ({server_id; next_index; } as s) -> 
       if server_id = receiver_id
-      then {s with server_log_index = receiver_last_log_index + 1} 
+      then {s with next_index = receiver_last_log_index + 1} 
       else s
-    ) next_index in
-    {leader_state with next_index }
+    ) indices in
+
+    {leader_state with indices}
 
 end 
 
