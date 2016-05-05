@@ -20,29 +20,65 @@ let rec keep_first_n l = function
     | []     -> [] 
     end
 
-let rev_log_entries_since_index last_index log = 
+module Rev_log_cache = struct 
 
-  let rec aux rev_log_entries  = function
-    | [] ->
-     if last_index = 0 
-     then (0, rev_log_entries)
-     else failwith "[Raft_logic] Internal error invalid log index"
-
-    | {index; term; _ }::tl when index = last_index -> 
-      (term, rev_log_entries) 
-
-    | hd::tl -> aux (hd::rev_log_entries) tl  
-  in
-
-  aux [] log 
+  let make since log = 
+    
+    let last_index = 
+      match log with
+      | {index;_}::_ -> index
+      | _ -> 0
+    in
+    
+    let rec aux rev_log_entries  = function
+      | [] ->
+       if since = 0 
+       then 
+         { prev_index = 0; prev_term  = 0; rev_log_entries; last_index; }
+       else 
+         failwith "[Raft_logic] Internal error invalid log index"
   
+      | {index; term; _ }::tl when index = since -> 
+       { prev_index = index; prev_term  = term; rev_log_entries; last_index; }
+  
+      | hd::tl -> aux (hd::rev_log_entries) tl  
+    in
+  
+    aux [] log 
+
+  let contains_next_of {last_index; prev_index;_ } i = 
+    prev_index <= i && i < last_index
+
+  let sub since ({prev_index; rev_log_entries; _} as t) = 
+
+    if since = prev_index 
+    then t 
+    else 
+      let rec aux = function
+        | [] ->
+          failwith "[Raft_logic] Internal error invalid log index"
+          (* 
+           * The caller should have called [contains_next_of] 
+           * to ensure that this cache contains data next to [since].
+           *)
+
+        | {index; term; _}::tl when index = since ->
+          {t with prev_index = index; prev_term = term; rev_log_entries = tl; } 
+
+        | _::tl ->
+          aux tl 
+      in 
+      aux rev_log_entries 
+
+end (* Rev_log_cache *) 
+
 (* Helper function to collect all the log entries
  * up until (and including) the log with given 
  * index. 
  *)
 let collect_log_since_index last_index log max_nb_message = 
-  let last_term, rev_log_entries = rev_log_entries_since_index last_index log in 
-  (last_term, keep_first_n rev_log_entries max_nb_message) 
+  let rev_log_cache = Rev_log_cache.make last_index log in 
+  (rev_log_cache.prev_term, keep_first_n rev_log_cache.rev_log_entries max_nb_message) 
     
 let make_append_entries prev_log_index state =  
   let max = state.configuration.max_nb_logs_per_message in

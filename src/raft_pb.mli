@@ -116,6 +116,13 @@ type timeout_event = {
   timeout_type : timeout_event_time_out_type;
 }
 
+type rev_log_cache = {
+  prev_index : int;
+  prev_term : int;
+  rev_log_entries : log_entry list;
+  last_index : int;
+}
+
 
 (** {2 Default values} *)
 
@@ -168,8 +175,6 @@ val default_append_entries_response_log_failure_data :
   append_entries_response_log_failure_data
 (** [default_append_entries_response_log_failure_data ()] is the default value for type [append_entries_response_log_failure_data] *)
 
-val default_append_entries_response_result : unit -> append_entries_response_result
-(** [default_append_entries_response_result ()] is the default value for type [append_entries_response_result] *)
 
 val default_append_entries_response : 
   ?receiver_id:int ->
@@ -230,8 +235,6 @@ val default_configuration :
   configuration
 (** [default_configuration ()] is the default value for type [configuration] *)
 
-val default_state_role : unit -> state_role
-(** [default_state_role ()] is the default value for type [state_role] *)
 
 val default_state : 
   ?id:int ->
@@ -255,6 +258,15 @@ val default_timeout_event :
   timeout_event
 (** [default_timeout_event ()] is the default value for type [timeout_event] *)
 
+val default_rev_log_cache : 
+  ?prev_index:int ->
+  ?prev_term:int ->
+  ?rev_log_entries:log_entry list ->
+  ?last_index:int ->
+  unit ->
+  rev_log_cache
+(** [default_rev_log_cache ()] is the default value for type [rev_log_cache] *)
+
 
 (** {2 Protobuf Decoding} *)
 
@@ -276,8 +288,6 @@ val decode_append_entries_response_success_data : Pbrt.Decoder.t -> append_entri
 val decode_append_entries_response_log_failure_data : Pbrt.Decoder.t -> append_entries_response_log_failure_data
 (** [decode_append_entries_response_log_failure_data decoder] decodes a [append_entries_response_log_failure_data] value from [decoder] *)
 
-val decode_append_entries_response_result : Pbrt.Decoder.t -> append_entries_response_result
-(** [decode_append_entries_response_result decoder] decodes a [append_entries_response_result] value from [decoder] *)
 
 val decode_append_entries_response : Pbrt.Decoder.t -> append_entries_response
 (** [decode_append_entries_response decoder] decodes a [append_entries_response] value from [decoder] *)
@@ -303,8 +313,6 @@ val decode_follower_state : Pbrt.Decoder.t -> follower_state
 val decode_configuration : Pbrt.Decoder.t -> configuration
 (** [decode_configuration decoder] decodes a [configuration] value from [decoder] *)
 
-val decode_state_role : Pbrt.Decoder.t -> state_role
-(** [decode_state_role decoder] decodes a [state_role] value from [decoder] *)
 
 val decode_state : Pbrt.Decoder.t -> state
 (** [decode_state decoder] decodes a [state] value from [decoder] *)
@@ -314,6 +322,9 @@ val decode_timeout_event_time_out_type : Pbrt.Decoder.t -> timeout_event_time_ou
 
 val decode_timeout_event : Pbrt.Decoder.t -> timeout_event
 (** [decode_timeout_event decoder] decodes a [timeout_event] value from [decoder] *)
+
+val decode_rev_log_cache : Pbrt.Decoder.t -> rev_log_cache
+(** [decode_rev_log_cache decoder] decodes a [rev_log_cache] value from [decoder] *)
 
 
 (** {2 Protobuf Toding} *)
@@ -336,8 +347,6 @@ val encode_append_entries_response_success_data : append_entries_response_succes
 val encode_append_entries_response_log_failure_data : append_entries_response_log_failure_data -> Pbrt.Encoder.t -> unit
 (** [encode_append_entries_response_log_failure_data v encoder] encodes [v] with the given [encoder] *)
 
-val encode_append_entries_response_result : append_entries_response_result -> Pbrt.Encoder.t -> unit
-(** [encode_append_entries_response_result v encoder] encodes [v] with the given [encoder] *)
 
 val encode_append_entries_response : append_entries_response -> Pbrt.Encoder.t -> unit
 (** [encode_append_entries_response v encoder] encodes [v] with the given [encoder] *)
@@ -363,8 +372,6 @@ val encode_follower_state : follower_state -> Pbrt.Encoder.t -> unit
 val encode_configuration : configuration -> Pbrt.Encoder.t -> unit
 (** [encode_configuration v encoder] encodes [v] with the given [encoder] *)
 
-val encode_state_role : state_role -> Pbrt.Encoder.t -> unit
-(** [encode_state_role v encoder] encodes [v] with the given [encoder] *)
 
 val encode_state : state -> Pbrt.Encoder.t -> unit
 (** [encode_state v encoder] encodes [v] with the given [encoder] *)
@@ -374,6 +381,9 @@ val encode_timeout_event_time_out_type : timeout_event_time_out_type -> Pbrt.Enc
 
 val encode_timeout_event : timeout_event -> Pbrt.Encoder.t -> unit
 (** [encode_timeout_event v encoder] encodes [v] with the given [encoder] *)
+
+val encode_rev_log_cache : rev_log_cache -> Pbrt.Encoder.t -> unit
+(** [encode_rev_log_cache v encoder] encodes [v] with the given [encoder] *)
 
 
 (** {2 Formatters} *)
@@ -434,3 +444,6 @@ val pp_timeout_event_time_out_type : Format.formatter -> timeout_event_time_out_
 
 val pp_timeout_event : Format.formatter -> timeout_event -> unit 
 (** [pp_timeout_event v] formats v] *)
+
+val pp_rev_log_cache : Format.formatter -> rev_log_cache -> unit 
+(** [pp_rev_log_cache v] formats v] *)

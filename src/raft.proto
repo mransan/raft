@@ -443,6 +443,12 @@ message TimeoutEvent {
   required TimeOutType timeout_type = 2;
 }
 
+message RevLogCache {
+  required int32    prev_index    = 1; 
+  required int32    prev_term     = 2; 
+  repeated LogEntry rev_log_entries = 3;  
+  required int32    last_index    = 4;
+}
 
 // Notes 
 // ---------------
