@@ -287,9 +287,7 @@ message LogEntry {
 //   heartbeat message be sent.
 //  
 message LeaderState {
-  repeated ServerIndex        next_index          = 1;  
-  repeated ServerIndex        match_index         = 2;  
-  repeated ReceiverConnection receiver_connections= 3;
+  repeated ServerIndex        indices = 1;  
 }
 
 // [CandidateState]
@@ -350,15 +348,13 @@ message FollowerState {
 //   was previously sent to this server but no request was received
 //   yet.
 // 
-message ReceiverConnection {
-  required int32 server_id           = 1; 
-  required float heartbeat_deadline  = 2;
-  required bool  outstanding_request = 3;
-}
-
 message ServerIndex {
-  required int32 server_id        = 1; 
-  required int32 server_log_index = 2; 
+  required int32 server_id           = 1; 
+  required int32 next_index          = 2; 
+  required int32 match_index         = 3; 
+  required RevLogCache cache         = 4;
+  required float heartbeat_deadline  = 5;
+  required bool  outstanding_request = 6;
 }
 
 // [Configuration] 
@@ -443,6 +439,12 @@ message TimeoutEvent {
   required TimeOutType timeout_type = 2;
 }
 
+message RevLogCache {
+  required int32    prev_index    = 1; 
+  required int32    prev_term     = 2; 
+  repeated LogEntry rev_log_entries = 3;  
+  required int32    last_index    = 4;
+}
 
 // Notes 
 // ---------------

@@ -97,38 +97,44 @@ type message =
   | Append_entries_request of append_entries_request
   | Append_entries_response of append_entries_response
 
+type rev_log_cache = {
+  prev_index : int;
+  prev_term : int;
+  rev_log_entries : log_entry list;
+  last_index : int;
+}
+
+and rev_log_cache_mutable = {
+  mutable prev_index : int;
+  mutable prev_term : int;
+  mutable rev_log_entries : log_entry list;
+  mutable last_index : int;
+}
+
 type server_index = {
   server_id : int;
-  server_log_index : int;
-}
-
-and server_index_mutable = {
-  mutable server_id : int;
-  mutable server_log_index : int;
-}
-
-type receiver_connection = {
-  server_id : int;
+  next_index : int;
+  match_index : int;
+  cache : rev_log_cache;
   heartbeat_deadline : float;
   outstanding_request : bool;
 }
 
-and receiver_connection_mutable = {
+and server_index_mutable = {
   mutable server_id : int;
+  mutable next_index : int;
+  mutable match_index : int;
+  mutable cache : rev_log_cache;
   mutable heartbeat_deadline : float;
   mutable outstanding_request : bool;
 }
 
 type leader_state = {
-  next_index : server_index list;
-  match_index : server_index list;
-  receiver_connections : receiver_connection list;
+  indices : server_index list;
 }
 
 and leader_state_mutable = {
-  mutable next_index : server_index list;
-  mutable match_index : server_index list;
-  mutable receiver_connections : receiver_connection list;
+  mutable indices : server_index list;
 }
 
 type candidate_state = {
@@ -327,49 +333,58 @@ and default_append_entries_response_mutable () : append_entries_response_mutable
 
 let rec default_message () : message = Request_vote_request (default_request_vote_request ())
 
+let rec default_rev_log_cache 
+  ?prev_index:((prev_index:int) = 0)
+  ?prev_term:((prev_term:int) = 0)
+  ?rev_log_entries:((rev_log_entries:log_entry list) = [])
+  ?last_index:((last_index:int) = 0)
+  () : rev_log_cache  = {
+  prev_index;
+  prev_term;
+  rev_log_entries;
+  last_index;
+}
+
+and default_rev_log_cache_mutable () : rev_log_cache_mutable = {
+  prev_index = 0;
+  prev_term = 0;
+  rev_log_entries = [];
+  last_index = 0;
+}
+
 let rec default_server_index 
   ?server_id:((server_id:int) = 0)
-  ?server_log_index:((server_log_index:int) = 0)
-  () : server_index  = {
-  server_id;
-  server_log_index;
-}
-
-and default_server_index_mutable () : server_index_mutable = {
-  server_id = 0;
-  server_log_index = 0;
-}
-
-let rec default_receiver_connection 
-  ?server_id:((server_id:int) = 0)
+  ?next_index:((next_index:int) = 0)
+  ?match_index:((match_index:int) = 0)
+  ?cache:((cache:rev_log_cache) = default_rev_log_cache ())
   ?heartbeat_deadline:((heartbeat_deadline:float) = 0.)
   ?outstanding_request:((outstanding_request:bool) = false)
-  () : receiver_connection  = {
+  () : server_index  = {
   server_id;
+  next_index;
+  match_index;
+  cache;
   heartbeat_deadline;
   outstanding_request;
 }
 
-and default_receiver_connection_mutable () : receiver_connection_mutable = {
+and default_server_index_mutable () : server_index_mutable = {
   server_id = 0;
+  next_index = 0;
+  match_index = 0;
+  cache = default_rev_log_cache ();
   heartbeat_deadline = 0.;
   outstanding_request = false;
 }
 
 let rec default_leader_state 
-  ?next_index:((next_index:server_index list) = [])
-  ?match_index:((match_index:server_index list) = [])
-  ?receiver_connections:((receiver_connections:receiver_connection list) = [])
+  ?indices:((indices:server_index list) = [])
   () : leader_state  = {
-  next_index;
-  match_index;
-  receiver_connections;
+  indices;
 }
 
 and default_leader_state_mutable () : leader_state_mutable = {
-  next_index = [];
-  match_index = [];
-  receiver_connections = [];
+  indices = [];
 }
 
 let rec default_candidate_state 
@@ -755,6 +770,47 @@ let rec decode_message d =
   in
   loop ()
 
+let rec decode_rev_log_cache d =
+  let v = default_rev_log_cache_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+      v.rev_log_entries <- List.rev v.rev_log_entries;
+    )
+    | Some (1, Pbrt.Varint) -> (
+      v.prev_index <- Pbrt.Decoder.int_as_varint d;
+      loop ()
+    )
+    | Some (1, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(rev_log_cache), field(1)", pk))
+    )
+    | Some (2, Pbrt.Varint) -> (
+      v.prev_term <- Pbrt.Decoder.int_as_varint d;
+      loop ()
+    )
+    | Some (2, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(rev_log_cache), field(2)", pk))
+    )
+    | Some (3, Pbrt.Bytes) -> (
+      v.rev_log_entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.rev_log_entries;
+      loop ()
+    )
+    | Some (3, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(rev_log_cache), field(3)", pk))
+    )
+    | Some (4, Pbrt.Varint) -> (
+      v.last_index <- Pbrt.Decoder.int_as_varint d;
+      loop ()
+    )
+    | Some (4, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(rev_log_cache), field(4)", pk))
+    )
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:rev_log_cache = Obj.magic v in
+  v
+
 let rec decode_server_index d =
   let v = default_server_index_mutable () in
   let rec loop () = 
@@ -769,11 +825,39 @@ let rec decode_server_index d =
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(1)", pk))
     )
     | Some (2, Pbrt.Varint) -> (
-      v.server_log_index <- Pbrt.Decoder.int_as_varint d;
+      v.next_index <- Pbrt.Decoder.int_as_varint d;
       loop ()
     )
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(2)", pk))
+    )
+    | Some (3, Pbrt.Varint) -> (
+      v.match_index <- Pbrt.Decoder.int_as_varint d;
+      loop ()
+    )
+    | Some (3, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(3)", pk))
+    )
+    | Some (4, Pbrt.Bytes) -> (
+      v.cache <- decode_rev_log_cache (Pbrt.Decoder.nested d);
+      loop ()
+    )
+    | Some (4, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(4)", pk))
+    )
+    | Some (5, Pbrt.Bits32) -> (
+      v.heartbeat_deadline <- Pbrt.Decoder.float_as_bits32 d;
+      loop ()
+    )
+    | Some (5, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(5)", pk))
+    )
+    | Some (6, Pbrt.Varint) -> (
+      v.outstanding_request <- Pbrt.Decoder.bool d;
+      loop ()
+    )
+    | Some (6, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(6)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -781,68 +865,19 @@ let rec decode_server_index d =
   let v:server_index = Obj.magic v in
   v
 
-let rec decode_receiver_connection d =
-  let v = default_receiver_connection_mutable () in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-    )
-    | Some (1, Pbrt.Varint) -> (
-      v.server_id <- Pbrt.Decoder.int_as_varint d;
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(receiver_connection), field(1)", pk))
-    )
-    | Some (2, Pbrt.Bits32) -> (
-      v.heartbeat_deadline <- Pbrt.Decoder.float_as_bits32 d;
-      loop ()
-    )
-    | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(receiver_connection), field(2)", pk))
-    )
-    | Some (3, Pbrt.Varint) -> (
-      v.outstanding_request <- Pbrt.Decoder.bool d;
-      loop ()
-    )
-    | Some (3, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(receiver_connection), field(3)", pk))
-    )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  let v:receiver_connection = Obj.magic v in
-  v
-
 let rec decode_leader_state d =
   let v = default_leader_state_mutable () in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
-      v.receiver_connections <- List.rev v.receiver_connections;
-      v.match_index <- List.rev v.match_index;
-      v.next_index <- List.rev v.next_index;
+      v.indices <- List.rev v.indices;
     )
     | Some (1, Pbrt.Bytes) -> (
-      v.next_index <- (decode_server_index (Pbrt.Decoder.nested d)) :: v.next_index;
+      v.indices <- (decode_server_index (Pbrt.Decoder.nested d)) :: v.indices;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(leader_state), field(1)", pk))
-    )
-    | Some (2, Pbrt.Bytes) -> (
-      v.match_index <- (decode_server_index (Pbrt.Decoder.nested d)) :: v.match_index;
-      loop ()
-    )
-    | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(leader_state), field(2)", pk))
-    )
-    | Some (3, Pbrt.Bytes) -> (
-      v.receiver_connections <- (decode_receiver_connection (Pbrt.Decoder.nested d)) :: v.receiver_connections;
-      loop ()
-    )
-    | Some (3, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(leader_state), field(3)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -1194,19 +1229,31 @@ let rec encode_message (v:message) encoder =
     Pbrt.Encoder.nested (encode_append_entries_response x) encoder;
   )
 
+let rec encode_rev_log_cache (v:rev_log_cache) encoder = 
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.prev_index encoder;
+  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.prev_term encoder;
+  List.iter (fun x -> 
+    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_log_entry x) encoder;
+  ) v.rev_log_entries;
+  Pbrt.Encoder.key (4, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.last_index encoder;
+  ()
+
 let rec encode_server_index (v:server_index) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.server_id encoder;
   Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.server_log_index encoder;
-  ()
-
-let rec encode_receiver_connection (v:receiver_connection) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.server_id encoder;
-  Pbrt.Encoder.key (2, Pbrt.Bits32) encoder; 
-  Pbrt.Encoder.float_as_bits32 v.heartbeat_deadline encoder;
+  Pbrt.Encoder.int_as_varint v.next_index encoder;
   Pbrt.Encoder.key (3, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.match_index encoder;
+  Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
+  Pbrt.Encoder.nested (encode_rev_log_cache v.cache) encoder;
+  Pbrt.Encoder.key (5, Pbrt.Bits32) encoder; 
+  Pbrt.Encoder.float_as_bits32 v.heartbeat_deadline encoder;
+  Pbrt.Encoder.key (6, Pbrt.Varint) encoder; 
   Pbrt.Encoder.bool v.outstanding_request encoder;
   ()
 
@@ -1214,15 +1261,7 @@ let rec encode_leader_state (v:leader_state) encoder =
   List.iter (fun x -> 
     Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.nested (encode_server_index x) encoder;
-  ) v.next_index;
-  List.iter (fun x -> 
-    Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_server_index x) encoder;
-  ) v.match_index;
-  List.iter (fun x -> 
-    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_receiver_connection x) encoder;
-  ) v.receiver_connections;
+  ) v.indices;
   ()
 
 let rec encode_candidate_state (v:candidate_state) encoder = 
@@ -1409,19 +1448,24 @@ let rec pp_message fmt (v:message) =
   | Append_entries_request x -> Format.fprintf fmt "@[Append_entries_request(%a)@]" pp_append_entries_request x
   | Append_entries_response x -> Format.fprintf fmt "@[Append_entries_response(%a)@]" pp_append_entries_response x
 
-let rec pp_server_index fmt (v:server_index) = 
+let rec pp_rev_log_cache fmt (v:rev_log_cache) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "server_id" Pbrt.Pp.pp_int fmt v.server_id;
-    Pbrt.Pp.pp_record_field "server_log_index" Pbrt.Pp.pp_int fmt v.server_log_index;
+    Pbrt.Pp.pp_record_field "prev_index" Pbrt.Pp.pp_int fmt v.prev_index;
+    Pbrt.Pp.pp_record_field "prev_term" Pbrt.Pp.pp_int fmt v.prev_term;
+    Pbrt.Pp.pp_record_field "rev_log_entries" (Pbrt.Pp.pp_list pp_log_entry) fmt v.rev_log_entries;
+    Pbrt.Pp.pp_record_field "last_index" Pbrt.Pp.pp_int fmt v.last_index;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
-let rec pp_receiver_connection fmt (v:receiver_connection) = 
+let rec pp_server_index fmt (v:server_index) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "server_id" Pbrt.Pp.pp_int fmt v.server_id;
+    Pbrt.Pp.pp_record_field "next_index" Pbrt.Pp.pp_int fmt v.next_index;
+    Pbrt.Pp.pp_record_field "match_index" Pbrt.Pp.pp_int fmt v.match_index;
+    Pbrt.Pp.pp_record_field "cache" pp_rev_log_cache fmt v.cache;
     Pbrt.Pp.pp_record_field "heartbeat_deadline" Pbrt.Pp.pp_float fmt v.heartbeat_deadline;
     Pbrt.Pp.pp_record_field "outstanding_request" Pbrt.Pp.pp_bool fmt v.outstanding_request;
     Format.pp_close_box fmt ()
@@ -1431,9 +1475,7 @@ let rec pp_receiver_connection fmt (v:receiver_connection) =
 let rec pp_leader_state fmt (v:leader_state) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "next_index" (Pbrt.Pp.pp_list pp_server_index) fmt v.next_index;
-    Pbrt.Pp.pp_record_field "match_index" (Pbrt.Pp.pp_list pp_server_index) fmt v.match_index;
-    Pbrt.Pp.pp_record_field "receiver_connections" (Pbrt.Pp.pp_list pp_receiver_connection) fmt v.receiver_connections;
+    Pbrt.Pp.pp_record_field "indices" (Pbrt.Pp.pp_list pp_server_index) fmt v.indices;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

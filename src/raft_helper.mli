@@ -30,6 +30,33 @@ module State : sig
 
 end (* State *) 
 
+module Rev_log_cache : sig 
+
+  type t = Raft_pb.rev_log_cache
+
+  val make : int -> Raft_pb.log_entry list -> t 
+  (**  [make since logs] creates a cache of [log] since 
+    *  log index [since]. 
+    *
+    *  If [since] is not part of [logs] then this function 
+    *  raises [Failure]
+    *)
+
+   val contains_next_of : int -> t -> bool 
+   (** [contains_next_of i cache] returns [true] if [cache] contains 
+     * data which are past [i]
+     *)
+   
+   val sub : int -> t -> t 
+   (** [sub since cache] returns a new [cache] containing the subset of 
+     * [log_entry] from [cache] which are next of [since].
+     *
+     * If [since] is not contained in [cache] then this function raises 
+     * [Failure] 
+     *)
+
+end (* Rev_log_cache *) 
+
 
 module Follower : sig 
 
@@ -108,6 +135,9 @@ module Leader : sig
     *  If [state] role is not a leader or if [receiver_id] is not valid, 
     *  then [None] is returned. 
     *)
+
+  val cache_for_receiver : Raft_pb.leader_state -> int -> Raft_pb.rev_log_cache 
+
 
   val add_log : bytes -> Raft_pb.state -> Raft_pb.state 
   (** [add_log log_data state] adds [log_data] to the log of the [state]. 

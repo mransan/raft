@@ -20,72 +20,28 @@ let rec keep_first_n l = function
     | []     -> [] 
     end
 
-let rev_log_entries_since_index last_index log = 
-
-  let rec aux rev_log_entries  = function
-    | [] ->
-     if last_index = 0 
-     then (0, rev_log_entries)
-     else failwith "[Raft_logic] Internal error invalid log index"
-
-    | {index; term; _ }::tl when index = last_index -> 
-      (term, rev_log_entries) 
-
-    | hd::tl -> aux (hd::rev_log_entries) tl  
-  in
-
-  aux [] log 
-  
-(* Helper function to collect all the log entries
- * up until (and including) the log with given 
- * index. 
- *)
-let collect_log_since_index last_index log max_nb_message = 
-  let last_term, rev_log_entries = rev_log_entries_since_index last_index log in 
-  (last_term, keep_first_n rev_log_entries max_nb_message) 
-    
-let make_append_entries prev_log_index state =  
+let make_append_entries prev_log_index (cache:rev_log_cache) state =  
   let max = state.configuration.max_nb_logs_per_message in
-  let (prev_log_term, rev_log_entries) = 
-    collect_log_since_index prev_log_index state.log max in  
-  {
+
+  let cache = 
+    if Raft_helper.Rev_log_cache.contains_next_of prev_log_index cache
+    then 
+      Raft_helper.Rev_log_cache.sub prev_log_index cache
+    else 
+      Raft_helper.Rev_log_cache.make prev_log_index state.log
+  in 
+  
+  let rev_log_entries = keep_first_n cache.rev_log_entries max in 
+
+  let request = {
     leader_term = state.current_term;
     leader_id = state.id;
     prev_log_index; 
-    prev_log_term;
+    prev_log_term = cache.prev_term;
     rev_log_entries;
     leader_commit = state.commit_index;
-  }
-  
-let make_append_entries_for_server state {next_index; _ } receiver_id = 
-
-  let is_receiver ({server_id; _ }:server_index) = 
-    server_id = receiver_id
-  in 
-
-  match List.find is_receiver next_index with
-  | {server_log_index; _ } -> (
-    let prev_log_index = server_log_index - 1 in 
-    make_append_entries prev_log_index state 
-  ) 
-  | exception Not_found -> 
-    failwith "[Raft_logic] Invalid receiver id"
-
-(* This helper function create heartbeat requests for 
- * all the servers with past deadlines. 
- *)
-let make_heartbeat_requests state leader_state now = 
-  let {receiver_connections; _} = leader_state in 
-  let server_to_send = List.fold_left (fun acc {server_id; heartbeat_deadline;} ->
-    if now >= heartbeat_deadline
-    then server_id::acc
-    else acc
-  ) [] receiver_connections
-  in 
-  List.map (fun server_id -> 
-    let request = make_append_entries_for_server state leader_state server_id in 
-    (Append_entries_request request, server_id)
-  ) server_to_send
+  } in
+  (cache, request)
 
 (* Helper function to update the heartbeat deadline for the servers
  * that we are sending messages to. 
@@ -95,7 +51,86 @@ let record_requests_sent configuration leader_state msgs_to_send now =
     Raft_helper.Leader.record_request_sent 
         ~server_id ~now ~configuration leader_state
   ) leader_state msgs_to_send
-  
+
+let compute_append_entries state {indices} now = 
+
+  let indices, msgs_to_send = List.fold_left (fun (indices, msgs_to_send) server_index -> 
+    let {
+      server_id;
+      heartbeat_deadline; 
+      outstanding_request; 
+      next_index; 
+      cache; _ } = server_index in 
+
+    let shoud_send_request = 
+      if now >= heartbeat_deadline
+      then 
+        (*
+         * The heartbeat deadline is past due, the [Leader] must 
+         * sent an [Append_entries] request. 
+         *)
+        true
+      else
+        if outstanding_request
+        then false
+          (* 
+           * In case of outstanding request there is no point 
+           * in sending request to that server. 
+           * Even if the outstanding request was lost and it would 
+           * be good to send a new request, this would happen
+           * at the next heartbeat. 
+           *)
+        else 
+          let prev_index = next_index - 1 in 
+          let last_log_index = Raft_helper.State.last_log_index state in  
+          if prev_index == last_log_index
+          then false 
+            (* 
+             * The receipient has the most recent data so no need 
+             * to send a request. 
+             *)
+          else true
+            (* 
+             * The recipient has missing data.
+             *)
+    in
+
+    if shoud_send_request
+    then 
+      let cache, request = make_append_entries (next_index - 1) cache state in 
+      let indices = {server_index with cache}::indices in 
+      let msgs_to_send = (Append_entries_request request, server_id)::msgs_to_send in 
+      (indices, msgs_to_send)
+    else
+      (server_index::indices, msgs_to_send)
+
+  ) ([], []) indices in
+
+  let leader_state = {indices} in 
+  let leader_state = record_requests_sent state.configuration leader_state msgs_to_send now in 
+
+  (leader_state, msgs_to_send)
+
+
+(* TODO Remove this one when all the unit tests
+ * are migrated to the [Message] module 
+ *)
+let make_append_entries_for_server state {indices} receiver_id = 
+
+  let indices, req = List.fold_left (fun (indices, req) ({server_id; next_index; cache;_ } as index) -> 
+    if server_id = receiver_id
+    then 
+      let cache, req = make_append_entries (next_index -1) cache state in 
+      ({index with cache}::indices , Some req)
+    else 
+      (index::indices, req)
+  ) ([], None) indices
+  in
+
+  match req with
+  | None -> failwith "[Raft_logic] Invalid receiver_id"
+  | Some req -> 
+    ({indices}, req)
 
 (** {2 Request Vote} *) 
 
@@ -216,21 +251,21 @@ module Request_vote = struct
            * to the other servers to both establish its leadership and
            * start synching its log with the others. 
            *)
-          let msgs = begin match state.role with
-            | Leader {next_index; _ } -> (
-              List.map (fun {server_id; server_log_index} ->
+          begin match state.role with
+          | Leader {indices} -> (
+            let indices, msgs_to_send = List.fold_left (fun (indices, msgs_to_send) ({server_id; next_index; cache } as index) ->
                 
-                let prev_log_index = server_log_index - 1 in 
-                let req = make_append_entries prev_log_index state in 
-                let msg = Append_entries_request req in 
-                (msg, server_id)
-              ) next_index 
-            )
-            | _ -> assert(false)
-          end 
-          in
+                let prev_log_index = next_index - 1 in 
+                let cache, req  = make_append_entries prev_log_index cache state in 
+                let msg_to_send = (Append_entries_request req, server_id) in 
+                ({index with cache;}::indices, msg_to_send::msgs_to_send)
 
-          (state, msgs)  
+              ) ([], []) indices
+            in 
+            ({state with role = Leader {indices}}, msgs_to_send)
+          )
+          | _ -> assert(false)
+          end 
         else 
           (* Candidate has a new vote but not yet reached the majority
            *)
@@ -259,12 +294,12 @@ end (* Request_vote *)
 
 module Append_entries = struct 
   
-
-
   let make state receiver_id = 
     match state.role with
-    | Leader leader_state -> Some (make_append_entries_for_server state leader_state receiver_id) 
-    | _ -> None 
+    | Leader leader_state -> 
+      let leader_state, req = make_append_entries_for_server state leader_state receiver_id in 
+      ({state with role = Leader leader_state}, Some req)
+    | _ -> (state, None) 
 
   let handle_request state request now = 
     
@@ -446,57 +481,19 @@ module Append_entries = struct
              * server (ie leader) which does not update its next/match
              *
              *)
-            if Configuration.is_majority configuration (nb_of_replications + 1)
+            if Configuration.is_majority configuration (nb_of_replications + 1) && 
+               receiver_last_log_index > state.commit_index
             then receiver_last_log_index
             else state.commit_index
           in  
           let state = {state with commit_index} in 
 
-          (* 
-           * We now compute the next messages to send.
-           *
-           * First we see if the server that we just receive the response
-           * from has missing entries. This is needed because we might have 
-           * previously throttled the number of log sent due to the 
-           * max_nb_message parameter in the configuration. 
-           *
-           *)
-          let req1 = make_append_entries receiver_last_log_index state in 
-          let msg1 = match req1.rev_log_entries with
-            | [] -> []
-            | _  -> [(Append_entries_request req1, receiver_id)]
-          in 
 
-          (* 
-           * Second we check that if we others servers are past their 
-           * heartbeat deadlines. 
-           *
-           * The reason we compute those requests here rather than 
-           * waiting for a heartbeat timeout is that the server 
-           * event loop might be continuously receiving responses from 
-           * servers and the [Timeout] event never triggered. 
-           *
-           * Furthermore at this stage we know that we are a leader 
-           * and therefore expected to send heartbeat requests.
-           *
-           *)
-          let msg2 = make_heartbeat_requests state leader_state now in 
-
-          let msgs = msg1 @ msg2 in 
-
-          let leader_state = 
-            record_requests_sent configuration leader_state msgs now 
-              (* 
-               * We assume the msgs will be sent and therefore the 
-               * heartbeat deadline of all servers which we send messages
-               * to need to be updated.
-               *
-               *)
-          in
+          let leader_state, msgs_to_send = compute_append_entries state leader_state now in  
 
           let state = {state with role = Leader leader_state} in
 
-          (state, msgs)
+          (state, msgs_to_send)
 
       | Log_failure log_failure -> 
         (* 
@@ -505,13 +502,10 @@ module Append_entries = struct
          * log index and retry the append. 
          *
          *)
-        let configuration = state.configuration in 
         let leader_state = Leader.decrement_next_index ~log_failure ~server_id:receiver_id state leader_state in 
-        let req  = make_append_entries_for_server state leader_state receiver_id in
-        let msgs = [(Append_entries_request req, receiver_id)] in 
-        let leader_state = record_requests_sent configuration leader_state msgs now in  
+        let leader_state, msgs_to_send = compute_append_entries state leader_state now in 
         let state  = {state with role = Leader leader_state} in 
-        (state,msgs)
+        (state,msgs_to_send)
 
       | Term_failure  -> assert(false)
         (* 
@@ -570,12 +564,9 @@ module Message = struct
   let handle_heartbeat_timeout ({role; configuration; _ } as state) now = 
     match state.role with
     | Leader leader_state -> 
-      let msgs = make_heartbeat_requests state leader_state now in 
-      let leader_state = record_requests_sent 
-        configuration leader_state msgs now 
-      in 
+      let leader_state, msgs_to_send = compute_append_entries state leader_state now in 
       let state = {state with role = Leader leader_state} in 
-      (state, msgs)
+      (state, msgs_to_send)
     | _ -> 
       (state, [])
 
@@ -607,27 +598,9 @@ module Message = struct
          * change the role. 
          *)
 
-      | Leader ({receiver_connections; _ } as leader_state) -> 
+      | Leader ({indices} as leader_state) -> 
 
-        let msgs_to_send = List.fold_left (fun msgs receiver_connection -> 
-          let {
-            server_id; 
-            outstanding_request; _ } = receiver_connection
-          in 
-
-          if outstanding_request
-          then msgs
-            (* We do not send new log entries to server which already 
-             * have requests sent to them. 
-             *)
-          else 
-            let msg = make_append_entries_for_server state leader_state server_id in
-            (Append_entries_request msg, server_id)::msgs
-        ) [] receiver_connections in 
-
-        let leader_state = record_requests_sent 
-          state.configuration leader_state msgs_to_send now 
-        in 
+        let leader_state, msgs_to_send = compute_append_entries state leader_state now in 
         let state = {state with role = Leader leader_state } in 
         Appended (state, msgs_to_send) 
 
