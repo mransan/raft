@@ -151,12 +151,12 @@ module Leader = struct
     
     let {nb_of_server; hearbeat_timeout} = state.configuration in 
   
-    let rec aux ((indices, receiver_connections) as acc) = function
-      | (-1) -> acc
+    let rec aux indices = function
+      | (-1) -> indices
       |  i   -> 
         if i = state.id
         then 
-          aux (indices, receiver_connections) (i -1)
+          aux indices (i -1)
         else 
           let next_index = last_log_index + 1 in 
           let match_index = 0 in 
@@ -167,10 +167,6 @@ module Leader = struct
             next_index; 
             match_index; 
             cache; 
-          } in 
-
-          let connection = {
-            server_id = i; 
             outstanding_request = false;
             heartbeat_deadline = now +. hearbeat_timeout;
               (* 
@@ -181,15 +177,11 @@ module Leader = struct
                *
                *)
           } in 
-          aux (index::indices, connection::receiver_connections) (i - 1)
+          aux (index::indices) (i - 1)
     in 
-    let indices, receiver_connections = aux ([], []) (nb_of_server - 1) in 
+    let indices = aux [] (nb_of_server - 1) in 
     
-    {state with 
-      role = Leader {
-        indices; 
-        receiver_connections;
-     }}
+    {state with role = Leader {indices}}
 
 
   let find_server_index indices receiver_id = 
@@ -263,7 +255,7 @@ module Leader = struct
     if log_index = 0
     then (leader_state, 0)
     else 
-      let {indices; _ } = leader_state in 
+      let {indices} = leader_state in 
 
       let indices = 
         List.map (fun ({server_id; next_index = _ } as s) -> 
@@ -282,27 +274,27 @@ module Leader = struct
         else n
       ) 0 indices in 
       
-      ({leader_state with indices }, nb_of_replications) 
+      ({indices}, nb_of_replications) 
 
 
-  let update_receiver_connection ~receiver_id ~f leader_state = 
-    let {receiver_connections;_ } = leader_state in 
+  let update_index ~receiver_id ~f leader_state = 
+    let {indices} = leader_state in 
 
-    let receiver_connections = List.fold_left (fun acc (receiver_connection:receiver_connection) -> 
-      if receiver_connection.server_id = receiver_id
-      then (f receiver_connection)::acc
-      else receiver_connection::acc
-    ) [] receiver_connections in
+    let indices = List.fold_left (fun indices index -> 
+      if index.server_id = receiver_id
+      then (f index)::indices
+      else index::indices
+    ) [] indices in
 
-    {leader_state with receiver_connections}
+    {indices}
 
   let record_request_sent ~server_id ~now ~configuration leader_state = 
 
-    update_receiver_connection 
+    update_index 
       ~receiver_id:server_id 
-      ~f:(fun receiver_connection ->
-        {receiver_connection with
-          heartbeat_deadline =  configuration.hearbeat_timeout +. now; 
+      ~f:(fun index->
+        {index with
+          heartbeat_deadline  =  configuration.hearbeat_timeout +. now; 
           outstanding_request = true;
         }
       ) 
@@ -310,25 +302,24 @@ module Leader = struct
 
   let record_response_received ~server_id leader_state = 
     
-    update_receiver_connection 
+    update_index 
       ~receiver_id:server_id 
-      ~f:(fun receiver_connection ->
-        
-        {receiver_connection with outstanding_request = false;}
+      ~f:(fun index ->
+        {index with outstanding_request = false;}
       ) 
       leader_state
     
-  let min_heartbeat_timout ~now {receiver_connections; _ } = 
+  let min_heartbeat_timout ~now {indices} = 
 
     let min_heartbeat_deadline = List.fold_left (fun min_deadline {heartbeat_deadline; _ } -> 
         if heartbeat_deadline < min_deadline
         then heartbeat_deadline
         else min_deadline
-      ) max_float receiver_connections
+      ) max_float indices
     in 
     min_heartbeat_deadline -. now 
 
-  let decrement_next_index ~log_failure ~server_id state ({indices; _ } as leader_state) = 
+  let decrement_next_index ~log_failure ~server_id state {indices; _ } = 
     let receiver_id = server_id in 
     let {receiver_last_log_index ; receiver_last_log_term } = log_failure in 
 
@@ -391,7 +382,7 @@ module Leader = struct
       else s
     ) indices in
 
-    {leader_state with indices}
+    {indices}
 
 end 
 

@@ -1160,22 +1160,18 @@ let ()  =
      *)
 
   begin match server0.role with
-  | Leader {indices; receiver_connections; _ } -> (
+  | Leader {indices; _ } -> (
     assert(2 = List.length indices); 
-    assert(2 = List.length receiver_connections); 
       (* 
        * The leader maintain various state for each of the 
        * other servers. 
        *)
 
-      List.iter (fun {next_index;match_index;_ } -> 
+      List.iter (fun {next_index; match_index; heartbeat_deadline; _ } -> 
         assert(1 = next_index); 
         assert(0 = match_index); 
-      ) indices; 
-
-      List.iter (fun {heartbeat_deadline;_ } -> 
         assert(now +. default_configuration.hearbeat_timeout  = heartbeat_deadline); 
-      ) receiver_connections; 
+      ) indices; 
   )
   | _ -> assert(false)
   end;
