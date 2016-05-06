@@ -193,38 +193,6 @@ module Leader = struct
     | exception Not_found -> None 
     end 
 
-  let next_index_for_receiver {role; _ } receiver_id = 
-    match role with
-    | Leader {indices; _ } -> begin match find_server_index indices receiver_id with
-      | None -> None 
-      | Some {next_index; _ } -> Some next_index 
-    end 
-    | _ -> None 
-  
-  let match_index_for_receiver {role; _ } receiver_id = 
-    match role with
-    | Leader {indices; _ } -> begin match find_server_index indices receiver_id with
-      | None -> None 
-      | Some {match_index; _ } -> Some match_index
-    end 
-    | _ -> None 
-  
-  let cache_for_receiver {indices; _ } receiver_id = 
-    match find_server_index indices receiver_id with
-    | None -> failwith "Invalid receiver_id" 
-    | Some {cache; _} -> cache 
-
-  let add_log data state = 
-    let last_log_index = State.last_log_index state in
-    {state with 
-      log = {
-        index = last_log_index + 1;
-        term = state.current_term; 
-        data; 
-      }::state.log;
-      log_size = state.log_size + 1;
-    }
-
   let add_logs datas state = 
 
     let rec aux term last_log_index log log_size = function
