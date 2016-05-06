@@ -256,18 +256,6 @@ module Leader = struct
 
     {indices}
 
-  let record_request_sent ~server_id ~now ~configuration leader_state = 
-
-    update_index 
-      ~receiver_id:server_id 
-      ~f:(fun index->
-        {index with
-          heartbeat_deadline  =  configuration.hearbeat_timeout +. now; 
-          outstanding_request = true;
-        }
-      ) 
-      leader_state
-
   let record_response_received ~server_id leader_state = 
     
     update_index 

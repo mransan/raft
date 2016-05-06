@@ -3,7 +3,6 @@
 
 module State : sig 
 
-
   val last_log_index_and_term : Raft_pb.state -> (int * int) 
   (** [last_log_index_and_term state] return the [(index, term)] of the last log
       entry. 
@@ -57,7 +56,6 @@ module Rev_log_cache : sig
 
 end (* Rev_log_cache *) 
 
-
 module Follower : sig 
 
   val create : 
@@ -84,7 +82,6 @@ module Follower : sig
       }
     *)
 end 
-
 
 module Candidate : sig
 
@@ -144,16 +141,6 @@ module Leader : sig
     *  The function returns [(state, nb_of_replication)]. The [nb_of_replication] is 
     *  useful for the application to determine how many servers have replicated the log and therefore
     *  determine if it can be considered commited. 
-    *)
-
-  val record_request_sent : 
-    server_id:int -> 
-    now:float -> 
-    configuration:Raft_pb.configuration ->
-    Raft_pb.leader_state -> 
-    Raft_pb.leader_state
-  (** [record_request_sent ~server_id ~now ~configuration leader_state] returns 
-    * the new leader state with the [server_id] heartbeat deadline updated. 
     *)
 
   val record_response_received : 
