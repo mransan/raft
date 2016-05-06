@@ -6,11 +6,11 @@ module Follower         = Raft_helper.Follower
 module Candidate        = Raft_helper.Candidate
 module Leader           = Raft_helper.Leader
 module Configuration    = Raft_helper.Configuration
-module Timeout_event    = Raft_helper.Timeout_event 
+module Rev_log_cache    = Raft_helper.Rev_log_cache
 
 type time = float 
   
-type message_to_send = Raft_pb.message * int 
+type message_to_send = message * int 
   
 let rec keep_first_n l = function
   | 0 -> []
@@ -21,16 +21,16 @@ let rec keep_first_n l = function
     end
 
 let make_append_entries prev_log_index (cache:rev_log_cache) state =  
-  let max = state.configuration.max_nb_logs_per_message in
 
   let cache = 
-    if Raft_helper.Rev_log_cache.contains_next_of prev_log_index cache
+    if Rev_log_cache.contains_next_of prev_log_index cache
     then 
-      Raft_helper.Rev_log_cache.sub prev_log_index cache
+      Rev_log_cache.sub prev_log_index cache
     else 
-      Raft_helper.Rev_log_cache.make prev_log_index state.log
+      Rev_log_cache.make prev_log_index state.log
   in 
   
+  let max = state.configuration.max_nb_logs_per_message in
   let rev_log_entries = keep_first_n cache.rev_log_entries max in 
 
   let request = {
@@ -48,7 +48,7 @@ let make_append_entries prev_log_index (cache:rev_log_cache) state =
  *)
 let record_requests_sent configuration leader_state msgs_to_send now = 
   List.fold_left (fun leader_state (_, server_id) -> 
-    Raft_helper.Leader.record_request_sent 
+    Leader.record_request_sent 
         ~server_id ~now ~configuration leader_state
   ) leader_state msgs_to_send
 
@@ -82,7 +82,7 @@ let compute_append_entries state {indices} now =
            *)
         else 
           let prev_index = next_index - 1 in 
-          let last_log_index = Raft_helper.State.last_log_index state in  
+          let last_log_index = State.last_log_index state in  
           if prev_index == last_log_index
           then false 
             (* 
@@ -110,27 +110,6 @@ let compute_append_entries state {indices} now =
   let leader_state = record_requests_sent state.configuration leader_state msgs_to_send now in 
 
   (leader_state, msgs_to_send)
-
-
-(* TODO Remove this one when all the unit tests
- * are migrated to the [Message] module 
- *)
-let make_append_entries_for_server state {indices} receiver_id = 
-
-  let indices, req = List.fold_left (fun (indices, req) ({server_id; next_index; cache;_ } as index) -> 
-    if server_id = receiver_id
-    then 
-      let cache, req = make_append_entries (next_index -1) cache state in 
-      ({index with cache}::indices , Some req)
-    else 
-      (index::indices, req)
-  ) ([], None) indices
-  in
-
-  match req with
-  | None -> failwith "[Raft_logic] Invalid receiver_id"
-  | Some req -> 
-    ({indices}, req)
 
 (** {2 Request Vote} *) 
 
@@ -294,12 +273,6 @@ end (* Request_vote *)
 
 module Append_entries = struct 
   
-  let make state receiver_id = 
-    match state.role with
-    | Leader leader_state -> 
-      let leader_state, req = make_append_entries_for_server state leader_state receiver_id in 
-      ({state with role = Leader leader_state}, Some req)
-    | _ -> (state, None) 
 
   let handle_request state request now = 
     
@@ -515,7 +488,6 @@ module Append_entries = struct
       
       end (* match result *) 
 
-
 end (* Append_entries *)
 
 module Message = struct
@@ -550,21 +522,22 @@ module Message = struct
     in
     aux e0 (nb_of_server - 1)
 
-  let request_vote_for_all ({id; configuration = {nb_of_server;_ }; _ } as state) = 
-    fold_over_servers (fun acc server_id ->
-      let request = Request_vote.make state  in 
-      (Request_vote_request request, server_id) :: acc
-    ) [] state 
-  
   let handle_new_election_timeout state now = 
-    let state = Raft_helper.Candidate.become ~now state in 
-    let msgs  = request_vote_for_all state in 
+    let state = Candidate.become ~now state in 
+    let msgs  = 
+      fold_over_servers (fun acc server_id ->
+        let request = Request_vote.make state  in 
+        (Request_vote_request request, server_id) :: acc
+      ) [] state 
+    in
     (state, msgs)
   
   let handle_heartbeat_timeout ({role; configuration; _ } as state) now = 
     match state.role with
     | Leader leader_state -> 
-      let leader_state, msgs_to_send = compute_append_entries state leader_state now in 
+      let leader_state, msgs_to_send = 
+        compute_append_entries state leader_state now 
+      in 
       let state = {state with role = Leader leader_state} in 
       (state, msgs_to_send)
     | _ -> 

@@ -44,354 +44,8 @@ let initial_state
     configuration; 
   }
 
-let assert_current_leader state expected_leader = 
-  match state.role with
-  | Follower {current_leader = Some id; _ } -> assert(id = expected_leader)
-  | _ -> assert(false) 
-
-let assert_no_current_leader state = 
-  match state.role with
-  | Follower {current_leader = None; _ } -> ()
-  | _ -> assert(false) 
-
-let assert_nb_votes state expected_vote_count= 
-  match state.role with
-  | Candidate {vote_count; _ } -> assert(vote_count = expected_vote_count)
-  | _ -> assert(false) 
-
-let assert_event e1 e2 = 
-  assert(e1.timeout_type = e2.timeout_type);
-  let diff = abs_float (e1.timeout -. e2.timeout) in 
-  assert(diff < 0.00001)
-  
-let ipc_time = 0.001 (* 1 ms *) 
-
 let now = 0.
   
-let vote_communication ~from ~to_ ~now () = 
-  let request_vote  = Logic.Request_vote.make from in 
-  let now = now +. ipc_time in 
-  let to_, response = Logic.Request_vote.handle_request to_ request_vote now in 
-  let now = now +. ipc_time in 
-  let state, response = Logic.Request_vote.handle_response from response now in 
-  ((state, response, Timeout_event.next state now), to_, now)
-
-let foo = Bytes.of_string "Foo"
-let bar = Bytes.of_string "Bar"
-let bim = Bytes.of_string "Bim" 
-  
-let append_entry_communication ~from ~to_ ~now () = 
-  let from, request = Logic.Append_entries.make from 1 in
-  match request with
-  | Some request -> 
-    (* Format.printf "[append entry] request: %a\n" pp_append_entries_request request; 
-     *)
-    let now = now +. 0.001 in 
-    let to_, response = Logic.Append_entries.handle_request to_ request now in  
-    (* Format.printf "[append entry] response: %a\n" pp_append_entries_response response; 
-     *)
-    let now = now +. 0.001 in 
-    let state, responses = Logic.Append_entries.handle_response from response now in 
-    ((state, responses, Timeout_event.next state now) , to_, response, now) 
-  | None -> failwith "request expected"
-
-
-let () =
-  (*
-   * This test verifies that when an append entries from a new 
-   * leader is sent to a server which has less log than the 
-   * new leader, the append entry is rejected so that the leader
-   * decrements its `last_log_index` belief of that follower. 
-   *
-   *)
-
-  let leader_log_version_0 = 
-    {index = 3; term = 2; data = bim} ::
-    {index = 2; term = 1; data = bar} :: 
-    {index = 1; term = 1; data = foo} :: [] 
-  in
-
-  let server0 = 
-    let current_term = 2 in 
-    let log = leader_log_version_0 in 
-    Leader.become (initial_state ~commit_index:3 ~log ~current_term ~now 0) now  
-  in  
-
-  let server1 = 
-    let current_term = 0 in 
-    initial_state ~current_term ~now 1 
-  in 
-
-  assert(0 = List.length server1.log);
-  
-  assert((Some 4) = Leader.next_index_for_receiver server0 1);
-    (* Initially the leader belief of the next index for
-     * a follower is set to its last log index  + 1. 
-     *
-     * This belief is indeed incorrect in our test case... 
-     * (see above the log of the server1 is empty), but 
-     * the next `append entry` communication will inform 
-     * the leader about it.
-     *)
-
-  let (server0, msgs_to_send, next_event), server1, _, now = 
-    append_entry_communication ~from:server0 ~to_:server1 ~now () in
-
-  assert(now = 0.002); 
-  assert(0 = server0.id);
-  assert(2 = server0.current_term); 
-  assert(leader_log_version_0 = server0.log);
-  assert(3 = server0.commit_index);
-
-  assert(1 = server1.id); 
-  assert_current_leader server1 0;
-  begin match server1.role with
-    | Follower {voted_for = None; } -> ()
-    | _ -> assert(false)
-  end;
-  assert(2 = server1.current_term); 
-    (* server1 term was lower than the leader and should
-     * therefore have updated its current term to match.
-     *)
-
-  assert(0 = List.length server1.log);
-    (* The append entry should have been rejected by the 
-     * follower and consequently none of the log
-     * entries should have been appended by the 
-     * follower
-     *)
-
-  assert(0 = server1.commit_index); 
-    (* No new entries and therefore even if the 
-       leader commit index is larger than the follower 
-       commit index, the new commit index is following 
-       the following formula:
-       
-       min (leader_commit, last_log_index)
-         where leader_commit = 3
-               last_log_index = 0
-         and therefore commit_index = 0
-     *)
-
-  assert((Some 1) = Leader.next_index_for_receiver server0 1);
-    (* 
-     * When rejecting the [Append_entries] request from server0 [Leader], 
-     * server1 sent its [receiver_last_log_index] and term in the response.
-     *
-     * This information is used by server0 [Leader] to update its [next_index]
-     * information for that server1. 
-     *)
-
-  begin match msgs_to_send with
-  | (Append_entries_request r, receiver_id)::[] -> (
-    (* Another concequence of the server1 denying the 
-     * append entry request, is that the leader should 
-     * send another append query. 
-     *)
-    assert(1 = receiver_id);
-    assert(0 = r.leader_id);
-    assert(2 = r.leader_term);
-    assert(0 = r.prev_log_index);
-    assert(0 = r.prev_log_term);
-    assert(3 = r.leader_commit);
-    assert(3 = List.length r.rev_log_entries);
-  )
-  | _ -> assert(false)
-  end;
-
-  let () = 
-    let expected_event = {
-      timeout = default_configuration.hearbeat_timeout -. now;
-      timeout_type = Heartbeat;
-    } in 
-    assert_event expected_event next_event
-  in 
-
-  let (server0, msgs_to_send, next_event), server1, _, now = 
-    append_entry_communication ~from:server0 ~to_:server1 ~now () in
-  
-  assert(now = 0.004); 
-  assert(msgs_to_send = []); 
-  assert((Some 4) = Leader.next_index_for_receiver server0 1);
-  assert((Some 3) = Leader.match_index_for_receiver server0 1);
-    (* As a concequence of the server1 successfully inserting
-       the 3 log entries of the leader, the leader is updating
-       its next log index to [3 + 1] for that follower. 
-     *)
-
-  let () = 
-    (* The leader has solely interacted with server 1 (server1) 
-     * and therefore the leader is expected to send a heart beat in
-     * hearbeat_timeout - now
-     *)
-    let expected_event = {
-      timeout_type = Heartbeat; 
-      timeout = default_configuration.hearbeat_timeout -. now; 
-    } in 
-    assert_event expected_event next_event
-  in
-  ()
-
-let () = 
-  (* Example *)
-  
-  (* Create a 3 server configuration. 
-   *) 
-  let configuration = Raft_pb.( {
-    nb_of_server           = 3;
-    election_timeout       = 0.1;
-    election_timeout_range = 0.01;
-    hearbeat_timeout       = 0.02;
-    max_nb_logs_per_message = 10;
-  }) in 
-
-  (* Create a leader state by simulating a (rigged) election
-   *)
-  let leader_0 = 
-    Raft_helper.Follower.create ~configuration ~now ~id:0 () 
-    |> Raft_helper.Candidate.become ~now:0.0 
-    |> (fun s -> Raft_helper.Leader.become s now) 
-    |> Raft_helper.Leader.add_log (Bytes.of_string "Foo") 
-  in 
-  
-  (* Create a follower
-   *)
-  let follower_1 = 
-    Raft_helper.Follower.create ~configuration ~now ~id:1 () 
-  in 
-
-  (* First create an 'Append Entries' request from the 
-     leader to server 1.
-   *) 
-  match Raft_logic.Append_entries.make leader_0 1 with
-  | leader_0, Some request -> (
-
-    (* 'Update' server 1 (ie follower) by applying the request. This returns
-       the response to send to the leader. 
-     *)
-    let follower_1, response = Raft_logic.Append_entries.handle_request follower_1 request now in 
-
-    (* 'Update' server 0 (ie leader) by applying the response. This returns
-       the new state as well as a follow up action to take. 
-     *)
-    let _ , _ = Raft_logic.Append_entries.handle_response leader_0 response now in 
-
-    (* Check that the follower has successfully replicated the leader single
-       log
-     *)
-    match follower_1.log with
-    | {data; _ } :: [] -> 
-      if "Foo" = Bytes.to_string data
-      then print_endline "Log successfully replicated in follower"
-      else print_endline "Log replication was corrupted"
-    | _ -> print_endline "Log replication failure"
-  )
-  | _, None -> () 
-
-let () = 
-
-  (*
-   * In this test we will make sure that the RAFT
-   * protocol implementation is resilient to message
-   * delivery error.
-   * 
-   *) 
-  
-  (* 
-   * The first test will focus on sending twice 
-   * the Append Entry request. 
-   *)
-
-  let server0 = 
-    Leader.become (initial_state ~current_term:1 ~now 0) now 
-    |> Leader.add_log foo
-  in 
-  let server1 = initial_state ~current_term:1 ~now 1 in
-
-  assert(0 = List.length server1.log);
-  assert(1 = List.length server0.log);
-  assert(0 = server0.commit_index);
-  assert(Some (1) = Leader.next_index_for_receiver server0 1);
-  assert(Some (0) = Leader.match_index_for_receiver server0 1);
-
-  let server0 =  
-    match Logic.Append_entries.make server0 1 with
-    | _, None -> assert(false)
-    | server0, Some request -> (
-      let now = now +. 0.001 in
-      
-      (*
-       * The request is sent twice to the server1. 
-       *)
-      let server1, _        = Logic.Append_entries.handle_request server1 request now in  
-      let server1, response = Logic.Append_entries.handle_request server1 request now in  
-
-      assert(1 = List.length server1.log);
-      assert_current_leader server1 0; 
-      begin match response.result with
-      | Term_failure | Log_failure _ -> assert(false)
-      | Success {receiver_last_log_index} -> assert(1 = receiver_last_log_index) 
-      end; 
-      server0
-    )
-  in
-
-  (* 
-   * In the test below the leader sends 2 requests which arrives
-   * in wrong order and receiver sends 2 responses arrive in correct
-   * order. 
-   *
-   * a) leader adds log foo
-   * b) leader sends an append query (0) with log foo
-   * c) leader adds log bar 
-   * d) leader sends an append query (1) with log foo bar
-   * e) server receives query (1) 
-   * f) server sends  response (1)
-   * g) server receives query (0) 
-   * h) server sends  response (0) 
-   * i) -> last log index must still be 2  
-   *)
-
-  
-  (*Format.printf "server0: %a\n%!" pp_state server0;*)
-
-  let _ = 
-    match Logic.Append_entries.make server0 1 with
-    | _, None -> assert(false)
-    | server0, Some request0 -> (
-      let server0 = Leader.add_log bar server0 in  
-      (*Format.printf "server0: %a\n%!" pp_state server0;*)
-      let server0 = 
-        match Logic.Append_entries.make server0 1 with
-        | _, None -> assert(false)
-        | server0, Some request1 -> (
-
-          (* Handle the request in the oposite
-           * order.
-           *)
-          (*
-          let server1, response0 = Logic.Append_entries.handle_request server1 request1 now in  
-          assert(2 = List.length server1.log);
-          let server1, response1 = Logic.Append_entries.handle_request server1 request0 now in  
-
-          assert(2 = List.length server1.log);
-
-          let server0, _ = Logic.Append_entries.handle_response server0 response0 now in 
-          let server0, _ = Logic.Append_entries.handle_response server0 response1 now in 
-
-          assert(Some (3) = Leader.next_index_for_receiver server0 1);
-          assert(Some (2) = Leader.match_index_for_receiver server0 1);
-          assert(2 = server0.commit_index);
-          *)
-          server0
-        )
-      in 
-      server0
-    );
-  in
-
-  ()
-
 let msg_for_server msgs id = 
   match List.find (fun (_, server_id) -> id = server_id) msgs with
   | (msg, _) -> msg 
@@ -1533,16 +1187,169 @@ let ()  =
   | _ -> assert(false)
   end;
 
-  (*
-   *  TODO:
-   *  - Handle the vote response by server1 and check that it becomes
-   *  the new [Leader]. 
-   *  - Make sure that the [Append_entries] request sent upon
-   *  becoming a [Leader] by server1 to server2 contains no [log_entry]
-   *  since [server1] will by default assume that the other servers have replicated
-   *  the same [log_entry] as it did. 
-   *  - Verify that then server2 denies this latest [Append_entries]. 
-   *  - Verify that then server1 sents the new (and corrected) [Append_entries] 
-   *    with the [log_entry] which was not replicated on server2 before. (ie the 3rd one). 
+  let now = now +. 0.001 in
+
+  (* 
+   * Let's now handle the successful vote response from 
+   * server2. 
    *)
+
+  let server1, msgs =
+    let msg = msg_for_server msgs 1 in  
+    Raft_logic.Message.handle_message server1 msg now 
+  in 
+
+  assert(State.is_leader server1); 
+    (* 
+     * One vote is enough to become a [Leader].
+     *)
+
+  assert(3 = server1.current_term); 
+    (* 
+     * [current_term] should be the same after becoming
+     * a [Leader].
+     *)
+
+  assert(2 = List.length msgs);
+    (*
+     * Imediately after becoming a [Leader], the server
+     * will send [Append_entries] to establish its
+     * leadership.
+     *)
+
+  List.iter (fun (r, _) -> 
+    match r with 
+    | Append_entries_request r -> (
+      assert(r.leader_term = 3);
+      assert(r.leader_id = 1);
+      assert(r.prev_log_index = 3);
+      assert(r.prev_log_term = 1);
+      assert(r.rev_log_entries = []);
+        (*
+         * Initially the [Leader] believes that all other servers
+         * have replicated the same [log_entry]s as itself.
+         *)
+      assert(r.leader_commit = 2);
+    )
+    | _ -> assert(false)
+  ) msgs;
+
+
+  let now = now +.  0.001 in 
+
+  let server2, msgs = 
+    let msg = msg_for_server msgs 2 in 
+    Raft_logic.Message.handle_message server2 msg now
+  in
+
+  assert(State.is_follower server2);
+  assert(3 = server2.current_term);
+
+  assert(1 = List.length msgs); 
+    (*
+     * Single response to server1. 
+     *)
+
+  begin match msgs with
+  | (Append_entries_response r, 1)::[] -> (
+    assert(r.receiver_id = 2);
+    assert(r.receiver_term = 3);
+    assert(r.result = Log_failure { 
+      receiver_last_log_index = 2; 
+      receiver_last_log_term =1;
+    }); 
+      (* 
+       * server2 did not replicate the 3rd [log_entry] that server1 
+       * did during [term = 1].
+       *
+       * Therefore the previous [Append_entries] request is rejected.
+       *)
+  )
+  | _ -> assert(false)
+  end;
+
+  (*
+   * Let's propagate that response back to server1. 
+   *)
+
+  let now = now +. 0.001 in
+
+  let server1, msgs = 
+    let msg = msg_for_server msgs 1 in 
+    Raft_logic.Message.handle_message server1 msg now
+  in
+
+  assert(State.is_leader server1);
+  assert(3 = server1.current_term);
+
+  assert(1 = List.length msgs);
+    (*
+     * A new request for server2 has been computed which 
+     * should now contain the 3rd [log_entry]
+     *)
+
+  begin match msgs with
+  | (Append_entries_request r, 2) :: [] -> (
+    assert(r.leader_term = 3);
+    assert(r.leader_id = 1);
+    assert(r.prev_log_index = 2);
+    assert(r.prev_log_term = 1);
+    assert(1 = List.length r.rev_log_entries); 
+    assert(r.leader_commit = 2);
+  )
+  | _ -> assert(false)
+  end;
+
+  let now = now +. 0.001 in 
+  
+  let server2, msgs = 
+    let msg = msg_for_server msgs 2 in 
+    Raft_logic.Message.handle_message server2 msg now
+  in
+
+  assert(State.is_follower server2);
+  assert(3 = server2.current_term);
+
+  assert(3 = List.length server2.log); 
+    (* 
+     * server2 has correctly replicated the 3rd [log_entry]. 
+     *)
+
+  assert(1 = List.length msgs); 
+    (*
+     * Single response for server1.
+     *)
+  begin match msgs with
+  | (Append_entries_response r, 1) :: [] -> (
+    assert(r.receiver_id = 2);
+    assert(r.receiver_term = 3);
+    assert(r.result = Success { receiver_last_log_index = 3});
+      (*
+       * Confirmation that the replication of the log has 
+       * been successful. 
+       *)
+  )
+  | _ -> assert(false)
+  end;
+
+
+  let now = now +. 0.001  in 
+
+  let server1, msgs = 
+    let msg = msg_for_server msgs 1 in 
+    Raft_logic.Message.handle_message server1 msg now 
+  in
+
+  assert(State.is_leader server1);
+  assert(3 = server1.current_term);
+
+  assert(3 = server1.commit_index);
+    (*
+     * The 3rd [log_entry] has been replicated one one other 
+     * server than the [Leader]; this makes a majority and therefore
+     * indicates that [commit_index] can be set to 3.
+     *)
+
+  assert([] = msgs);
+
   ()
