@@ -119,32 +119,6 @@ module Leader : sig
     *   The calling application is responsible to ensure that it is correct
     *   to become a leader. 
     *)
-
-  val next_index_for_receiver : Raft_pb.state -> int -> int option
-  (** [next_index_for_receiver state receiver_id] returns the next index 
-    *  for the given receiver id. 
-    *
-    *  If [state] role is not a leader or if [receiver_id] is not valid, 
-    *  then [None] is returned. 
-    *)
-  
-  val match_index_for_receiver : Raft_pb.state -> int -> int option
-  (** [match_index_for_receiver state receiver_id] returns the match index 
-    *  for the given receiver id. 
-    *
-    *  If [state] role is not a leader or if [receiver_id] is not valid, 
-    *  then [None] is returned. 
-    *)
-
-  val cache_for_receiver : Raft_pb.leader_state -> int -> Raft_pb.rev_log_cache 
-
-
-  val add_log : bytes -> Raft_pb.state -> Raft_pb.state 
-  (** [add_log log_data state] adds [log_data] to the log of the [state]. 
-    *   
-    *  Any subsequent logical actions like creating Append Entries request is 
-    *  left to the caller. 
-    *) 
   
   val add_logs : bytes list -> Raft_pb.state -> Raft_pb.state 
   (** [add_logs datas state] adds [datas] to the log of the [state]. 
@@ -204,7 +178,6 @@ module Configuration : sig
   val is_majority : Raft_pb.configuration -> int -> bool 
   (** [is_majority configuration nb] returns true if [nb] is a majority
    *)
-
 
 end (* Configuration *)
 

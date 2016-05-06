@@ -19,30 +19,11 @@ let default_configuration = {
 }
 
 let initial_state  
-  ?role
-  ?log:(log = [])
-  ?commit_index:(commit_index = 0)
   ?configuration:(configuration = default_configuration)
-  ?current_term:(current_term = 0) 
   ~now 
   id = 
 
-  let {election_timeout;_} = configuration in 
-  let role = match role with
-    | None -> Follower (
-      default_follower_state ~election_deadline:(now +.  election_timeout) () 
-    )
-    | Some x -> x 
-  in 
-  {
-    id;
-    current_term;
-    log;
-    log_size = List.length log;
-    commit_index;
-    role;
-    configuration; 
-  }
+  Raft_logic.make_initial_state ~configuration ~now ~id () 
 
 let now = 0.
   
@@ -66,7 +47,7 @@ let ()  =
   (*
    * Let's simulate an election timeout for server0, 
    *)
-  let server0, msgs = Raft_logic.Message.handle_new_election_timeout server0 now in 
+  let server0, msgs = Raft_logic.handle_new_election_timeout server0 now in 
   
   assert(State.is_candidate server0); 
     (* When an election timeout happen the server should start a new election
@@ -103,7 +84,7 @@ let ()  =
 
   let server1, msgs = 
     let msg = msg_for_server msgs 1 in  
-    Raft_logic.Message.handle_message server1 msg now 
+    Raft_logic.handle_message server1 msg now 
   in
 
   assert(1 = server1.current_term); 
@@ -149,7 +130,7 @@ let ()  =
   let now = now +. 0.001 in 
   let server0, msgs = 
     let msg = msg_for_server msgs 0 in 
-    Raft_logic.Message.handle_message server0 msg now 
+    Raft_logic.handle_message server0 msg now 
   in
 
   assert(State.is_leader server0); 
@@ -219,7 +200,7 @@ let ()  =
   let now = now +. 0.001 in 
   let server1, msgs = 
     let msg = msg_for_server msgs 1 in  
-    Raft_logic.Message.handle_message server1 msg now 
+    Raft_logic.handle_message server1 msg now 
   in
 
   begin match server1.role with
@@ -269,7 +250,7 @@ let ()  =
 
   let server2 = initial_state ~now 2 in 
   let server2, request_vote_msgs = 
-    Raft_logic.Message.handle_new_election_timeout server2 now 
+    Raft_logic.handle_new_election_timeout server2 now 
   in
 
   assert(State.is_candidate server2); 
@@ -279,7 +260,7 @@ let ()  =
   let now = now +. 0.001 in
   let server1, msgs = 
     let msg = msg_for_server request_vote_msgs 1 in 
-    Raft_logic.Message.handle_message server1 msg now 
+    Raft_logic.handle_message server1 msg now 
   in 
 
   begin match msgs with
@@ -311,7 +292,7 @@ let ()  =
 
   let server2, msgs = 
     let msg = msg_for_server msgs 2 in 
-    Raft_logic.Message.handle_message server2 msg now 
+    Raft_logic.handle_message server2 msg now 
   in 
 
   assert(State.is_candidate server2); 
@@ -336,7 +317,7 @@ let ()  =
    *)
   let server0, msgs = 
     let msg = msg_for_server request_vote_msgs 0 in 
-    Raft_logic.Message.handle_message server0 msg now 
+    Raft_logic.handle_message server0 msg now 
   in
   
   assert(State.is_leader server0); 
@@ -375,7 +356,7 @@ let ()  =
    *)
   let server2, msgs = 
     let msg = msg_for_server msgs 2 in 
-    Raft_logic.Message.handle_message server2 msg now 
+    Raft_logic.handle_message server2 msg now 
   in
 
   assert(State.is_candidate server2); 
@@ -400,7 +381,7 @@ let ()  =
    * trigger new messages. 
    *) 
 
-  let server0, msgs = Raft_logic.Message.handle_heartbeat_timeout server0 now in 
+  let server0, msgs = Raft_logic.handle_heartbeat_timeout server0 now in 
 
   assert([] = msgs); 
     (*
@@ -411,7 +392,7 @@ let ()  =
 
   let now = now +. default_configuration.hearbeat_timeout in  
 
-  let server0, hb_msgs = Raft_logic.Message.handle_heartbeat_timeout server0 now in 
+  let server0, hb_msgs = Raft_logic.handle_heartbeat_timeout server0 now in 
 
   assert(2 = List.length hb_msgs);
     (*
@@ -442,7 +423,7 @@ let ()  =
   let now = now +. 0.001 in 
   let server2, msgs = 
     let msg = msg_for_server hb_msgs 2 in  
-    Raft_logic.Message.handle_message server2 msg now 
+    Raft_logic.handle_message server2 msg now 
   in
   
   assert(State.is_follower server2); 
@@ -487,7 +468,7 @@ let ()  =
 
   let server0, msgs = 
     let msg = msg_for_server msgs 0 in 
-    Raft_logic.Message.handle_message server0 msg now 
+    Raft_logic.handle_message server0 msg now 
   in  
 
   (* 
@@ -497,7 +478,7 @@ let ()  =
 
   let server1, msgs = 
     let msg =  msg_for_server hb_msgs 1 in 
-    Raft_logic.Message.handle_message server1 msg now
+    Raft_logic.handle_message server1 msg now
   in 
 
   assert(State.is_follower server1); 
@@ -532,7 +513,7 @@ let ()  =
    *)
   let server0, msgs = 
     let msg = msg_for_server msgs 0 in 
-    Raft_logic.Message.handle_message server0 msg now 
+    Raft_logic.handle_message server0 msg now 
   in  
 
   assert(State.is_leader server0); 
@@ -546,11 +527,11 @@ let ()  =
 
   let new_log_response = 
     let data = Bytes.of_string "Message1" in 
-    Raft_logic.Message.handle_add_log_entries server0 [data] now 
+    Raft_logic.handle_add_log_entries server0 [data] now 
   in
 
   let server0, data1_msgs = 
-    let open Raft_logic.Message in 
+    let open Raft_logic in 
     match new_log_response with
     | Appended (state, msgs) -> (state, msgs) 
       (* 
@@ -613,7 +594,7 @@ let ()  =
 
   let server1, msgs = 
     let msg = msg_for_server data1_msgs 1 in 
-    Raft_logic.Message.handle_message server1 msg now 
+    Raft_logic.handle_message server1 msg now 
   in
 
   assert(State.is_follower server1); 
@@ -658,7 +639,7 @@ let ()  =
 
   let server0, msgs = 
     let msg = msg_for_server msgs 0  in 
-    Raft_logic.Message.handle_message server0 msg now 
+    Raft_logic.handle_message server0 msg now 
   in 
 
   assert(State.is_leader server0); 
@@ -687,11 +668,11 @@ let ()  =
 
   let new_log_response = 
     let data = Bytes.of_string "Message2" in 
-    Raft_logic.Message.handle_add_log_entries server0 [data] now
+    Raft_logic.handle_add_log_entries server0 [data] now
   in
 
   let server0, data2_msg = 
-    let open Raft_logic.Message in 
+    let open Raft_logic in 
     match new_log_response with
     | Delay | Forward_to_leader _ -> assert(false) 
     | Appended (x, y) -> (x, y)
@@ -748,7 +729,7 @@ let ()  =
 
   let server1, msgs = 
     let msg = msg_for_server data2_msg 1 in 
-    Raft_logic.Message.handle_message server1 msg now 
+    Raft_logic.handle_message server1 msg now 
   in 
 
   assert(State.is_follower server1); 
@@ -785,7 +766,7 @@ let ()  =
 
   let server0, msgs = 
     let msg = msg_for_server msgs 0  in 
-    Raft_logic.Message.handle_message server0 msg now 
+    Raft_logic.handle_message server0 msg now 
   in
 
   assert(State.is_leader server0); 
@@ -811,7 +792,7 @@ let ()  =
 
   let now = now +. default_configuration.hearbeat_timeout in 
 
-  let server0, msgs = Raft_logic.Message.handle_heartbeat_timeout server0 now in 
+  let server0, msgs = Raft_logic.handle_heartbeat_timeout server0 now in 
 
   assert(2 = List.length msgs); 
 
@@ -863,7 +844,7 @@ let ()  =
 
   let server1, server1_response = 
     let msg = msg_for_server msgs 1 in
-    Raft_logic.Message.handle_message server1 msg now 
+    Raft_logic.handle_message server1 msg now 
   in 
   
   assert(State.is_follower server1); 
@@ -880,7 +861,7 @@ let ()  =
   
   let server2, server2_response = 
     let msg = msg_for_server msgs 2 in
-    Raft_logic.Message.handle_message server2 msg now 
+    Raft_logic.handle_message server2 msg now 
   in 
   
   assert(State.is_follower server2); 
@@ -920,7 +901,7 @@ let ()  =
 
     let server0, msg_to_send = 
       let msg = msg_for_server server1_response 0  in 
-      Raft_logic.Message.handle_message server0 msg now 
+      Raft_logic.handle_message server0 msg now 
     in 
     assert([] = msg_to_send); 
       (* Server1 has replicated the 2 logs it has nothing 
@@ -928,7 +909,7 @@ let ()  =
        *)
     
     let msg = msg_for_server server2_response 0  in 
-    Raft_logic.Message.handle_message server0 msg now 
+    Raft_logic.handle_message server0 msg now 
   in 
 
   assert(State.is_leader server0); 
@@ -955,7 +936,7 @@ let ()  =
 
   let server2, msg_to_send = 
     let msg = msg_for_server msg_to_send 2 in 
-    Raft_logic.Message.handle_message server2 msg now 
+    Raft_logic.handle_message server2 msg now 
   in 
 
   assert(State.is_follower server2); 
@@ -984,7 +965,7 @@ let ()  =
 
   let server0, msgs = 
     let msg = msg_for_server msg_to_send 0  in 
-    Raft_logic.Message.handle_message server0 msg now
+    Raft_logic.handle_message server0 msg now
   in 
   
   assert([] = msgs); 
@@ -1013,12 +994,12 @@ let ()  =
 
   let new_log_response = 
     let data = Bytes.of_string "Message3" in 
-    Raft_logic.Message.handle_add_log_entries server0 [data] now 
+    Raft_logic.handle_add_log_entries server0 [data] now 
   in 
 
   let server0, msgs = 
     match new_log_response with
-    | Raft_logic.Message.Appended (server, msgs) -> (server, msgs)
+    | Raft_logic.Appended (server, msgs) -> (server, msgs)
     | _ -> assert(false)
   in 
   assert(State.is_leader server0); 
@@ -1039,7 +1020,7 @@ let ()  =
 
   let server1, _ = 
     let msg = msg_for_server msgs 1 in 
-    Raft_logic.Message.handle_message server1 msg now 
+    Raft_logic.handle_message server1 msg now 
   in 
 
   assert(State.is_follower server1); 
@@ -1063,7 +1044,7 @@ let ()  =
   let now = now +. default_configuration.election_timeout  in
 
   let server2, msgs = 
-    Raft_logic.Message.handle_new_election_timeout server2 now 
+    Raft_logic.handle_new_election_timeout server2 now 
   in 
 
   assert(State.is_candidate server2); 
@@ -1097,7 +1078,7 @@ let ()  =
 
   let server1, msgs = 
     let msg = msg_for_server msgs 1 in 
-    Raft_logic.Message.handle_message server1 msg now 
+    Raft_logic.handle_message server1 msg now 
   in 
 
   assert(State.is_follower server1); 
@@ -1137,7 +1118,7 @@ let ()  =
   let now = now +. default_configuration.election_timeout in 
 
   let server1, msgs = 
-    Raft_logic.Message.handle_new_election_timeout server1 now 
+    Raft_logic.handle_new_election_timeout server1 now 
   in 
 
   assert(State.is_candidate server1); 
@@ -1158,7 +1139,7 @@ let ()  =
 
   let server2, msgs = 
     let msg = msg_for_server msgs 2 in 
-    Raft_logic.Message.handle_message server2 msg now 
+    Raft_logic.handle_message server2 msg now 
   in 
 
   assert(State.is_follower server2); 
@@ -1196,7 +1177,7 @@ let ()  =
 
   let server1, msgs =
     let msg = msg_for_server msgs 1 in  
-    Raft_logic.Message.handle_message server1 msg now 
+    Raft_logic.handle_message server1 msg now 
   in 
 
   assert(State.is_leader server1); 
@@ -1239,7 +1220,7 @@ let ()  =
 
   let server2, msgs = 
     let msg = msg_for_server msgs 2 in 
-    Raft_logic.Message.handle_message server2 msg now
+    Raft_logic.handle_message server2 msg now
   in
 
   assert(State.is_follower server2);
@@ -1276,7 +1257,7 @@ let ()  =
 
   let server1, msgs = 
     let msg = msg_for_server msgs 1 in 
-    Raft_logic.Message.handle_message server1 msg now
+    Raft_logic.handle_message server1 msg now
   in
 
   assert(State.is_leader server1);
@@ -1304,7 +1285,7 @@ let ()  =
   
   let server2, msgs = 
     let msg = msg_for_server msgs 2 in 
-    Raft_logic.Message.handle_message server2 msg now
+    Raft_logic.handle_message server2 msg now
   in
 
   assert(State.is_follower server2);
@@ -1337,7 +1318,7 @@ let ()  =
 
   let server1, msgs = 
     let msg = msg_for_server msgs 1 in 
-    Raft_logic.Message.handle_message server1 msg now 
+    Raft_logic.handle_message server1 msg now 
   in
 
   assert(State.is_leader server1);
