@@ -29,35 +29,66 @@ end
 
 module Rev_log_cache = struct 
 
-  type t = rev_log_cache
+  type local_cache = Raft_pb.log_interval
+
+  type global_cache = Raft_pb.log_interval list 
+
+  let  size = 100_000 
 
   let make since log = 
     
     let last_index = 
-      match (log:log_entry list) with
+      match log with
       | {index;_}::_ -> index
       | _ -> 0
     in
-    
-    let rec aux rev_log_entries  = function
+
+    let rec aux rev_log_entries = function
       | [] ->
-       if since = 0 
-       then 
-         { prev_index = 0; prev_term  = 0; rev_log_entries; last_index; }
-       else 
-         failwith "[Raft_logic] Internal error invalid log index"
+        if since = 0 
+        then 
+          {prev_index =0; prev_term =0; rev_log_entries; last_index}
+        else 
+          failwith "[Raft_logic] Internal error invalid log index"
   
       | {index; term; _ }::tl when index = since -> 
-       { prev_index = index; prev_term  = term; rev_log_entries; last_index; }
+        {prev_index = index; prev_term = term; rev_log_entries; last_index}
   
       | hd::tl -> aux (hd::rev_log_entries) tl  
     in
-  
     aux [] log 
+
+  (* 
+   * Return the latest log entry index stored in the given 
+   * local cache. 
+   *
+   *)
+  let last_cached_index = function 
+    | [] -> 0 
+    | {last_index; _}::_ -> last_index
+
+  let update_global_cache state = 
+    let gc    = state.global_cache in 
+    let since = last_cached_index gc in 
+    match state.log with 
+    | [] -> state
+    | {index;_}::tl when (index - since) > size -> 
+      let entry = make since state.log in 
+      {state with global_cache = entry::gc}
+    | _ -> state 
   
+  (*
+   * Returns true if the local cache contains at least one 
+   * next logs after [i]
+   *)
   let contains_next_of i {last_index; prev_index;_ } = 
     prev_index <= i && i < last_index
 
+  (*
+   * Returns the sub (ie subset) local cache starting a the given
+   * [since] index. 
+   *
+   *)
   let sub since ({prev_index; rev_log_entries; _} as t) = 
     if since = prev_index 
     then t 
@@ -77,6 +108,44 @@ module Rev_log_cache = struct
           aux tl 
       in 
       aux rev_log_entries 
+  
+  let find i t = 
+    let f = fun {prev_index; _} -> i >= prev_index in 
+    sub i @@ match List.find f t with 
+      | x -> x
+      | exception Not_found -> 
+        failwith "[Raft_logic] Internal error find previous local cache"
+
+  let update_local_cache since log local_cache t = 
+    match log with
+    | [] -> {
+      prev_index = 0; 
+      prev_term = 0;
+      rev_log_entries = [];
+      last_index = 0;
+    }
+    | {index; _}::_ -> 
+
+        (* First check if it's in the local 
+         * cache. 
+         *)
+        if contains_next_of since local_cache
+        then
+          sub since local_cache
+        else 
+          (* Now the data can either be in the global
+           * caches or not. 
+           *
+           * If the [since] index is greater than the 
+           * last cached entry then it's not in the global
+           * cache. 
+           *)
+          if since >= (last_cached_index t)
+          then  
+            make since log 
+          else 
+            find since t 
+
 
 end (* Rev_log_cache *) 
 
@@ -97,6 +166,7 @@ module Follower = struct
         election_deadline = now +.  timeout 
       };  
       configuration; 
+      global_cache = []; 
     }
 
   let become ?current_leader ~term ~now state = 
@@ -160,13 +230,13 @@ module Leader = struct
         else 
           let next_index = last_log_index + 1 in 
           let match_index = 0 in 
-          let cache = Rev_log_cache.make last_log_index state.log in 
+          let local_cache = Rev_log_cache.make last_log_index state.log in
 
           let index:server_index = {
             server_id = i; 
             next_index; 
             match_index; 
-            cache; 
+            local_cache; 
             outstanding_request = false;
             heartbeat_deadline = now +. hearbeat_timeout;
               (* 

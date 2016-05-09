@@ -97,14 +97,14 @@ type message =
   | Append_entries_request of append_entries_request
   | Append_entries_response of append_entries_response
 
-type rev_log_cache = {
+type log_interval = {
   prev_index : int;
   prev_term : int;
   rev_log_entries : log_entry list;
   last_index : int;
 }
 
-and rev_log_cache_mutable = {
+and log_interval_mutable = {
   mutable prev_index : int;
   mutable prev_term : int;
   mutable rev_log_entries : log_entry list;
@@ -115,18 +115,18 @@ type server_index = {
   server_id : int;
   next_index : int;
   match_index : int;
-  cache : rev_log_cache;
   heartbeat_deadline : float;
   outstanding_request : bool;
+  local_cache : log_interval;
 }
 
 and server_index_mutable = {
   mutable server_id : int;
   mutable next_index : int;
   mutable match_index : int;
-  mutable cache : rev_log_cache;
   mutable heartbeat_deadline : float;
   mutable outstanding_request : bool;
+  mutable local_cache : log_interval;
 }
 
 type leader_state = {
@@ -188,6 +188,7 @@ and state = {
   commit_index : int;
   role : state_role;
   configuration : configuration;
+  global_cache : log_interval list;
 }
 
 and state_mutable = {
@@ -198,6 +199,7 @@ and state_mutable = {
   mutable commit_index : int;
   mutable role : state_role;
   mutable configuration : configuration;
+  mutable global_cache : log_interval list;
 }
 
 type timeout_event_time_out_type =
@@ -333,19 +335,19 @@ and default_append_entries_response_mutable () : append_entries_response_mutable
 
 let rec default_message () : message = Request_vote_request (default_request_vote_request ())
 
-let rec default_rev_log_cache 
+let rec default_log_interval 
   ?prev_index:((prev_index:int) = 0)
   ?prev_term:((prev_term:int) = 0)
   ?rev_log_entries:((rev_log_entries:log_entry list) = [])
   ?last_index:((last_index:int) = 0)
-  () : rev_log_cache  = {
+  () : log_interval  = {
   prev_index;
   prev_term;
   rev_log_entries;
   last_index;
 }
 
-and default_rev_log_cache_mutable () : rev_log_cache_mutable = {
+and default_log_interval_mutable () : log_interval_mutable = {
   prev_index = 0;
   prev_term = 0;
   rev_log_entries = [];
@@ -356,25 +358,25 @@ let rec default_server_index
   ?server_id:((server_id:int) = 0)
   ?next_index:((next_index:int) = 0)
   ?match_index:((match_index:int) = 0)
-  ?cache:((cache:rev_log_cache) = default_rev_log_cache ())
   ?heartbeat_deadline:((heartbeat_deadline:float) = 0.)
   ?outstanding_request:((outstanding_request:bool) = false)
+  ?local_cache:((local_cache:log_interval) = default_log_interval ())
   () : server_index  = {
   server_id;
   next_index;
   match_index;
-  cache;
   heartbeat_deadline;
   outstanding_request;
+  local_cache;
 }
 
 and default_server_index_mutable () : server_index_mutable = {
   server_id = 0;
   next_index = 0;
   match_index = 0;
-  cache = default_rev_log_cache ();
   heartbeat_deadline = 0.;
   outstanding_request = false;
+  local_cache = default_log_interval ();
 }
 
 let rec default_leader_state 
@@ -448,6 +450,7 @@ and default_state
   ?commit_index:((commit_index:int) = 0)
   ?role:((role:state_role) = Leader (default_leader_state ()))
   ?configuration:((configuration:configuration) = default_configuration ())
+  ?global_cache:((global_cache:log_interval list) = [])
   () : state  = {
   id;
   current_term;
@@ -456,6 +459,7 @@ and default_state
   commit_index;
   role;
   configuration;
+  global_cache;
 }
 
 and default_state_mutable () : state_mutable = {
@@ -466,6 +470,7 @@ and default_state_mutable () : state_mutable = {
   commit_index = 0;
   role = Leader (default_leader_state ());
   configuration = default_configuration ();
+  global_cache = [];
 }
 
 let rec default_timeout_event_time_out_type () = (New_leader_election:timeout_event_time_out_type)
@@ -770,8 +775,8 @@ let rec decode_message d =
   in
   loop ()
 
-let rec decode_rev_log_cache d =
-  let v = default_rev_log_cache_mutable () in
+let rec decode_log_interval d =
+  let v = default_log_interval_mutable () in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
@@ -782,33 +787,33 @@ let rec decode_rev_log_cache d =
       loop ()
     )
     | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(rev_log_cache), field(1)", pk))
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval), field(1)", pk))
     )
     | Some (2, Pbrt.Varint) -> (
       v.prev_term <- Pbrt.Decoder.int_as_varint d;
       loop ()
     )
     | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(rev_log_cache), field(2)", pk))
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval), field(2)", pk))
     )
     | Some (3, Pbrt.Bytes) -> (
       v.rev_log_entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.rev_log_entries;
       loop ()
     )
     | Some (3, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(rev_log_cache), field(3)", pk))
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval), field(3)", pk))
     )
     | Some (4, Pbrt.Varint) -> (
       v.last_index <- Pbrt.Decoder.int_as_varint d;
       loop ()
     )
     | Some (4, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(rev_log_cache), field(4)", pk))
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval), field(4)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
-  let v:rev_log_cache = Obj.magic v in
+  let v:log_interval = Obj.magic v in
   v
 
 let rec decode_server_index d =
@@ -838,13 +843,6 @@ let rec decode_server_index d =
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(3)", pk))
     )
-    | Some (4, Pbrt.Bytes) -> (
-      v.cache <- decode_rev_log_cache (Pbrt.Decoder.nested d);
-      loop ()
-    )
-    | Some (4, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(4)", pk))
-    )
     | Some (5, Pbrt.Bits32) -> (
       v.heartbeat_deadline <- Pbrt.Decoder.float_as_bits32 d;
       loop ()
@@ -858,6 +856,13 @@ let rec decode_server_index d =
     )
     | Some (6, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(6)", pk))
+    )
+    | Some (4, Pbrt.Bytes) -> (
+      v.local_cache <- decode_log_interval (Pbrt.Decoder.nested d);
+      loop ()
+    )
+    | Some (4, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(4)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -1012,6 +1017,7 @@ and decode_state d =
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
+      v.global_cache <- List.rev v.global_cache;
       v.log <- List.rev v.log;
     )
     | Some (1, Pbrt.Varint) -> (
@@ -1076,6 +1082,13 @@ and decode_state d =
     )
     | Some (9, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(9)", pk))
+    )
+    | Some (11, Pbrt.Bytes) -> (
+      v.global_cache <- (decode_log_interval (Pbrt.Decoder.nested d)) :: v.global_cache;
+      loop ()
+    )
+    | Some (11, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(11)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -1229,7 +1242,7 @@ let rec encode_message (v:message) encoder =
     Pbrt.Encoder.nested (encode_append_entries_response x) encoder;
   )
 
-let rec encode_rev_log_cache (v:rev_log_cache) encoder = 
+let rec encode_log_interval (v:log_interval) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.prev_index encoder;
   Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
@@ -1249,12 +1262,12 @@ let rec encode_server_index (v:server_index) encoder =
   Pbrt.Encoder.int_as_varint v.next_index encoder;
   Pbrt.Encoder.key (3, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.match_index encoder;
-  Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
-  Pbrt.Encoder.nested (encode_rev_log_cache v.cache) encoder;
   Pbrt.Encoder.key (5, Pbrt.Bits32) encoder; 
   Pbrt.Encoder.float_as_bits32 v.heartbeat_deadline encoder;
   Pbrt.Encoder.key (6, Pbrt.Varint) encoder; 
   Pbrt.Encoder.bool v.outstanding_request encoder;
+  Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
+  Pbrt.Encoder.nested (encode_log_interval v.local_cache) encoder;
   ()
 
 let rec encode_leader_state (v:leader_state) encoder = 
@@ -1350,6 +1363,10 @@ and encode_state (v:state) encoder =
   );
   Pbrt.Encoder.key (9, Pbrt.Bytes) encoder; 
   Pbrt.Encoder.nested (encode_configuration v.configuration) encoder;
+  List.iter (fun x -> 
+    Pbrt.Encoder.key (11, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_log_interval x) encoder;
+  ) v.global_cache;
   ()
 
 let rec encode_timeout_event_time_out_type (v:timeout_event_time_out_type) encoder =
@@ -1448,7 +1465,7 @@ let rec pp_message fmt (v:message) =
   | Append_entries_request x -> Format.fprintf fmt "@[Append_entries_request(%a)@]" pp_append_entries_request x
   | Append_entries_response x -> Format.fprintf fmt "@[Append_entries_response(%a)@]" pp_append_entries_response x
 
-let rec pp_rev_log_cache fmt (v:rev_log_cache) = 
+let rec pp_log_interval fmt (v:log_interval) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "prev_index" Pbrt.Pp.pp_int fmt v.prev_index;
@@ -1465,9 +1482,9 @@ let rec pp_server_index fmt (v:server_index) =
     Pbrt.Pp.pp_record_field "server_id" Pbrt.Pp.pp_int fmt v.server_id;
     Pbrt.Pp.pp_record_field "next_index" Pbrt.Pp.pp_int fmt v.next_index;
     Pbrt.Pp.pp_record_field "match_index" Pbrt.Pp.pp_int fmt v.match_index;
-    Pbrt.Pp.pp_record_field "cache" pp_rev_log_cache fmt v.cache;
     Pbrt.Pp.pp_record_field "heartbeat_deadline" Pbrt.Pp.pp_float fmt v.heartbeat_deadline;
     Pbrt.Pp.pp_record_field "outstanding_request" Pbrt.Pp.pp_bool fmt v.outstanding_request;
+    Pbrt.Pp.pp_record_field "local_cache" pp_log_interval fmt v.local_cache;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
@@ -1527,6 +1544,7 @@ and pp_state fmt (v:state) =
     Pbrt.Pp.pp_record_field "commit_index" Pbrt.Pp.pp_int fmt v.commit_index;
     Pbrt.Pp.pp_record_field "role" pp_state_role fmt v.role;
     Pbrt.Pp.pp_record_field "configuration" pp_configuration fmt v.configuration;
+    Pbrt.Pp.pp_record_field "global_cache" (Pbrt.Pp.pp_list pp_log_interval) fmt v.global_cache;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

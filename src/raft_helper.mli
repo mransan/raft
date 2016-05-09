@@ -31,29 +31,35 @@ end (* State *)
 
 module Rev_log_cache : sig 
 
-  type t = Raft_pb.rev_log_cache
+  type local_cache = Raft_pb.log_interval
 
-  val make : int -> Raft_pb.log_entry list -> t 
-  (**  [make since logs] creates a cache of [log] since 
-    *  log index [since]. 
+  type global_cache = Raft_pb.log_interval list 
+  
+  val update_global_cache : Raft_pb.state -> Raft_pb.state 
+  (** [update_global_cache state]
+    * If a large enough number of log entry has been added to the state 
+    * log since, the a local cache of those added logs is computed and 
+    * added to the state log. 
     *
-    *  If [since] is not part of [logs] then this function 
-    *  raises [Failure]
     *)
 
-   val contains_next_of : int -> t -> bool 
-   (** [contains_next_of i cache] returns [true] if [cache] contains 
-     * data which are past [i]
-     *)
+  val update_local_cache : 
+    int -> 
+    Raft_pb.log_entry list ->
+    local_cache  -> 
+    global_cache -> 
+    local_cache
+ (** [update_local_cache since log local_cache global_cache] 
+   *
+   * Computes a local cache of log entries in reverse order 
+   * since the given index.
+   *
+   * The computation of this new log cache might use a subset 
+   * of the [local_cache] a subset of the [global_cache] or the 
+   * [log] data directly.
+   *
+   *)
    
-   val sub : int -> t -> t 
-   (** [sub since cache] returns a new [cache] containing the subset of 
-     * [log_entry] from [cache] which are next of [since].
-     *
-     * If [since] is not contained in [cache] then this function raises 
-     * [Failure] 
-     *)
-
 end (* Rev_log_cache *) 
 
 module Follower : sig 

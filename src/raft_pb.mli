@@ -56,7 +56,7 @@ type message =
   | Append_entries_request of append_entries_request
   | Append_entries_response of append_entries_response
 
-type rev_log_cache = {
+type log_interval = {
   prev_index : int;
   prev_term : int;
   rev_log_entries : log_entry list;
@@ -67,9 +67,9 @@ type server_index = {
   server_id : int;
   next_index : int;
   match_index : int;
-  cache : rev_log_cache;
   heartbeat_deadline : float;
   outstanding_request : bool;
+  local_cache : log_interval;
 }
 
 type leader_state = {
@@ -108,6 +108,7 @@ and state = {
   commit_index : int;
   role : state_role;
   configuration : configuration;
+  global_cache : log_interval list;
 }
 
 type timeout_event_time_out_type =
@@ -185,22 +186,22 @@ val default_append_entries_response :
 val default_message : unit -> message
 (** [default_message ()] is the default value for type [message] *)
 
-val default_rev_log_cache : 
+val default_log_interval : 
   ?prev_index:int ->
   ?prev_term:int ->
   ?rev_log_entries:log_entry list ->
   ?last_index:int ->
   unit ->
-  rev_log_cache
-(** [default_rev_log_cache ()] is the default value for type [rev_log_cache] *)
+  log_interval
+(** [default_log_interval ()] is the default value for type [log_interval] *)
 
 val default_server_index : 
   ?server_id:int ->
   ?next_index:int ->
   ?match_index:int ->
-  ?cache:rev_log_cache ->
   ?heartbeat_deadline:float ->
   ?outstanding_request:bool ->
+  ?local_cache:log_interval ->
   unit ->
   server_index
 (** [default_server_index ()] is the default value for type [server_index] *)
@@ -247,6 +248,7 @@ val default_state :
   ?commit_index:int ->
   ?role:state_role ->
   ?configuration:configuration ->
+  ?global_cache:log_interval list ->
   unit ->
   state
 (** [default_state ()] is the default value for type [state] *)
@@ -291,8 +293,8 @@ val decode_append_entries_response : Pbrt.Decoder.t -> append_entries_response
 val decode_message : Pbrt.Decoder.t -> message
 (** [decode_message decoder] decodes a [message] value from [decoder] *)
 
-val decode_rev_log_cache : Pbrt.Decoder.t -> rev_log_cache
-(** [decode_rev_log_cache decoder] decodes a [rev_log_cache] value from [decoder] *)
+val decode_log_interval : Pbrt.Decoder.t -> log_interval
+(** [decode_log_interval decoder] decodes a [log_interval] value from [decoder] *)
 
 val decode_server_index : Pbrt.Decoder.t -> server_index
 (** [decode_server_index decoder] decodes a [server_index] value from [decoder] *)
@@ -351,8 +353,8 @@ val encode_append_entries_response : append_entries_response -> Pbrt.Encoder.t -
 val encode_message : message -> Pbrt.Encoder.t -> unit
 (** [encode_message v encoder] encodes [v] with the given [encoder] *)
 
-val encode_rev_log_cache : rev_log_cache -> Pbrt.Encoder.t -> unit
-(** [encode_rev_log_cache v encoder] encodes [v] with the given [encoder] *)
+val encode_log_interval : log_interval -> Pbrt.Encoder.t -> unit
+(** [encode_log_interval v encoder] encodes [v] with the given [encoder] *)
 
 val encode_server_index : server_index -> Pbrt.Encoder.t -> unit
 (** [encode_server_index v encoder] encodes [v] with the given [encoder] *)
@@ -411,8 +413,8 @@ val pp_append_entries_response : Format.formatter -> append_entries_response -> 
 val pp_message : Format.formatter -> message -> unit 
 (** [pp_message v] formats v] *)
 
-val pp_rev_log_cache : Format.formatter -> rev_log_cache -> unit 
-(** [pp_rev_log_cache v] formats v] *)
+val pp_log_interval : Format.formatter -> log_interval -> unit 
+(** [pp_log_interval v] formats v] *)
 
 val pp_server_index : Format.formatter -> server_index -> unit 
 (** [pp_server_index v] formats v] *)
