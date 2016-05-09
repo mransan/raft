@@ -69,7 +69,7 @@ Let's look at what the server is doing when computing the replication request to
 sent to a follower. We assume here that the leader is keeping track of the `prev_log_index`
 for each of the followers.
 
-```
+```OCaml
 let collect (prev_log_index:int) (leader_id:int) (leader_log:log_entry list) = 
 
   let rec aux rev_log_entries = function
