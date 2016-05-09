@@ -127,7 +127,7 @@ Let's define :
 
 The replication complexity will therefore be 
 > 0(n) = n + (n - m) + (n - 2\*m) + ... (n - (n * m)/m)
-> 0(n) = n^2
+> = n^2
 
 Note that during normal operation mode the `m` does not play a role since it's likely `>n` 
 which makes the complexity `O(n)` as previously mentioned.
