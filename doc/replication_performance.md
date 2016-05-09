@@ -1,6 +1,10 @@
 ### Logs data structure 
 
-**Log Entry**
+The RAFT protocol is a consensus protocol for a log base data structure. In short each server in the RAFT cluster should eventually have the same log data structure. 
+
+The RAFT protocol is based on leader election. The initial part of the protocol consists in deciding which server will be the leader. From then on, the leader server is responsible to append first new log entries and getting them replicated on all the other servers (also called faollowers). 
+
+**Log Entry data structure**
 
 ```OCaml 
 type log_entry = {
@@ -15,7 +19,7 @@ The index is monotically increasing (by 1) and starting at 1.
 The term correspond to the election term that this `log entry` was created. It's important to notice 
 that both index and term are needed to uniquely identify a log.  
 
-**Log**
+**Log data structure**
 
 The log is the collection of `log_entry`s:
 
@@ -27,7 +31,7 @@ The log ordering is from lastest to earliest log.
 
 **Replication protocol**
 
-During log replication the [Leader] must replicate it's `log` to all the followers. The protocol 
+During log replication the leader must replicate it's `log` to all the followers. The protocol 
 defines the following request (simplified version):
 
 ```OCaml
@@ -39,8 +43,9 @@ type request = {
 }
 ```
 
-Besides it's id and the log to be replicated the leader is also sending the index and term of the last log it believed 
-to be replicated on the follower. This index/term are synchronization information between the Leader and its follower. 
+Besides its `id` and the `log_entry`s to be replicated, the leader is also sending the `index` and `term` of the last log
+it believed to be replicated on the follower. 
+This `index`/`term` are synchronization information between the leader and its follower. 
 
 The (simplified) response is 
 
@@ -53,7 +58,7 @@ type response =
 In case of succesfful replication the follower server sends the index of the log it replicated (In general this would 
 be the latest log sent in the query).  In case of failure the follower additionally sends the corresponding term. 
 
-A failure happens in the follower server when the index/term sent by the leader is not matching on the follower:
+A failure happens in the follower server when the `index`/`term` sent by the leader is not matching on the follower:
 a) The entry is simply not in the follower log. The follower is lagging behind and needs earlier data then the logs
   sent in that request. 
 b) The entry has different term. This could happen during a Leader crash
@@ -82,7 +87,7 @@ let collect (prev_log_index:int) (leader_id:int) (leader_log:log_entry list) =
   aux [] log_entry
 ```
 
-The code above iterates from latest to earlier log entry until the `prev_log_index` is found. Log entries
+The code above iterates from latest to earlier `log entry`s until the `prev_log_index` is found. Log entries
 are accumulated in a list in reverse order (hence the name `rev_log_entries`). 
 
 In normal mode of operation, the follower is not lagging too much behind the leader; concequently only small number
@@ -93,7 +98,7 @@ in terms of logs to replicate.
 **Corner cases (1)**
 
 From time to time servers will go offline. This can happen in case of a machine failure or if a machine needs to 
-go through maintenance. No matter what the reason, when the follower will join the replication process it will lagging
+go through maintenance. No matter what the reason, when the follower will join the replication process it will be lagging
 behind massively. 
 
 The first problem is that in reality replication requests have a `max` number of log entries. It's impractical to send 
