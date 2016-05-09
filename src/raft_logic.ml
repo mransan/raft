@@ -25,28 +25,27 @@ module Log_entry_util = struct
       | []     -> []
       end
 
-  let make_append_entries prev_log_index (cache:rev_log_cache) state =
+  let make_append_entries prev_log_index local_cache state =
 
-    let cache =
-      if Rev_log_cache.contains_next_of prev_log_index cache
-      then
-        Rev_log_cache.sub prev_log_index cache
-      else
-        Rev_log_cache.make prev_log_index state.log
+    let global_cache = state.global_cache in 
+
+    let local_cache = 
+      Rev_log_cache.update_local_cache prev_log_index state.log local_cache global_cache 
     in
 
     let max = state.configuration.max_nb_logs_per_message in
-    let rev_log_entries = keep_first_n cache.rev_log_entries max in
+
+    let rev_log_entries = keep_first_n local_cache.rev_log_entries max in
 
     let request = {
       leader_term = state.current_term;
       leader_id = state.id;
       prev_log_index;
-      prev_log_term = cache.prev_term;
+      prev_log_term = local_cache.prev_term;
       rev_log_entries;
       leader_commit = state.commit_index;
     } in
-    (cache, request)
+    (local_cache, request)
 
   let compute_append_entries state {indices} now =
 
@@ -56,7 +55,7 @@ module Log_entry_util = struct
         heartbeat_deadline;
         outstanding_request;
         next_index;
-        cache; _ } = server_index in
+        local_cache; _ } = server_index in
 
       let shoud_send_request =
         if now >= heartbeat_deadline
@@ -88,12 +87,12 @@ module Log_entry_util = struct
 
       if shoud_send_request
       then
-        let cache, request = make_append_entries (next_index - 1) cache state in
+        let local_cache, request = make_append_entries (next_index - 1) local_cache state in
         let server_index = 
           let outstanding_request = true in 
           let heartbeat_deadline = now +. state.configuration.hearbeat_timeout in 
           {server_index with
-            cache; 
+            local_cache; 
             outstanding_request; 
             heartbeat_deadline; 
           } 
@@ -232,12 +231,12 @@ let handle_request_vote_response state response now =
          *)
         begin match state.role with
         | Leader {indices} -> (
-          let indices, msgs_to_send = List.fold_left (fun (indices, msgs_to_send) ({server_id; next_index; cache } as index) ->
+          let indices, msgs_to_send = List.fold_left (fun (indices, msgs_to_send) ({server_id; next_index; local_cache } as index) ->
 
               let prev_log_index = next_index - 1 in
-              let cache, req  = Log_entry_util.make_append_entries prev_log_index cache state in
+              let cache, req  = Log_entry_util.make_append_entries prev_log_index local_cache state in
               let msg_to_send = (Append_entries_request req, server_id) in
-              ({index with cache;}::indices, msg_to_send::msgs_to_send)
+              ({index with local_cache}::indices, msg_to_send::msgs_to_send)
 
             ) ([], []) indices
           in
@@ -327,6 +326,7 @@ let handle_append_entries_request state request now =
 
       let (log_size, log) = aux (state.log_size - (List.length rev_post_logs)) pre_logs (rev_log_entries, rev_post_logs) in
       let state = {state with log ; log_size; } in
+      let state = Rev_log_cache.update_global_cache state in 
       let receiver_last_log_index = State.last_log_index state in
       let state =
         (* Update this server commit index based on value sent from
@@ -557,8 +557,10 @@ let handle_add_log_entries state datas now =
      * new log entries.
      *)
 
-  | Leader _ ->
-    let state = Leader.add_logs datas state in
+  | Leader _ -> 
+
+    let state = Leader.add_logs datas state in 
+    let state = Rev_log_cache.update_global_cache state in  
     begin match state.role with
     | Follower  _ | Candidate _ -> assert(false)
       (* We don't expect the [Leader.add_log] functions to
