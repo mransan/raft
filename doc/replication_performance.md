@@ -1,10 +1,13 @@
-### Logs data structure 
+### Functional log replication in RAFT
 
 The RAFT protocol is a consensus protocol for a log base data structure. In short each server in the RAFT cluster should eventually have the same log data structure. 
 
-The RAFT protocol is based on leader election. The initial part of the protocol consists in deciding which server will be the leader. From then on, the leader server is responsible to append first new log entries and getting them replicated on all the other servers (also called faollowers). 
+The RAFT protocol is based on leader election; the initial phase of the protocol consists in deciding which server will be the leader. From then on, the leader server is responsible to append new log entries to both its internal log and to all the follower servers. 
+
+In this post we will look at a practical performance problem related to implementing log replication both efficiently and using solely functional data structure.
 
 **Log Entry data structure**
+
 
 ```OCaml 
 type log_entry = {
@@ -14,10 +17,10 @@ type log_entry = {
 }
 ```
 
-The index is monotically increasing (by 1) and starting at 1. 
+The `index` is monotically increasing (by 1) and starting at 1. 
 
-The term correspond to the election term that this `log entry` was created. It's important to notice 
-that both index and term are needed to uniquely identify a log.  
+The `term` corresponds to the election term that this `log entry` was created. It's important to notice 
+that both index and term are needed to uniquely identify a log entry. In fact, in certain circumstances where a previous leader crashed without fully replicating a log entry, it is possible that 2 servers will have log entries with the same index but different terms. (RAFT protocol ensure that only one is eventually persisted). 
 
 **Log data structure**
 
@@ -58,10 +61,9 @@ type response =
 In case of succesfful replication the follower server sends the index of the log it replicated (In general this would 
 be the latest log sent in the query).  In case of failure the follower additionally sends the corresponding term. 
 
-A failure happens in the follower server when the `index`/`term` sent by the leader is not matching on the follower:
-a) The entry is simply not in the follower log. The follower is lagging behind and needs earlier data then the logs
-  sent in that request. 
-b) The entry has different term. This could happen during a Leader crash
+A failure happens in the follower when the `index`/`term` sent by the leader is not matching. 2 main reaons:
+a) The entry is simply not in the follower log. The follower is lagging behind and needs earlier log entries than the ones sent in that request. 
+b) The entry has different term. This could happen during a leader crash.
 
 **Normal operation**
 
@@ -91,9 +93,8 @@ The code above iterates from latest to earlier `log entry`s until the `prev_log_
 are accumulated in a list in reverse order (hence the name `rev_log_entries`). 
 
 In normal mode of operation, the follower is not lagging too much behind the leader; concequently only small number
-of iteration should be required to compute the requests. The list data structure used to store the logs 
-is particularly efficient: adding new log at the head of the list is constant time and computing the replication request is linear
-in terms of logs to replicate. 
+of iteration should be required to compute the requests. The `list` data structure used to store the logs 
+is particularly efficient: adding new log at the head of the `list` is constant time and computing the replication request is linear in terms of logs to replicate. 
 
 **Corner cases (1)**
 
@@ -102,7 +103,7 @@ go through maintenance. No matter what the reason, when the follower will join t
 behind massively. 
 
 The first problem is that in reality replication requests have a `max` number of log entries. It's impractical to send 
-gigantic messages and the protocol allows the leader to send a limited a number of log entries.
+gigantic messages and the RAFT protocol accomodates nicely for the leader to send a limited number of log entries.
 
 Here is the code to get the subset of log for the replication request 
 
