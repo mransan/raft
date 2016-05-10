@@ -95,6 +95,17 @@ type configuration = {
   max_nb_logs_per_message : int;
 }
 
+type log_interval_rope =
+  | Interval of log_interval
+  | Append of log_interval_rope_append
+
+and log_interval_rope_append = {
+  height : int;
+  lhs : log_interval_rope;
+  rhs : log_interval_rope;
+  last_index : int;
+}
+
 type state_role =
   | Leader of leader_state
   | Candidate of candidate_state
@@ -108,7 +119,7 @@ and state = {
   commit_index : int;
   role : state_role;
   configuration : configuration;
-  global_cache : log_interval list;
+  global_cache : log_interval_rope option;
 }
 
 type timeout_event_time_out_type =
@@ -237,6 +248,18 @@ val default_configuration :
   configuration
 (** [default_configuration ()] is the default value for type [configuration] *)
 
+val default_log_interval_rope : unit -> log_interval_rope
+(** [default_log_interval_rope ()] is the default value for type [log_interval_rope] *)
+
+val default_log_interval_rope_append : 
+  ?height:int ->
+  ?lhs:log_interval_rope ->
+  ?rhs:log_interval_rope ->
+  ?last_index:int ->
+  unit ->
+  log_interval_rope_append
+(** [default_log_interval_rope_append ()] is the default value for type [log_interval_rope_append] *)
+
 val default_state_role : unit -> state_role
 (** [default_state_role ()] is the default value for type [state_role] *)
 
@@ -248,7 +271,7 @@ val default_state :
   ?commit_index:int ->
   ?role:state_role ->
   ?configuration:configuration ->
-  ?global_cache:log_interval list ->
+  ?global_cache:log_interval_rope option ->
   unit ->
   state
 (** [default_state ()] is the default value for type [state] *)
@@ -311,6 +334,12 @@ val decode_follower_state : Pbrt.Decoder.t -> follower_state
 val decode_configuration : Pbrt.Decoder.t -> configuration
 (** [decode_configuration decoder] decodes a [configuration] value from [decoder] *)
 
+val decode_log_interval_rope : Pbrt.Decoder.t -> log_interval_rope
+(** [decode_log_interval_rope decoder] decodes a [log_interval_rope] value from [decoder] *)
+
+val decode_log_interval_rope_append : Pbrt.Decoder.t -> log_interval_rope_append
+(** [decode_log_interval_rope_append decoder] decodes a [log_interval_rope_append] value from [decoder] *)
+
 val decode_state_role : Pbrt.Decoder.t -> state_role
 (** [decode_state_role decoder] decodes a [state_role] value from [decoder] *)
 
@@ -371,6 +400,12 @@ val encode_follower_state : follower_state -> Pbrt.Encoder.t -> unit
 val encode_configuration : configuration -> Pbrt.Encoder.t -> unit
 (** [encode_configuration v encoder] encodes [v] with the given [encoder] *)
 
+val encode_log_interval_rope : log_interval_rope -> Pbrt.Encoder.t -> unit
+(** [encode_log_interval_rope v encoder] encodes [v] with the given [encoder] *)
+
+val encode_log_interval_rope_append : log_interval_rope_append -> Pbrt.Encoder.t -> unit
+(** [encode_log_interval_rope_append v encoder] encodes [v] with the given [encoder] *)
+
 val encode_state_role : state_role -> Pbrt.Encoder.t -> unit
 (** [encode_state_role v encoder] encodes [v] with the given [encoder] *)
 
@@ -430,6 +465,12 @@ val pp_follower_state : Format.formatter -> follower_state -> unit
 
 val pp_configuration : Format.formatter -> configuration -> unit 
 (** [pp_configuration v] formats v] *)
+
+val pp_log_interval_rope : Format.formatter -> log_interval_rope -> unit 
+(** [pp_log_interval_rope v] formats v] *)
+
+val pp_log_interval_rope_append : Format.formatter -> log_interval_rope_append -> unit 
+(** [pp_log_interval_rope_append v] formats v] *)
 
 val pp_state_role : Format.formatter -> state_role -> unit 
 (** [pp_state_role v] formats v] *)

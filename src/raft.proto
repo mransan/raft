@@ -236,7 +236,7 @@ message State {
   }
 
   required Configuration configuration = 9;
-  repeated LogInterval  global_cache = 11;
+  optional LogIntervalRope global_cache = 11;
 }
 
 // [LogEntry] 
@@ -335,6 +335,19 @@ message FollowerState {
   optional int32 voted_for          = 1; 
   optional int32 current_leader     = 2;
   required double election_deadline = 3;
+}
+
+message LogIntervalRope {
+  message Append {
+    required int32           height = 1; 
+    required LogIntervalRope lhs    = 2; 
+    required LogIntervalRope rhs    = 3;
+    required int32    last_index    = 4;
+  }
+  oneof t {
+    LogInterval interval = 1;
+    Append      append   = 2;
+  }
 }
 
 message LogInterval {

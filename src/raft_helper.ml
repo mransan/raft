@@ -30,10 +30,8 @@ end
 module Rev_log_cache = struct 
 
   type local_cache = Raft_pb.log_interval
-
-  type global_cache = Raft_pb.log_interval list 
-
-  let  size = 100_000 
+  
+  let  size = 10_000 
 
   let make since log = 
     
@@ -48,8 +46,10 @@ module Rev_log_cache = struct
         if since = 0 
         then 
           {prev_index =0; prev_term =0; rev_log_entries; last_index}
-        else 
+        else begin  
+          Printf.eprintf "[Raft_logic] Internal error invalid log index\n%!";
           failwith "[Raft_logic] Internal error invalid log index"
+        end
   
       | {index; term; _ }::tl when index = since -> 
         {prev_index = index; prev_term = term; rev_log_entries; last_index}
@@ -58,25 +58,67 @@ module Rev_log_cache = struct
     in
     aux [] log 
 
+  type global_cache = Raft_pb.log_interval_rope option
+
   (* 
    * Return the latest log entry index stored in the given 
    * local cache. 
    *
    *)
   let last_cached_index = function 
-    | [] -> 0 
-    | {last_index; _}::_ -> last_index
-
+    | Interval {last_index; _} -> last_index 
+    | Append   {last_index; _} -> last_index
+  
   let update_global_cache state = 
+
     let gc    = state.global_cache in 
-    let since = last_cached_index gc in 
+    let since = match gc with
+      | None -> 0 
+      | Some gc -> last_cached_index gc 
+    in 
     match state.log with 
     | [] -> state
     | {index;_}::tl when (index - since) > size -> 
-      let entry = make since state.log in 
-      {state with global_cache = entry::gc}
+
+      let new_interval = Interval (make since state.log) in 
+      let last_index   = last_cached_index new_interval in 
+
+      let rope_height = function
+        | Interval _ -> 0 
+        | Append  {height; _} -> height 
+      in 
+
+      let rec add = function 
+        | Interval x -> Append {
+          height = 1; 
+          lhs = Interval x; 
+          rhs = new_interval; 
+          last_index;
+        }
+        | (Append {height; rhs; lhs; _ }  as a)-> 
+          let lhs_height = rope_height lhs in 
+          let rhs_height = rope_height rhs in 
+          if lhs_height = rhs_height
+          then (* balanced! *)
+            Append {height = height + 1; lhs = a; rhs = new_interval;last_index}
+          else begin 
+            begin 
+              if lhs_height <= rhs_height
+              then Printf.eprintf "lhs_height(%i) <  rhs_height(%i)\n%!"
+              lhs_height rhs_height;
+            end;
+            assert(lhs_height > rhs_height); 
+            Append {height; lhs; rhs = add rhs; last_index} 
+          end  
+      in
+      let gc = match gc with
+        | None -> new_interval 
+        | Some gc -> add gc 
+      in  
+      {state with global_cache = Some gc}
     | _ -> state 
-  
+
+
   (*
    * Returns true if the local cache contains at least one 
    * next logs after [i]
@@ -94,8 +136,10 @@ module Rev_log_cache = struct
     then t 
     else 
       let rec aux = function
-        | [] ->
+        | [] -> (
+          Printf.eprintf "[Raft_logic] Internal error invalid log index\n%!";
           failwith "[Raft_logic] Internal error invalid log index"
+        )
           (* 
            * The caller should have called [contains_next_of] 
            * to ensure that this cache contains data next to [since].
@@ -109,12 +153,21 @@ module Rev_log_cache = struct
       in 
       aux rev_log_entries 
   
-  let find i t = 
-    let f = fun {prev_index; _} -> i >= prev_index in 
-    sub i @@ match List.find f t with 
-      | x -> x
-      | exception Not_found -> 
-        failwith "[Raft_logic] Internal error find previous local cache"
+  let rec find i = function
+    | Interval ({prev_index; _ } as interval) -> (
+      begin 
+        if i < prev_index 
+        then Printf.eprintf "Error i: %i, prev_index: %i\n%!" i prev_index; 
+      end;
+
+      assert(i >= prev_index); 
+      interval
+    )
+    | Append {rhs; lhs; _} -> 
+      let lhs_last = last_cached_index lhs in 
+      if i >= lhs_last 
+      then find i rhs 
+      else find i lhs  
 
   let update_local_cache since log local_cache t = 
     match log with
@@ -140,11 +193,14 @@ module Rev_log_cache = struct
            * last cached entry then it's not in the global
            * cache. 
            *)
-          if since >= (last_cached_index t)
-          then  
-            make since log 
-          else 
-            find since t 
+          match t with
+          | None   -> make since log 
+          | Some t ->
+            if since >= (last_cached_index t)
+            then  
+              make since log 
+            else 
+              sub since @@ find since t 
 
 
 end (* Rev_log_cache *) 
@@ -166,7 +222,7 @@ module Follower = struct
         election_deadline = now +.  timeout 
       };  
       configuration; 
-      global_cache = []; 
+      global_cache = None; 
     }
 
   let become ?current_leader ~term ~now state = 
