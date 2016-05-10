@@ -33,7 +33,7 @@ module Rev_log_cache : sig
 
   type local_cache = Raft_pb.log_interval
 
-  type global_cache = Raft_pb.log_interval list 
+  type global_cache = Raft_pb.log_interval_rope option
   
   val update_global_cache : Raft_pb.state -> Raft_pb.state 
   (** [update_global_cache state]
