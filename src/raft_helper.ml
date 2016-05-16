@@ -78,7 +78,16 @@ module Rev_log_cache = struct
     in 
     match state.log with 
     | [] -> state
+      (* 
+       * Leader contains no log -> no cache to build. 
+       *)
+
     | {index;_}::tl when (index - since) > size -> 
+      (* 
+       * The cache threshold is reached, let's 
+       * append to the cache a new log interval with 
+       * all the logs since the last cache update.
+       *)
 
       let new_interval = Interval (make since state.log) in 
       let last_index   = last_cached_index new_interval in 
@@ -116,8 +125,11 @@ module Rev_log_cache = struct
         | Some gc -> add gc 
       in  
       {state with global_cache = Some gc}
-    | _ -> state 
 
+    | _ -> state 
+      (* 
+       * Not enough log to perform a cache build 
+       *)
 
   (*
    * Returns true if the local cache contains at least one 
@@ -207,7 +219,11 @@ end (* Rev_log_cache *)
 
 module Follower = struct 
 
-  let create ?current_leader ?current_term:(current_term = 0) ?voted_for ?log:(log = []) ~configuration ~now ~id () = 
+  let create ?current_leader 
+             ?current_term:(current_term = 0) 
+             ?voted_for 
+             ?log:(log = []) 
+             ~configuration ~now ~id () = 
     let {election_timeout = t ; election_timeout_range = r; _ } = configuration in 
     let timeout = t +. (Random.float r -. (r /. 2.)) in
     {
@@ -341,8 +357,7 @@ module Leader = struct
 
       aux term last_log_index log log_size datas 
     in 
-
-    {state with log; log_size; }
+    Rev_log_cache.update_global_cache {state with log; log_size; }
     
   let update_receiver_last_log_index ~server_id ~log_index leader_state = 
     let receiver_id = server_id in 
@@ -369,7 +384,6 @@ module Leader = struct
       ) 0 indices in 
       
       ({indices}, nb_of_replications) 
-
 
   let update_index ~receiver_id ~f leader_state = 
     let {indices} = leader_state in 

@@ -560,7 +560,6 @@ let handle_add_log_entries state datas now =
   | Leader _ -> 
 
     let state = Leader.add_logs datas state in 
-    let state = Rev_log_cache.update_global_cache state in  
     begin match state.role with
     | Follower  _ | Candidate _ -> assert(false)
       (* We don't expect the [Leader.add_log] functions to

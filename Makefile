@@ -2,12 +2,6 @@ OCB_INC   = -I src -I tests
 OCB_FLAGS = -use-ocamlfind -pkgs ocaml-protoc
 OCB       = ocamlbuild $(OCB_FLAGS) $(OCB_INC)
 
-ifeq "$(shell ocamlc -config | grep os_type)" "os_type: Win32"
-	@EXE=.exe
-else
-	@EXE=
-endif
-
 .PHONY: test gen lib.native lib.byte lib.install lib.uninstall clean 
 
 test: 

@@ -167,23 +167,24 @@ message AppendEntriesResponse {
         // [prev_log_term] in the [AppendEntriesRequet] are not 
         // matching the receiver log. 
 
-      NoData      term_failure   = 6; 
+      NoData term_failure         = 6; 
         // This failure can happen because the sender [current_term]
         // is outdated compared to the receiver.
-    }
-
-    message NoData {
-    }
-
-    message LogFailureData {
-      required int32 receiver_last_log_index = 1; 
-      required int32 receiver_last_log_term  = 2;
     }
 
     message SuccessData {
       required int32 receiver_last_log_index = 1; 
     } 
-}
+
+    message LogFailureData {
+      required int32 receiver_last_log_index = 1; 
+      required int32 receiver_last_log_term  = 2;
+    }
+    
+    message NoData {
+    }
+
+} // AppendEntriesResponse
 
 // STATE
 // ----------------------------------------------------------------------------
@@ -288,7 +289,7 @@ message LogEntry {
 //   heartbeat message be sent.
 //  
 message LeaderState {
-  repeated ServerIndex  indices      = 1;  
+  repeated ServerIndex indices = 1;  
 }
 
 // [CandidateState]
@@ -337,6 +338,9 @@ message FollowerState {
   required double election_deadline = 3;
 }
 
+// Rope data structure to keep track efficiently
+// of the log entries in reverse order. 
+// 
 message LogIntervalRope {
   message Append {
     required int32           height = 1; 
@@ -350,13 +354,28 @@ message LogIntervalRope {
   }
 }
 
+// A subset of log entries. 
+//
+// The log interval is between ]prev_index; last_index]. 
+//
+// The log entries are in reverse order which means than the 
+// earliest entry (ie prev_index + 1) is the head of the list. 
+//
+// Invariants: 
+// * If rev_log_entries <> []
+//   then prev_index + 1 = (List.hd rev_log_entries).index 
+// * last_index >= prev_index 
+//   -> Due to increasing indices
+// * prev_index + (List.length rev_log_entries) = last_index 
+//   -> Due to the fact each new log index increments by one 
+//      the previous one. 
+//    
 message LogInterval {
   required int32    prev_index      = 1; 
   required int32    prev_term       = 2; 
   repeated LogEntry rev_log_entries = 3;  
   required int32    last_index      = 4;
 }
-
 
 // [ServerIndex]
 //
@@ -466,7 +485,6 @@ message TimeoutEvent {
   required double      timeout      = 1;
   required TimeOutType timeout_type = 2;
 }
-
 
 // Notes 
 // ---------------
