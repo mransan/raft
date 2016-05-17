@@ -300,32 +300,24 @@ let handle_append_entries_request state request now =
      * current log of the server. The current log is first split by
      * the caller into:
      *
-     * - [pre_logs] all the logs prior to (and including) [prev_log_index].
-     * - [rev_post_logs] all the log entry in the server future of the
-     *   [prev_log_index]. This list is expected to be in reverse order.
+     * - [log] all the logs prior to (and including) [prev_log_index].
+     * - [log_size] nb of log entries in [log]
      *
      * This function will then merge the 2 list of logs by adding all the
      * common logs first, then if either one is empty or an entry differs
      * then the entries from the leader will override the one in the server.
      *
-     * This merging is necessary because message can be delivered out of
-     * order. (See [test.ml] for a code example). This means that this
-     * server might receive an outdated append query from its leader.
      *)
-    let merge_log_entries state rev_post_logs pre_logs  =
+    let merge_log_entries state log_size log =
 
-      let rec aux count log = function
-        | [], [] -> (count, log)
-        | ({index=i1;term=t1;data} as e)::tl1, {index=i2;term=t2; _ }::tl2 ->
-          if i1 = i2 && t1 = t2
-          then aux (count + 1) (e::log) (tl1, tl2)
-          else aux (count + 1) (e::log) (tl1, [])
-        | hd::tl, []
-        | [], hd::tl -> aux (count + 1) (hd::log) (tl, [])
+      let rec aux log_size log = function
+        | [] -> (log_size, log)
+        | hd::tl -> 
+          aux (log_size + 1) (hd::log) tl 
       in
 
-      let (log_size, log) = aux (state.log_size - (List.length rev_post_logs)) pre_logs (rev_log_entries, rev_post_logs) in
-      let state = {state with log ; log_size; } in
+      let (log_size, log) = aux log_size log rev_log_entries in 
+      let state = {state with log ; log_size;} in
       let state = Rev_log_cache.update_global_cache state in 
       let receiver_last_log_index = State.last_log_index state in
       let state =
@@ -356,13 +348,13 @@ let handle_append_entries_request state request now =
       }
     in
 
-    let rec aux post_logs = function
+    let rec aux log_size = function
       | [] ->
         if prev_log_index = 0
         then
           (* [case 0] No previous log were ever inserted
            *)
-          merge_log_entries state post_logs []
+          merge_log_entries state 0 []
         else
           (* [case 1] The prev_log_index is not found in the state log.
            * This server is lagging behind.
@@ -374,7 +366,7 @@ let handle_append_entries_request state request now =
         (* [case 2] The prev_log_index matches the leader, all is good,
          * let's append all the new logs.
          *)
-        merge_log_entries state post_logs log
+        merge_log_entries state log_size log
 
       | {index; _ }::log when index = prev_log_index ->
         (* [case 3] The prev_log_index is inconstent with the leader.
@@ -385,8 +377,7 @@ let handle_append_entries_request state request now =
         let new_state = {state with log} in
         (new_state, make_response state (make_log_failure_with_latest_log log))
 
-      |  hd::tl -> aux (hd::post_logs) tl
-
+      |  hd::tl -> aux (log_size - 1) tl
     in
     match state.log with
     | {index; _}::tl when prev_log_index > index ->
@@ -401,7 +392,7 @@ let handle_append_entries_request state request now =
        *)
       (state, make_response state (make_log_failure_with_latest_log state.log))
 
-    | _ -> aux [] state.log
+    | _ -> aux state.log_size state.log
 
 let handle_append_entries_response state ({receiver_term; _ } as response) now =
 
