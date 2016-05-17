@@ -27,6 +27,43 @@ module State : sig
       otherwise. 
     *)
 
+  val add_logs : bytes list -> Raft_pb.state -> Raft_pb.state 
+  (** [add_logs datas state] adds [datas] to the log of the [state]. 
+    * 
+    * Note that the logs are in chronological order 
+    * 
+    *   In other word [List.hd datas] is the earliest entry 
+    *   and should be appended first to the server logs.
+    *  
+    * Any subsequent logical actions like creating Append Entries request is 
+    * left to the caller. 
+    *) 
+  
+  val merge_logs : 
+    prev_log_index:int -> 
+    prev_log_term:int -> 
+    rev_log_entries: Raft_pb.log_entry list-> 
+    Raft_pb.state ->
+    (Raft_pb.state * bool)
+  (** [merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state] merges 
+    * the [rev_log_entries] into the [state] log starting at [prev_log_index]. 
+    *
+    * We assume that both the previous log entry information (index and term) along
+    * with the [rev_log_entries] are the thruth about the log state. (This function
+    * is typically used when receiving an [Append_entries] request from a [Leader]) 
+    *
+    * As a concequence if the previous log entry could not be fond in 
+    * the [state.log] then the state log is truncated with all entries after 
+    * that one removed. [false] is returned in such a case. 
+    *
+    * If [state.log] contains additional log entries past the previous log entries
+    * those will be removed and replaced with the [rev_log_entries]. Since the merge
+    * is still successfull [true] is returned.
+    *
+    * The most likely scenario is that the [state.log] last entry is matching the 
+    * previous log entry and [rev_log_entries] is simply appended.
+    *)
+
 end (* State *) 
 
 module Rev_log_cache : sig 
@@ -123,20 +160,9 @@ module Leader : sig
     *   to become a leader. 
     *)
   
-  val add_logs : bytes list -> Raft_pb.state -> Raft_pb.state 
-  (** [add_logs datas state] adds [datas] to the log of the [state]. 
-    * 
-    * Note that the logs are in chronological order 
-    * 
-    *   In other word [List.hd datas] is the earliest entry 
-    *   and should be appended first to the server logs.
-    *  
-    * Any subsequent logical actions like creating Append Entries request is 
-    * left to the caller. 
-    *) 
   
   val update_receiver_last_log_index : 
-    server_id:int -> 
+    receiver_id:int -> 
     log_index:int -> 
     Raft_pb.leader_state -> 
     (Raft_pb.leader_state * int) 
@@ -150,7 +176,7 @@ module Leader : sig
     *)
 
   val record_response_received : 
-    server_id:int -> 
+    receiver_id:int -> 
     Raft_pb.leader_state -> 
     Raft_pb.leader_state 
   (** [record_response_received ~server_id leader_state] keeps track of the 
@@ -159,7 +185,7 @@ module Leader : sig
 
   val decrement_next_index : 
     log_failure:Raft_pb.append_entries_response_log_failure_data -> 
-    server_id:int -> 
+    receiver_id:int -> 
     Raft_pb.state -> 
     Raft_pb.leader_state -> 
     Raft_pb.leader_state
