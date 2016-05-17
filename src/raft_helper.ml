@@ -1,32 +1,5 @@
 open Raft_pb
 
-module State = struct 
-
-  let last_log_index_and_term {log; _ } = 
-    match log with
-    | {index;term}::_ -> (index, term) 
-    | [] -> (0, 0)
-
-  let last_log_index state = 
-    fst @@ last_log_index_and_term state
-  
-  let is_follower {role; _} = 
-    match role with 
-    | Follower _ -> true 
-    | _ -> false 
-
-  let is_candidate {role; _ } = 
-    match role with 
-    | Candidate _ -> true 
-    | _ -> false 
-  
-  let is_leader {role; _ } = 
-    match role with 
-    | Leader _ -> true 
-    | _ -> false 
-
-end 
-
 module Rev_log_cache = struct 
 
   type local_cache = Raft_pb.log_interval
@@ -217,6 +190,132 @@ module Rev_log_cache = struct
 
 end (* Rev_log_cache *) 
 
+module State = struct 
+
+  let last_log_index_and_term {log; _ } = 
+    match log with
+    | {index;term}::_ -> (index, term) 
+    | [] -> (0, 0)
+
+  let last_log_index state = 
+    fst @@ last_log_index_and_term state
+  
+  let is_follower {role; _} = 
+    match role with 
+    | Follower _ -> true 
+    | _ -> false 
+
+  let is_candidate {role; _ } = 
+    match role with 
+    | Candidate _ -> true 
+    | _ -> false 
+  
+  let is_leader {role; _ } = 
+    match role with 
+    | Leader _ -> true 
+    | _ -> false 
+
+  let add_logs datas state = 
+
+    let rec aux term last_log_index log log_size = function
+      | [] -> (log, log_size)  
+      | data::tl -> 
+        let last_log_index = last_log_index + 1 in 
+        let log = {
+          index = last_log_index;
+          term;
+          data;
+        } :: log in 
+        aux term last_log_index log (log_size + 1) tl 
+    in 
+
+    let log, log_size = 
+      let term = state.current_term in 
+      let last_log_index = last_log_index state in 
+      let log = state.log in 
+      let log_size = state.log_size in 
+
+      aux term last_log_index log log_size datas 
+    in 
+    Rev_log_cache.update_global_cache {state with log; log_size; }
+
+  let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state = 
+    
+    (* This functions merges the request log entries with the
+     * current log of the server. The current log is first split by
+     * the caller into:
+     *
+     * - [log] all the logs prior to (and including) [prev_log_index].
+     * - [log_size] nb of log entries in [log]
+     *
+     * This function will then merge the 2 list of logs by adding all the
+     * common logs first, then if either one is empty or an entry differs
+     * then the entries from the leader will override the one in the server.
+     *
+     *)
+    let merge_log_entries state log_size log =
+
+      let rec aux log_size log = function
+        | [] -> (log_size, log)
+        | hd::tl -> 
+          aux (log_size + 1) (hd::log) tl 
+      in
+
+      let (log_size, log) = aux log_size log rev_log_entries in 
+      let state = {state with log ; log_size;} in
+      let state = Rev_log_cache.update_global_cache state in 
+      (state, true)
+    in
+    
+    let rec aux log_size = function
+      | [] ->
+        if prev_log_index = 0
+        then
+          (* [case 0] No previous log were ever inserted
+           *)
+          merge_log_entries state 0 []
+        else
+          (* [case 1] The prev_log_index is not found in the state log.
+           * This server is lagging behind.
+           *)
+          (state, false)
+
+      | ({index; term; _ }::tl as log) when index = prev_log_index &&
+                                             term = prev_log_term ->
+        (* [case 2] The prev_log_index matches the leader, all is good,
+         * let's append all the new logs.
+         *)
+        merge_log_entries state log_size log
+
+      | {index; _ }::log when index = prev_log_index ->
+        (* [case 3] The prev_log_index is inconstent with the leader.
+         * This conflict is resolved by discarding it along with all
+         * following log entries.
+         * As far as the leader is concerned it's like [case 1] now.
+         *)
+        let new_state = {state with log} in
+        (new_state, false)
+
+      |  hd::tl -> aux (log_size - 1) tl
+    in
+    match state.log with
+    | {index; _}::tl when prev_log_index > index ->
+      (*
+       * This is the case when a new [Leader] which has more log entries
+       * than this server sends a first [Append_entries_request]. It initializes
+       * its belief of thie server [last_log_index] to its own [last_log_index].
+       *
+       * However this server does not have as many log entries.
+       *
+       * In such a case, we send failure right away.
+       *)
+      (state, false)
+
+    | _ -> aux state.log_size state.log
+
+end 
+
+
 module Follower = struct 
 
   let create ?current_leader 
@@ -325,88 +424,40 @@ module Leader = struct
     
     {state with role = Leader {indices}}
 
-  let add_logs datas state = 
 
-    let rec aux term last_log_index log log_size = function
-      | [] -> (log, log_size)  
-      | data::tl -> 
-        let last_log_index = last_log_index + 1 in 
-        let log = {
-          index = last_log_index;
-          term;
-          data;
-        } :: log in 
-        aux term last_log_index log (log_size + 1) tl 
-    in 
-
-    let log, log_size = 
-      let term = state.current_term in 
-      let last_log_index = State.last_log_index state in 
-      let log = state.log in 
-      let log_size = state.log_size in 
-
-      aux term last_log_index log log_size datas 
-    in 
-    Rev_log_cache.update_global_cache {state with log; log_size; }
-    
-  let update_receiver_last_log_index ~server_id ~log_index leader_state = 
-    let receiver_id = server_id in 
-    if log_index = 0
-    then (leader_state, 0)
-    else 
-      let {indices} = leader_state in 
-
-      let indices = 
-        List.map (fun ({server_id; next_index = _ } as s) -> 
-          if server_id = receiver_id 
-          then {s with next_index = log_index + 1; match_index = log_index; }
-          else s  
-        ) indices
-      in 
-
-      (* Calculate the number of server which also have replicated that 
-         log entry
-       *)
-      let nb_of_replications = List.fold_left (fun n {match_index; _ } -> 
-        if match_index >= log_index 
-        then n + 1 
-        else n
-      ) 0 indices in 
-      
-      ({indices}, nb_of_replications) 
-
+  (*
+   * Reusable function to update the index of a particular
+   * receiver id. 
+   *)  
   let update_index ~receiver_id ~f leader_state = 
-    let {indices} = leader_state in 
 
-    let indices = List.fold_left (fun indices index -> 
+    let indices = List.map (fun index -> 
       if index.server_id = receiver_id
-      then (f index)::indices
-      else index::indices
-    ) [] indices in
+      then (f index)
+      else index
+    ) leader_state.indices in
 
     {indices}
 
-  let record_response_received ~server_id leader_state = 
-    
-    update_index 
-      ~receiver_id:server_id 
-      ~f:(fun index ->
-        {index with outstanding_request = false;}
-      ) 
-      leader_state
-    
-  let min_heartbeat_timout ~now {indices} = 
+  let update_receiver_last_log_index ~receiver_id ~log_index leader_state = 
 
-    let min_heartbeat_deadline = List.fold_left (fun min_deadline {heartbeat_deadline; _ } -> 
-        if heartbeat_deadline < min_deadline
-        then heartbeat_deadline
-        else min_deadline
-      ) max_float indices
-    in 
-    min_heartbeat_deadline -. now 
+    let leader_state = update_index ~receiver_id ~f:(fun index ->
+      {index with next_index = log_index + 1; match_index = log_index}
+    ) leader_state
+    in  
 
-  let decrement_next_index ~log_failure ~server_id state {indices; _ } = 
-    let receiver_id = server_id in 
+    (* Calculate the number of server which also have replicated that 
+       log entry
+     *)
+    let nb_of_replications = List.fold_left (fun n {match_index; _ } -> 
+      if match_index >= log_index 
+      then n + 1 
+      else n
+    ) 0 leader_state.indices in 
+    
+    (leader_state, nb_of_replications) 
+
+  let decrement_next_index ~log_failure ~receiver_id state leader_state = 
     let {receiver_last_log_index ; receiver_last_log_term } = log_failure in 
 
     let latest_log_index, latest_log_term = match state.log with
@@ -419,18 +470,17 @@ module Leader = struct
        * This is an invariant. When receiving the [Append_entries]
        * request, in case of [Log_failure] the server is responsible
        * to find the earlier log entry to synchronize with the [Leader]. 
-       *
-       * We could handle this case as well. 
+       * 
        *)
 
     (* 
      * Next step is to make sur that both the [receiver_last_log_index]
-     * and [receiver_last_log_term] are matching an entry in the [Leader] 
+     * and [receiver_last_log_term] are matching an log entry in the [Leader] 
      * log.   
      *
-     * In the case it is then it means that the log entry sent 
+     * If the match is found it means that the log entry sent 
      * by the receiver is the good common log entry to synchronize the [Leader]
-     * and this [Follower]. 
+     * and its [Follower]. 
      *
      * In the case there is no match then we jump back to a previous term to 
      * find a entry to synchronize upon.
@@ -444,8 +494,8 @@ module Leader = struct
           else 
             if term = receiver_last_log_term
             then 
-              (* all good we verify the server has the matching 
-               * log
+              (* Receiver last log entry is a match with a [Leader] log 
+               * entry.
                *) 
               receiver_last_log_index
             else 
@@ -462,14 +512,30 @@ module Leader = struct
       aux state.log
     in
 
-    let indices = List.map (fun ({server_id; next_index; } as s) -> 
-      if server_id = receiver_id
-      then {s with next_index = receiver_last_log_index + 1} 
-      else s
-    ) indices in
+    update_index ~receiver_id ~f:(fun index -> 
+      {index with 
+       next_index = receiver_last_log_index + 1; 
+       match_index = receiver_last_log_index}
+    )  leader_state
 
-    {indices}
+  let record_response_received ~receiver_id leader_state = 
+    
+    update_index 
+      ~receiver_id
+      ~f:(fun index ->
+        {index with outstanding_request = false;}
+      ) 
+      leader_state
+    
+  let min_heartbeat_timout ~now {indices} = 
 
+    let min_heartbeat_deadline = List.fold_left (fun min_deadline {heartbeat_deadline; _ } -> 
+        if heartbeat_deadline < min_deadline
+        then heartbeat_deadline
+        else min_deadline
+      ) max_float indices
+    in 
+    min_heartbeat_deadline -. now 
 end 
 
 module Configuration = struct

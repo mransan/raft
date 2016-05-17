@@ -280,7 +280,6 @@ let handle_append_entries_request state request now =
   then
     (* This request is coming from a leader lagging behind...
      *)
-
     (state, make_response state Term_failure)
 
   else
@@ -291,108 +290,43 @@ let handle_append_entries_request state request now =
 
     (* Next step is to handle the log entries from the leader.
      *
-     * The algorithm search for the [prev log entry] that the leader
-     * sent.
      *)
-    let {prev_log_index; prev_log_term; rev_log_entries; leader_commit} = request in
-
-    (* This functions merges the request log entries with the
-     * current log of the server. The current log is first split by
-     * the caller into:
-     *
-     * - [log] all the logs prior to (and including) [prev_log_index].
-     * - [log_size] nb of log entries in [log]
-     *
-     * This function will then merge the 2 list of logs by adding all the
-     * common logs first, then if either one is empty or an entry differs
-     * then the entries from the leader will override the one in the server.
-     *
-     *)
-    let merge_log_entries state log_size log =
-
-      let rec aux log_size log = function
-        | [] -> (log_size, log)
-        | hd::tl -> 
-          aux (log_size + 1) (hd::log) tl 
-      in
-
-      let (log_size, log) = aux log_size log rev_log_entries in 
-      let state = {state with log ; log_size;} in
-      let state = Rev_log_cache.update_global_cache state in 
-      let receiver_last_log_index = State.last_log_index state in
-      let state =
-        (* Update this server commit index based on value sent from
-         * the leader.
-         * Note that it is not guaranteed that the leader has sent
-         * all the log until it commit index so the min value
-         * is taken.
-         *)
-        if leader_commit > state.commit_index
-        then {state with
-          commit_index = min leader_commit receiver_last_log_index
-        }
-        else state
-      in
-      let response = make_response state (Success {receiver_last_log_index; }) in
-      (state, response)
-    in
-
-    let make_log_failure_with_latest_log = function
-      | [] -> Log_failure {
-        receiver_last_log_index = 0;
-        receiver_last_log_term = 0;
-      }
-      | {index; term; _ }::_ -> Log_failure {
-        receiver_last_log_index = index;
-        receiver_last_log_term = term;
-      }
-    in
-
-    let rec aux log_size = function
-      | [] ->
-        if prev_log_index = 0
-        then
-          (* [case 0] No previous log were ever inserted
-           *)
-          merge_log_entries state 0 []
-        else
-          (* [case 1] The prev_log_index is not found in the state log.
-           * This server is lagging behind.
-           *)
-          (state, make_response state (make_log_failure_with_latest_log []))
-
-      | ({index; term; _ }::tl as log) when index = prev_log_index &&
-                                             term = prev_log_term ->
-        (* [case 2] The prev_log_index matches the leader, all is good,
-         * let's append all the new logs.
-         *)
-        merge_log_entries state log_size log
-
-      | {index; _ }::log when index = prev_log_index ->
-        (* [case 3] The prev_log_index is inconstent with the leader.
-         * This conflict is resolved by discarding it along with all
-         * following log entries.
-         * As far as the leader is concerned it's like [case 1] now.
-         *)
-        let new_state = {state with log} in
-        (new_state, make_response state (make_log_failure_with_latest_log log))
-
-      |  hd::tl -> aux (log_size - 1) tl
-    in
-    match state.log with
-    | {index; _}::tl when prev_log_index > index ->
-      (*
-       * This is the case when a new [Leader] which has more log entries
-       * than this server sends a first [Append_entries_request]. It initializes
-       * its belief of thie server [last_log_index] to its own [last_log_index].
-       *
-       * However this server does not have as many log entries.
-       *
-       * In such a case, we send failure right away.
+    let {
+      prev_log_index; 
+      prev_log_term; 
+      rev_log_entries; 
+      leader_commit} = request in
+      
+    let state, success = State.merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state in 
+    let receiver_last_log_index, 
+        receiver_last_log_term = State.last_log_index_and_term state in  
+    
+    let state =
+      (* Update this server commit index based on value sent from
+       * the leader.
+       * Note that it is not guaranteed that the leader has sent
+       * all the log until it commit index so the min value
+       * is taken.
        *)
-      (state, make_response state (make_log_failure_with_latest_log state.log))
+      if leader_commit > state.commit_index
+      then {state with
+        commit_index = min leader_commit receiver_last_log_index
+      }
+      else state
+    in
 
-    | _ -> aux state.log_size state.log
+    let response = 
+      if success
+      then 
+        make_response state (Success {receiver_last_log_index}) 
+      else 
+        make_response state (Log_failure {
+          receiver_last_log_index;
+          receiver_last_log_term;
+        }) 
+    in
+
+    (state, response)
 
 let handle_append_entries_response state ({receiver_term; _ } as response) now =
 
@@ -414,7 +348,7 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
     | Leader leader_state ->
 
       let leader_state =
-        Leader.record_response_received ~server_id:receiver_id leader_state
+        Leader.record_response_received ~receiver_id leader_state
       in
 
       begin match result with
@@ -427,7 +361,7 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
         let configuration = state.configuration in
 
         let leader_state, nb_of_replications = Leader.update_receiver_last_log_index
-          ~server_id:receiver_id
+          ~receiver_id
           ~log_index:receiver_last_log_index
           leader_state
         in
@@ -461,7 +395,7 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
        * log index and retry the append.
        *
        *)
-      let leader_state = Leader.decrement_next_index ~log_failure ~server_id:receiver_id state leader_state in
+      let leader_state = Leader.decrement_next_index ~log_failure ~receiver_id state leader_state in
       let leader_state, msgs_to_send = Log_entry_util.compute_append_entries state leader_state now in
       let state  = {state with role = Leader leader_state} in
       (state,msgs_to_send)
@@ -550,7 +484,7 @@ let handle_add_log_entries state datas now =
 
   | Leader _ -> 
 
-    let state = Leader.add_logs datas state in 
+    let state = State.add_logs datas state in 
     begin match state.role with
     | Follower  _ | Candidate _ -> assert(false)
       (* We don't expect the [Leader.add_log] functions to
