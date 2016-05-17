@@ -325,16 +325,6 @@ module Leader = struct
     
     {state with role = Leader {indices}}
 
-
-  let find_server_index indices receiver_id = 
-    let is_server = fun ({server_id; _ }:server_index) -> 
-      server_id = receiver_id
-    in 
-    begin match List.find is_server indices with
-    | x -> Some x 
-    | exception Not_found -> None 
-    end 
-
   let add_logs datas state = 
 
     let rec aux term last_log_index log log_size = function
