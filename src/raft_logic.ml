@@ -147,8 +147,14 @@ let handle_request_vote_request state request now =
        *
        *)
       if candidate_term > state.current_term
-      then Follower.become ~term:candidate_term ~now state
-      else state
+      then 
+        Follower.become ~term:candidate_term ~now state
+        (* TODO [NOTIFICATION]: No_leader notification should be added 
+         * here, provided that the previous state was follower
+         * with a leader assigned. 
+         *)
+      else 
+        state
     in
     let last_log_index = State.last_log_index state in
     if candidate_last_log_index < last_log_index
@@ -209,6 +215,16 @@ let handle_request_vote_response state response now =
      *
      *)
     let state = Follower.become ~term:voter_term ~now state in
+    (* TODO [NOTIFICATION] this function will 
+     * return notifications that we should propagate.
+     *
+     * AFAIK, notification should be empty since this server is already
+     * a candidate and therefore the [No_leader] notication 
+     * would have been computed then. Even if the voter_term is 
+     * greated it does not mean there is a [New_leader], (only when 
+     * receiving an [Append_entries] request would you know that there is
+     * a new leader. 
+     *)
     (state, [])
 
   else
@@ -223,6 +239,9 @@ let handle_request_vote_response state response now =
          *
          *)
         let state = Leader.become state now in
+        (* TODO [NOTIFICATION] add [New_leader] here, or make 
+         * it generated from [Leader.become].
+         *)
 
         (*
          * As a new leader, the server must send Append entries request
@@ -279,6 +298,10 @@ let handle_append_entries_request state request now =
   if leader_term < state.current_term
   then
     (* This request is coming from a leader lagging behind...
+     *
+     * TODO [INVARIANTS] We could check here that this request is 
+     * not coming from the current leader. (Which would be a violation
+     * of the protocol rules). 
      *)
     (state, make_response state Term_failure)
 
@@ -287,6 +310,9 @@ let handle_append_entries_request state request now =
      * let's ensure that this server is a follower.
      *)
     let state  = Follower.become ~current_leader:leader_id ~term:leader_term ~now state in
+    (* TODO [NOTIFICATION] this function will return new notification
+     * in case the current leader is a new one.
+     *)
 
     (* Next step is to handle the log entries from the leader.
      *
@@ -297,7 +323,9 @@ let handle_append_entries_request state request now =
       rev_log_entries; 
       leader_commit} = request in
       
-    let state, success = State.merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state in 
+    let state, success = 
+      State.merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state 
+    in 
     let receiver_last_log_index, 
         receiver_last_log_term = State.last_log_index_and_term state in  
     
@@ -312,6 +340,9 @@ let handle_append_entries_request state request now =
       then {state with
         commit_index = min leader_commit receiver_last_log_index
       }
+        (* TODO [NOTIFICATION] this is where we should 
+         * compute the [Committed_data] notification. 
+         *)
       else state
     in
 
@@ -338,6 +369,8 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
      * it must convert to a follower and update to that term.
      *)
     let state = Follower.become ~term:receiver_term ~now state in
+    (* TODO [NOTIFICATION], this might return No_leader notification 
+     *)
     (state, [])
 
   else
@@ -376,13 +409,21 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
            *)
           if Configuration.is_majority configuration (nb_of_replications + 1) &&
              receiver_last_log_index > state.commit_index
-          then receiver_last_log_index
-          else state.commit_index
+          then 
+            receiver_last_log_index
+            (* TODO [NOTIFICATION] Should return a new [Committed_data] notification.
+             *)
+          else 
+            state.commit_index
         in
         let state = {state with commit_index} in
+          (* TODO [PERFORMANCE] this allocation could be avoided if done in previous 
+           * [if] expression.
+           *)
 
-
-        let leader_state, msgs_to_send = Log_entry_util.compute_append_entries state leader_state now in
+        let leader_state, msgs_to_send = 
+          Log_entry_util.compute_append_entries state leader_state now 
+        in
 
         let state = {state with role = Leader leader_state} in
 

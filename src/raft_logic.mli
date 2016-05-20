@@ -85,7 +85,7 @@ type new_log_response =
       * from a valid [Leader]
       *)
 
-val handle_add_log_entries: Raft_pb.state -> bytes list -> time -> new_log_response
+val handle_add_log_entries: Raft_pb.state -> (bytes * string) list -> time -> new_log_response
 (** [handle_add_log_entry state data now] processes [data] and return the follow
   *   up response. See [new_log_response] for more information.
   *)

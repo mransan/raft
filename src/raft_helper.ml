@@ -219,12 +219,13 @@ module State = struct
 
     let rec aux term last_log_index log log_size = function
       | [] -> (log, log_size)  
-      | data::tl -> 
+      | (data, id)::tl -> 
         let last_log_index = last_log_index + 1 in 
         let log = {
           index = last_log_index;
           term;
           data;
+          id;
         } :: log in 
         aux term last_log_index log (log_size + 1) tl 
     in 
@@ -349,6 +350,15 @@ module Follower = struct
         current_leader; 
         election_deadline;
       }
+      (* TODO [NOTIFICATION] in this case we should check 
+       * to see if we should generate the [No_leader] event if the 
+       * previous follower had a leader
+       *
+       * Furthermore if the [current_leader] argument is not [None]
+       * while the previous [follower_state.current_leader] is [None] 
+       * or the leader value is dIfferent then we should compute a 
+       * [New_leader] notification
+       *) 
       | Candidate _ when state.current_term = term -> 
         Follower {
           voted_for = Some state.id;
@@ -360,8 +370,55 @@ module Follower = struct
         current_leader; 
         election_deadline;
       }
+      (* TODO [NOTIFICATION] When a Leader become a follower we should 
+       * notify the  [No_leader] notification.
+       *)
     in 
     { state with current_term = term; role } 
+
+  let notifications before after = 
+    
+    let { commit_index = bcommit_index; role = brole; _ } = before in 
+    let { commit_index = acommit_index; role = arole; _ } = after in 
+    
+    let notifications = [] in  
+
+    let notifications = 
+      match brole, arole with
+      | Follower _   , Leader _ 
+      | Leader _     , Candidate _ ->
+        (* Impossible transition which would violate the rules of the 
+         * RAFT protocol 
+         *)
+        assert(false) 
+
+      | Candidate _  , Leader _ -> 
+        (* Case of the server becoming a leader *)
+        (New_leader {leader_id = after.id;})::notifications 
+      
+      | Follower {current_leader = Some bleader; _ }, 
+        Follower {current_leader = Some aleader; _ } when bleader = aleader ->
+        notifications 
+        (* No leader change, following the same leader *)
+
+      | _, Follower{current_leader = Some aleader;_} -> 
+        (New_leader {leader_id = aleader;})::notifications 
+        (* There is a new leader *) 
+
+      | Follower {current_leader = Some _; _}, Candidate _
+      | Follower {current_leader = Some _; _}, Follower  {current_leader = None; }
+      | Leader  _                            , Follower  {current_leader = None; } ->
+        (No_leader::notifications)
+
+      | Leader _                             , Leader _ 
+      | Candidate _                          , Candidate _ 
+      | Candidate _                          , Follower {current_leader = None} 
+      | Follower {current_leader = None; _}  , Follower {current_leader = None; }
+      | Follower {current_leader = None; _}  , Candidate _ ->
+        notifications
+    in
+    
+    notifications
 
 end 
 
@@ -387,6 +444,9 @@ end
 module Leader = struct 
 
   let become state now = 
+    (* TODO [NOTIFICATION] should this function return the [New_leader]
+     * notification ?
+     *)
 
     let last_log_index = State.last_log_index state in
     

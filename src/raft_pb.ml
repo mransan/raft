@@ -30,12 +30,14 @@ type log_entry = {
   index : int;
   term : int;
   data : bytes;
+  id : string;
 }
 
 and log_entry_mutable = {
   mutable index : int;
   mutable term : int;
   mutable data : bytes;
+  mutable id : string;
 }
 
 type append_entries_request = {
@@ -234,6 +236,27 @@ and timeout_event_mutable = {
   mutable timeout_type : timeout_event_time_out_type;
 }
 
+type notification_commited_data = {
+  ids : string list;
+}
+
+and notification_commited_data_mutable = {
+  mutable ids : string list;
+}
+
+type notification_new_leader = {
+  leader_id : int;
+}
+
+and notification_new_leader_mutable = {
+  mutable leader_id : int;
+}
+
+type notification =
+  | Committed_data of notification_commited_data
+  | New_leader of notification_new_leader
+  | No_leader
+
 let rec default_request_vote_request 
   ?candidate_term:((candidate_term:int) = 0)
   ?candidate_id:((candidate_id:int) = 0)
@@ -273,16 +296,19 @@ let rec default_log_entry
   ?index:((index:int) = 0)
   ?term:((term:int) = 0)
   ?data:((data:bytes) = Bytes.create 64)
+  ?id:((id:string) = "")
   () : log_entry  = {
   index;
   term;
   data;
+  id;
 }
 
 and default_log_entry_mutable () : log_entry_mutable = {
   index = 0;
   term = 0;
   data = Bytes.create 64;
+  id = "";
 }
 
 let rec default_append_entries_request 
@@ -527,6 +553,28 @@ and default_timeout_event_mutable () : timeout_event_mutable = {
   timeout_type = default_timeout_event_time_out_type ();
 }
 
+let rec default_notification_commited_data 
+  ?ids:((ids:string list) = [])
+  () : notification_commited_data  = {
+  ids;
+}
+
+and default_notification_commited_data_mutable () : notification_commited_data_mutable = {
+  ids = [];
+}
+
+let rec default_notification_new_leader 
+  ?leader_id:((leader_id:int) = 0)
+  () : notification_new_leader  = {
+  leader_id;
+}
+
+and default_notification_new_leader_mutable () : notification_new_leader_mutable = {
+  leader_id = 0;
+}
+
+let rec default_notification () : notification = Committed_data (default_notification_commited_data ())
+
 let rec decode_request_vote_request d =
   let v = default_request_vote_request_mutable () in
   let rec loop () = 
@@ -626,6 +674,13 @@ let rec decode_log_entry d =
     )
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_entry), field(3)", pk))
+    )
+    | Some (4, Pbrt.Bytes) -> (
+      v.id <- Pbrt.Decoder.string d;
+      loop ()
+    )
+    | Some (4, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_entry), field(4)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -1221,6 +1276,61 @@ let rec decode_timeout_event d =
   let v:timeout_event = Obj.magic v in
   v
 
+let rec decode_notification_commited_data d =
+  let v = default_notification_commited_data_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+      v.ids <- List.rev v.ids;
+    )
+    | Some (1, Pbrt.Bytes) -> (
+      v.ids <- (Pbrt.Decoder.string d) :: v.ids;
+      loop ()
+    )
+    | Some (1, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(notification_commited_data), field(1)", pk))
+    )
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:notification_commited_data = Obj.magic v in
+  v
+
+let rec decode_notification_new_leader d =
+  let v = default_notification_new_leader_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+    )
+    | Some (1, Pbrt.Varint) -> (
+      v.leader_id <- Pbrt.Decoder.int_as_varint d;
+      loop ()
+    )
+    | Some (1, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(notification_new_leader), field(1)", pk))
+    )
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:notification_new_leader = Obj.magic v in
+  v
+
+let rec decode_notification d = 
+  let rec loop () = 
+    let ret:notification = match Pbrt.Decoder.key d with
+      | None -> failwith "None of the known key is found"
+      | Some (1, _) -> Committed_data (decode_notification_commited_data (Pbrt.Decoder.nested d))
+      | Some (2, _) -> New_leader (decode_notification_new_leader (Pbrt.Decoder.nested d))
+      | Some (3, _) -> (Pbrt.Decoder.empty_nested d ; No_leader)
+      | Some (n, payload_kind) -> (
+        Pbrt.Decoder.skip d payload_kind; 
+        loop () 
+      )
+    in
+    ret
+  in
+  loop ()
+
 let rec encode_request_vote_request (v:request_vote_request) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.candidate_term encoder;
@@ -1248,6 +1358,8 @@ let rec encode_log_entry (v:log_entry) encoder =
   Pbrt.Encoder.int_as_varint v.term encoder;
   Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
   Pbrt.Encoder.bytes v.data encoder;
+  Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
+  Pbrt.Encoder.string v.id encoder;
   ()
 
 let rec encode_append_entries_request (v:append_entries_request) encoder = 
@@ -1500,6 +1612,33 @@ let rec encode_timeout_event (v:timeout_event) encoder =
   encode_timeout_event_time_out_type v.timeout_type encoder;
   ()
 
+let rec encode_notification_commited_data (v:notification_commited_data) encoder = 
+  List.iter (fun x -> 
+    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.string x encoder;
+  ) v.ids;
+  ()
+
+let rec encode_notification_new_leader (v:notification_new_leader) encoder = 
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.leader_id encoder;
+  ()
+
+let rec encode_notification (v:notification) encoder = 
+  match v with
+  | Committed_data x -> (
+    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_notification_commited_data x) encoder;
+  )
+  | New_leader x -> (
+    Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_notification_new_leader x) encoder;
+  )
+  | No_leader -> (
+    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.empty_nested encoder
+  )
+
 let rec pp_request_vote_request fmt (v:request_vote_request) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
@@ -1527,6 +1666,7 @@ let rec pp_log_entry fmt (v:log_entry) =
     Pbrt.Pp.pp_record_field "index" Pbrt.Pp.pp_int fmt v.index;
     Pbrt.Pp.pp_record_field "term" Pbrt.Pp.pp_int fmt v.term;
     Pbrt.Pp.pp_record_field "data" Pbrt.Pp.pp_bytes fmt v.data;
+    Pbrt.Pp.pp_record_field "id" Pbrt.Pp.pp_string fmt v.id;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
@@ -1697,3 +1837,25 @@ let rec pp_timeout_event fmt (v:timeout_event) =
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
+
+let rec pp_notification_commited_data fmt (v:notification_commited_data) = 
+  let pp_i fmt () =
+    Format.pp_open_vbox fmt 1;
+    Pbrt.Pp.pp_record_field "ids" (Pbrt.Pp.pp_list Pbrt.Pp.pp_string) fmt v.ids;
+    Format.pp_close_box fmt ()
+  in
+  Pbrt.Pp.pp_brk pp_i fmt ()
+
+let rec pp_notification_new_leader fmt (v:notification_new_leader) = 
+  let pp_i fmt () =
+    Format.pp_open_vbox fmt 1;
+    Pbrt.Pp.pp_record_field "leader_id" Pbrt.Pp.pp_int fmt v.leader_id;
+    Format.pp_close_box fmt ()
+  in
+  Pbrt.Pp.pp_brk pp_i fmt ()
+
+let rec pp_notification fmt (v:notification) =
+  match v with
+  | Committed_data x -> Format.fprintf fmt "@[Committed_data(%a)@]" pp_notification_commited_data x
+  | New_leader x -> Format.fprintf fmt "@[New_leader(%a)@]" pp_notification_new_leader x
+  | No_leader  -> Format.fprintf fmt "No_leader"
