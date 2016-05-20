@@ -374,6 +374,12 @@ module State = struct
         notifications
     in 
     notifications
+
+    let current_leader {id; role; _} = 
+      match role with
+      | Follower {current_leader; _ }-> current_leader
+      | Candidate _ -> None 
+      | Leader _ -> Some id 
 end 
 
 

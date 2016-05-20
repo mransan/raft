@@ -65,6 +65,8 @@ module State : sig
     *)
   
   val notifications : Raft_pb.state -> Raft_pb.state -> Raft_pb.notification list 
+    
+  val current_leader: Raft_pb.state -> int option
 
 end (* State *) 
 
