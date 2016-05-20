@@ -263,6 +263,7 @@ message LogEntry {
   required int32 index = 1; // starts at 1  
   required int32 term  = 2; // starts at 0
   required bytes data  = 3; 
+  required string id   = 4;
 }
 
 // [LeaderState]
@@ -484,6 +485,25 @@ message TimeoutEvent {
   }
   required double      timeout      = 1;
   required TimeOutType timeout_type = 2;
+}
+
+message Notification {
+  
+  message CommitedData {
+    repeated string ids = 1;
+  }
+
+  message NewLeader {
+    required int32  leader_id = 1;
+  }
+  
+  message NoLeader { } 
+
+  oneof t {
+    CommitedData committed_data = 1;
+    NewLeader    new_leader     = 2;
+    NoLeader     no_leader      = 3;
+  }
 }
 
 // Notes 

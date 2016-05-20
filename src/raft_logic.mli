@@ -42,7 +42,7 @@ val handle_message :
   Raft_pb.state ->
   Raft_pb.message ->
   time ->
-  Raft_pb.state * (message_to_send list)
+  Raft_pb.state * (message_to_send list) * Raft_pb.notification list 
 (** [handle_message state message now] process the message by dispatching it
   * to the appropriate module. It also handles keeping track to which server
   * the response must be sent.
@@ -51,7 +51,7 @@ val handle_message :
 val handle_new_election_timeout :
   Raft_pb.state ->
   time ->
-  Raft_pb.state * (message_to_send list)
+  Raft_pb.state * (message_to_send list) * Raft_pb.notification list 
 (** [handle_new_election_timeout state now] implements the state change to
   * a Candidate along with the list of request vote message to send.
   *)
@@ -85,7 +85,7 @@ type new_log_response =
       * from a valid [Leader]
       *)
 
-val handle_add_log_entries: Raft_pb.state -> bytes list -> time -> new_log_response
+val handle_add_log_entries: Raft_pb.state -> (bytes * string) list -> time -> new_log_response
 (** [handle_add_log_entry state data now] processes [data] and return the follow
   *   up response. See [new_log_response] for more information.
   *)

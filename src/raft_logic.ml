@@ -147,8 +147,10 @@ let handle_request_vote_request state request now =
        *
        *)
       if candidate_term > state.current_term
-      then Follower.become ~term:candidate_term ~now state
-      else state
+      then 
+        Follower.become ~term:candidate_term ~now state
+      else 
+        state
     in
     let last_log_index = State.last_log_index state in
     if candidate_last_log_index < last_log_index
@@ -279,6 +281,10 @@ let handle_append_entries_request state request now =
   if leader_term < state.current_term
   then
     (* This request is coming from a leader lagging behind...
+     *
+     * TODO [INVARIANTS] We could check here that this request is 
+     * not coming from the current leader. (Which would be a violation
+     * of the protocol rules). 
      *)
     (state, make_response state Term_failure)
 
@@ -297,7 +303,9 @@ let handle_append_entries_request state request now =
       rev_log_entries; 
       leader_commit} = request in
       
-    let state, success = State.merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state in 
+    let state, success = 
+      State.merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state 
+    in 
     let receiver_last_log_index, 
         receiver_last_log_term = State.last_log_index_and_term state in  
     
@@ -376,13 +384,19 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
            *)
           if Configuration.is_majority configuration (nb_of_replications + 1) &&
              receiver_last_log_index > state.commit_index
-          then receiver_last_log_index
-          else state.commit_index
+          then 
+            receiver_last_log_index
+          else 
+            state.commit_index
         in
         let state = {state with commit_index} in
+          (* TODO [PERFORMANCE] this allocation could be avoided if done in previous 
+           * [if] expression.
+           *)
 
-
-        let leader_state, msgs_to_send = Log_entry_util.compute_append_entries state leader_state now in
+        let leader_state, msgs_to_send = 
+          Log_entry_util.compute_append_entries state leader_state now 
+        in
 
         let state = {state with role = Leader leader_state} in
 
@@ -412,20 +426,23 @@ let make_initial_state ~configuration ~now ~id () =
   Follower.create ~configuration ~now ~id ()
 
 let handle_message state message now =
-  match message with
-  | Request_vote_request ({candidate_id; _ } as r) ->
-    let state, response = handle_request_vote_request state r now in
-    (state, [(Request_vote_response response, candidate_id)])
+  let state', message_to_send = 
+    match message with
+    | Request_vote_request ({candidate_id; _ } as r) ->
+      let state, response = handle_request_vote_request state r now in
+      (state, [(Request_vote_response response, candidate_id)])
 
-  | Append_entries_request ({leader_id; _ } as r) ->
-    let state, response = handle_append_entries_request state r now in
-    (state, [(Append_entries_response response, leader_id)])
+    | Append_entries_request ({leader_id; _ } as r) ->
+      let state, response = handle_append_entries_request state r now in
+      (state, [(Append_entries_response response, leader_id)])
 
-  | Request_vote_response r ->
-    handle_request_vote_response state r now
+    | Request_vote_response r ->
+      handle_request_vote_response state r now
 
-  | Append_entries_response r ->
-    handle_append_entries_response state r now
+    | Append_entries_response r ->
+      handle_append_entries_response state r now
+  in
+  (state', message_to_send , State.notifications state state')
 
 (* Iterates over all the other server ids. (ie the ones different
  * from the state id).
@@ -442,14 +459,14 @@ let fold_over_servers f e0 {id; configuration = {nb_of_server;_ }; _ } =
   aux e0 (nb_of_server - 1)
 
 let handle_new_election_timeout state now =
-  let state = Candidate.become ~now state in
+  let state' = Candidate.become ~now state in
   let msgs  =
     fold_over_servers (fun acc server_id ->
-      let request = make_request_vote_request state  in
+      let request = make_request_vote_request state' in
       (Request_vote_request request, server_id) :: acc
-    ) [] state
+    ) [] state'
   in
-  (state, msgs)
+  (state', msgs, State.notifications state state')
 
 let handle_heartbeat_timeout ({role; configuration; _ } as state) now =
   match state.role with

@@ -27,7 +27,7 @@ module State : sig
       otherwise. 
     *)
 
-  val add_logs : bytes list -> Raft_pb.state -> Raft_pb.state 
+  val add_logs : (bytes * string) list -> Raft_pb.state -> Raft_pb.state 
   (** [add_logs datas state] adds [datas] to the log of the [state]. 
     * 
     * Note that the logs are in chronological order 
@@ -63,6 +63,8 @@ module State : sig
     * The most likely scenario is that the [state.log] last entry is matching the 
     * previous log entry and [rev_log_entries] is simply appended.
     *)
+  
+  val notifications : Raft_pb.state -> Raft_pb.state -> Raft_pb.notification list 
 
 end (* State *) 
 
