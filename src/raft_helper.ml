@@ -314,68 +314,6 @@ module State = struct
 
     | _ -> aux state.log_size state.log
 
-end 
-
-
-module Follower = struct 
-
-  let create ?current_leader 
-             ?current_term:(current_term = 0) 
-             ?voted_for 
-             ?log:(log = []) 
-             ~configuration ~now ~id () = 
-    let {election_timeout = t ; election_timeout_range = r; _ } = configuration in 
-    let timeout = t +. (Random.float r -. (r /. 2.)) in
-    {
-      id; 
-      current_term; 
-      log;
-      log_size = List.length log;
-      commit_index = 0; 
-      role = Follower {
-        voted_for; 
-        current_leader; 
-        election_deadline = now +.  timeout 
-      };  
-      configuration; 
-      global_cache = None; 
-    }
-
-  let become ?current_leader ~term ~now state = 
-    let {configuration = {election_timeout = t; election_timeout_range = r; _}; _} = state in 
-    let election_deadline  = now +. t +. (Random.float r -. (r /. 2.)) in
-
-    let role = match state.role with
-      | Follower follower_state -> Follower {follower_state with
-        current_leader; 
-        election_deadline;
-      }
-      (* TODO [NOTIFICATION] in this case we should check 
-       * to see if we should generate the [No_leader] event if the 
-       * previous follower had a leader
-       *
-       * Furthermore if the [current_leader] argument is not [None]
-       * while the previous [follower_state.current_leader] is [None] 
-       * or the leader value is dIfferent then we should compute a 
-       * [New_leader] notification
-       *) 
-      | Candidate _ when state.current_term = term -> 
-        Follower {
-          voted_for = Some state.id;
-          current_leader; 
-          election_deadline; 
-        }
-      | _ -> Follower {
-        voted_for = None;
-        current_leader; 
-        election_deadline;
-      }
-      (* TODO [NOTIFICATION] When a Leader become a follower we should 
-       * notify the  [No_leader] notification.
-       *)
-    in 
-    { state with current_term = term; role } 
-
   let notifications before after = 
     
     let { commit_index = bcommit_index; role = brole; _ } = before in 
@@ -417,8 +355,74 @@ module Follower = struct
       | Follower {current_leader = None; _}  , Candidate _ ->
         notifications
     in
-    
+
+    let notifications = 
+      if acommit_index > bcommit_index
+      then 
+        let rec aux ids = function 
+          | {index;id;_ }::tl -> 
+              if index > acommit_index 
+              then aux ids tl 
+              else 
+                if index = bcommit_index
+                then ids 
+                else aux (id :: ids) tl 
+          | [] ->  ids 
+        in
+        (Committed_data {ids = aux [] after.log})::notifications 
+      else 
+        notifications
+    in 
     notifications
+end 
+
+
+module Follower = struct 
+
+  let create ?current_leader 
+             ?current_term:(current_term = 0) 
+             ?voted_for 
+             ?log:(log = []) 
+             ~configuration ~now ~id () = 
+    let {election_timeout = t ; election_timeout_range = r; _ } = configuration in 
+    let timeout = t +. (Random.float r -. (r /. 2.)) in
+    {
+      id; 
+      current_term; 
+      log;
+      log_size = List.length log;
+      commit_index = 0; 
+      role = Follower {
+        voted_for; 
+        current_leader; 
+        election_deadline = now +.  timeout 
+      };  
+      configuration; 
+      global_cache = None; 
+    }
+
+  let become ?current_leader ~term ~now state = 
+    let {configuration = {election_timeout = t; election_timeout_range = r; _}; _} = state in 
+    let election_deadline  = now +. t +. (Random.float r -. (r /. 2.)) in
+
+    let role = match state.role with
+      | Follower follower_state -> Follower {follower_state with
+        current_leader; 
+        election_deadline;
+      }
+      | Candidate _ when state.current_term = term -> 
+        Follower {
+          voted_for = Some state.id;
+          current_leader; 
+          election_deadline; 
+        }
+      | _ -> Follower {
+        voted_for = None;
+        current_leader; 
+        election_deadline;
+      }
+    in 
+    { state with current_term = term; role } 
 
 end 
 
@@ -444,9 +448,6 @@ end
 module Leader = struct 
 
   let become state now = 
-    (* TODO [NOTIFICATION] should this function return the [New_leader]
-     * notification ?
-     *)
 
     let last_log_index = State.last_log_index state in
     

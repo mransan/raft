@@ -65,11 +65,15 @@ let ()  =
    * -------------------------------------------------------------------------- 
    *)
 
-  let server0, msgs = Raft_logic.handle_new_election_timeout server0 now in 
+  let server0, msgs, notifications = Raft_logic.handle_new_election_timeout server0 now in 
   
   assert(State.is_candidate server0); 
     (* When an election timeout happens the server starts a new election
      * and become a [Candidate].
+     *)
+
+  assert([] = notifications); 
+    (* There was no previous Leader so no notifications
      *)
 
   assert(1 = server0.current_term); 
@@ -100,7 +104,7 @@ let ()  =
 
   let now = now +. 0.001 in 
 
-  let server1, msgs = 
+  let server1, msgs, notifications = 
     let msg = msg_for_server msgs 1 in  
     Raft_logic.handle_message server1 msg now 
   in
@@ -109,6 +113,8 @@ let ()  =
     (* Server0 [Candidate] sent a higher term to server1 which is then expected to 
      * update its own [current_term] and be a follower (which it was already). 
      *)
+
+  assert([] = notifications);
 
   begin match server1.role with
   | Follower {voted_for; current_leader; election_deadline; } -> begin 
@@ -155,16 +161,18 @@ let ()  =
    *)
 
   let now = now +. 0.001 in 
-  let server0, msgs = 
+  let server0, msgs, notifications = 
     let msg = msg_for_server msgs 0 in 
     Raft_logic.handle_message server0 msg now 
   in
 
   assert(State.is_leader server0); 
+  assert((New_leader {leader_id = 0})::[] = notifications);
     (*
      * Because a single vote is enough to reach a majority in a 3-server cluster, 
      * server0 becomes a [Leader].
      *)
+
 
   assert(1 = server0.current_term); 
     (* 
@@ -223,10 +231,12 @@ let ()  =
    *)
 
   let now = now +. 0.001 in 
-  let server1, msgs = 
+  let server1, msgs, notifications = 
     let msg = msg_for_server msgs 1 in  
     Raft_logic.handle_message server1 msg now 
   in
+
+  assert((New_leader {leader_id = 0})::[] = notifications);
 
   begin match server1.role with
   | Follower f -> ( 
@@ -278,9 +288,15 @@ let ()  =
    * -------------------------------------------------------------------------- 
    *)
 
-  let server2, request_vote_msgs = 
+  let server2, request_vote_msgs, notifications= 
     Raft_logic.handle_new_election_timeout server2 now 
   in
+
+  assert([] = notifications); 
+    (* Server2 never got an [Append_entries] request which would have
+     * established server0 leadership. Therefore as far as server2 is 
+     * concerned there were no leaders.
+     *)
 
   assert(State.is_candidate server2); 
   assert(1 = server2.current_term); 
@@ -306,10 +322,12 @@ let ()  =
    *)
 
   let now = now +. 0.001 in
-  let server1, msgs = 
+  let server1, msgs, notifications = 
     let msg = msg_for_server request_vote_msgs 1 in 
     Raft_logic.handle_message server1 msg now 
   in 
+
+  assert([] = notifications);
 
   begin match server1.role with
   | Follower f -> (
@@ -345,12 +363,13 @@ let ()  =
 
   let now = now +. 0.001 in 
 
-  let server2, msgs = 
+  let server2, msgs, notifications = 
     let msg = msg_for_server msgs 2 in 
     Raft_logic.handle_message server2 msg now 
   in 
 
   assert(State.is_candidate server2); 
+  assert([] = notifications);
     (* 
      * Despite the vote not being granted by server1, server2
      * should continue to be a [Candidate] until either 
@@ -383,12 +402,13 @@ let ()  =
    * -------------------------------------------------------------------------- 
    *)
 
-  let server0, msgs = 
+  let server0, msgs, notifications = 
     let msg = msg_for_server request_vote_msgs 0 in 
     Raft_logic.handle_message server0 msg now 
   in
   
   assert(State.is_leader server0); 
+  assert([] = notifications);
     (* 
      * Server0 is still a [Leader] and should not be affected
      * by a Candidate for the same term. 
@@ -419,12 +439,13 @@ let ()  =
    * -------------------------------------------------------------------------- 
    *)
 
-  let server2, msgs = 
+  let server2, msgs, notifications = 
     let msg = msg_for_server msgs 2 in 
     Raft_logic.handle_message server2 msg now 
   in
 
   assert(State.is_candidate server2); 
+  assert([] = notifications);
     (*
      * Yes despite all other server denying their vote, server2
      * is still a [Candidate]. It should not take any further 
@@ -493,13 +514,14 @@ let ()  =
    *)
 
   let now = now +. 0.001 in 
-  let server2, msgs = 
+  let server2, msgs, notifications = 
     let msg = msg_for_server hb_msgs 2 in  
     Raft_logic.handle_message server2 msg now 
   in
   
   assert(State.is_follower server2); 
   assert(1 = server2.current_term);
+  assert((New_leader {leader_id = 0})::[] = notifications);
     (* 
      * Receiving an [Append_entries] request with a term at least equal
      * or supperior to one [current_term] means that the sender is a valid
@@ -538,11 +560,19 @@ let ()  =
   ) 
   | _ -> assert(false)
   end;
+  (* 
+   * Let's communicate the heartbeat response from server2 (now Follower) to 
+   * server0 (Leader).
+   * 
+   * -------------------------------------------------------------------------- 
+   *)
 
-  let server0, msgs = 
+  let server0, msgs, notifications = 
     let msg = msg_for_server msgs 0 in 
     Raft_logic.handle_message server0 msg now 
   in  
+  assert([] = notifications);
+  assert([] = msgs);
 
   (* 
    * Server1 was already a follower and aware of server0 leadership
@@ -551,7 +581,7 @@ let ()  =
    * -------------------------------------------------------------------------- 
    *)
 
-  let server1, msgs = 
+  let server1, msgs, notifications= 
     let msg =  msg_for_server hb_msgs 1 in 
     Raft_logic.handle_message server1 msg now
   in 
@@ -560,6 +590,12 @@ let ()  =
    (* No change in the role, server0 is a valid [Leader], 
     * server1 stays a [Follower]. 
     *)
+
+  assert([] = notifications);
+    (* The heartbeat message from server0 did not bring new 
+     * information (ie server1 already new server0 was the 
+     * [Leader].)
+     *)
 
   assert(1 = List.length msgs);
    (* Single [Append_entries_response] expected. 
@@ -593,12 +629,14 @@ let ()  =
    * -------------------------------------------------------------------------- 
    *)
 
-  let server0, msgs = 
+  let server0, msgs, notifications = 
     let msg = msg_for_server msgs 0 in 
     Raft_logic.handle_message server0 msg now 
   in  
 
   assert(State.is_leader server0); 
+  assert([] = notifications);
+  assert([] = msgs);
   
   let now = now +. 0.001 in 
 
@@ -678,7 +716,7 @@ let ()  =
    * -------------------------------------------------------------------------- 
    *)
 
-  let server1, msgs = 
+  let server1, msgs, notifications = 
     let msg = msg_for_server data1_msgs 1 in 
     Raft_logic.handle_message server1 msg now 
   in
@@ -696,6 +734,7 @@ let ()  =
      *)
 
   assert(0 = server1.commit_index); 
+  assert([] = notifications);
     (* 
      * While server1 has successfully replicated the log entry 
      * with [index = 1], it cannot assume that this latter log 
@@ -725,13 +764,14 @@ let ()  =
    * -------------------------------------------------------------------------- 
    *)
 
-  let server0, msgs = 
+  let server0, msgs, notifications= 
     let msg = msg_for_server msgs 0  in 
     Raft_logic.handle_message server0 msg now 
   in 
 
   assert(State.is_leader server0); 
   assert(1 = server0.commit_index); 
+  assert((Committed_data {ids = ["a"]})::[] = notifications);
     (* 
      * server1 has replicated the log successfully so this means
      * that a majority of servers have done the replication. 
@@ -827,12 +867,13 @@ let ()  =
    * -------------------------------------------------------------------------- 
    *)
 
-  let server1, msgs = 
+  let server1, msgs, notifications = 
     let msg = msg_for_server data2_msg 1 in 
     Raft_logic.handle_message server1 msg now 
   in 
 
   assert(State.is_follower server1); 
+
 
   assert(2 = List.length server1.log); 
     (* 
@@ -840,6 +881,7 @@ let ()  =
      * with [index = 2]. 
      *)
 
+  assert((Committed_data {ids = ["a"]})::[] = notifications);
   assert(1 = server1.commit_index); 
     (* 
      * The [Append_entries] request contained the [commit_index] 
@@ -874,18 +916,18 @@ let ()  =
 
   let now = now +. 0.001 in 
 
-  let server0, msgs = 
+  let server0, msgs, notifications= 
     let msg = msg_for_server msgs 0  in 
     Raft_logic.handle_message server0 msg now 
   in
 
   assert(State.is_leader server0); 
 
+  assert((Committed_data {ids = ["b"]})::[] = notifications);
   assert(2 = server0.commit_index); 
     (* 
      * A successfull replication is enough for a majority. 
      *)
-
   
   (* 
    * Let's now look at what happens after a heartbeat timeout. 
@@ -953,12 +995,23 @@ let ()  =
 
   let now =  now +. 0.001 in 
 
-  let server1, server1_response = 
+  
+  (*
+   * Let's send the heartbeat msg to server1. As previously asserted 
+   * this heartbeat message should contain no additional log but the commit_index (set to 
+   * 2) will be new information to server1.
+   *
+   * -------------------------------------------------------------------------- 
+   *)
+
+  let server1, server1_response, notifications = 
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now 
   in 
   
   assert(State.is_follower server1); 
+
+  assert((Committed_data {ids = ["b"]})::[] = notifications);
   assert(2 = server1.commit_index); 
    (* 
     * server1 is updating its commit index based on latest 
@@ -969,13 +1022,24 @@ let ()  =
    (* 
     * Only a single response is expected.
     *)
+
+
+  (*
+   * Let's send the heartbeat msg to server2. As previously asserted 
+   * this heartbeat message contains 1 log entry since the previous 
+   * [Append_entries] request from the [Leader] server0 was no communicated 
+   * to it.
+   *
+   * -------------------------------------------------------------------------- 
+   *)
   
-  let server2, server2_response = 
+  let server2, server2_response, notications = 
     let msg = msg_for_server msgs 2 in
     Raft_logic.handle_message server2 msg now 
   in 
   
   assert(State.is_follower server2); 
+  assert((Committed_data {ids = ["a"]})::[] = notications);
   assert(1 = server2.commit_index); 
    (* 
     * server2 is updating its commit index based on latest 
@@ -1008,13 +1072,21 @@ let ()  =
   | _ -> assert(false)
   end;
 
-  let server0, msg_to_send = 
+  (* 
+   * Let's communicate the 2 successful [Append_entries] response back
+   * to the [Leader] server0.
+   *
+   * -------------------------------------------------------------------------- 
+   *)
 
-    let server0, msg_to_send = 
+  let server0, msg_to_send, notications = 
+
+    let server0, msg_to_send, notications= 
       let msg = msg_for_server server1_response 0  in 
       Raft_logic.handle_message server0 msg now 
     in 
     assert([] = msg_to_send); 
+    assert([] = notications);
       (* Server1 has replicated the 2 logs it has nothing 
        * left. 
        *)
@@ -1026,6 +1098,7 @@ let ()  =
   assert(State.is_leader server0); 
   assert(2 = server0.commit_index); 
   assert(2 = List.length server0.log);
+  assert([] = notications);
 
   (* 
    * Because server2 has only one log replicated, the [Leader]
@@ -1045,7 +1118,7 @@ let ()  =
   | _ -> assert(false)
   end;
 
-  let server2, msg_to_send = 
+  let server2, msg_to_send, notications = 
     let msg = msg_for_server msg_to_send 2 in 
     Raft_logic.handle_message server2 msg now 
   in 
@@ -1057,6 +1130,7 @@ let ()  =
      *)
 
   assert(2 = server2.commit_index); 
+  assert((Committed_data {ids = ["b"]})::[] = notifications);
     (* This time the commit_index is 2 since both [log_entry] with
      * [index = 2] has been replicated and the [leader_commit] is equal
      * to 2. 
@@ -1074,12 +1148,13 @@ let ()  =
   | _ -> assert(false)
   end;
 
-  let server0, msgs = 
+  let server0, msgs, notifications = 
     let msg = msg_for_server msg_to_send 0  in 
     Raft_logic.handle_message server0 msg now
   in 
   
   assert([] = msgs); 
+  assert([] = notifications);
   assert(State.is_leader server0); 
   assert(2 = server0.commit_index); 
 
@@ -1095,10 +1170,14 @@ let ()  =
    * more [log_entry]s than [server2]. 
    *
    * We will simulate and test the above assumption.
+   *
+   * -------------------------------------------------------------------------- 
    *)
 
   (* 
-   * Let's add 3rd [log_entry]. 
+   * let's add 3rd [log_entry]. 
+   *
+   * -------------------------------------------------------------------------- 
    *)
 
   let now = now +. 0.002 in 
@@ -1107,6 +1186,7 @@ let ()  =
     let data = Bytes.of_string "Message3" in 
     Raft_logic.handle_add_log_entries server0 [(data, "c") ] now 
   in 
+
 
   let server0, msgs = 
     match new_log_response with
@@ -1126,10 +1206,12 @@ let ()  =
      *)
 
   (*
-   * Let's now replicate the log on server1 ONLY. 
+   * Let's send the [Append_entries] request to server1 Only.
+   *
+   * -------------------------------------------------------------------------- 
    *)
 
-  let server1, _ = 
+  let server1, _, notifications = 
     let msg = msg_for_server msgs 1 in 
     Raft_logic.handle_message server1 msg now 
   in 
@@ -1140,7 +1222,8 @@ let ()  =
      * The 3rd [log_entry] is correctly replicated. 
      *) 
 
-  assert(2 = server1.commit_index);
+  assert([] = notifications);
+  assert(2  = server1.commit_index);
     (* 
      * No change since the [commit_index] was still 
      * 2 in the [Append_entries] request. 
@@ -1150,17 +1233,25 @@ let ()  =
    * Now let's assume server0 [Leader] has crashed. 
    *
    * We'll make [server2] starts a new election!
+   *
+   * -------------------------------------------------------------------------- 
    *)
 
   let now = now +. default_configuration.election_timeout  in
 
-  let server2, msgs = 
+  let server2, msgs, notifications = 
     Raft_logic.handle_new_election_timeout server2 now 
   in 
 
   assert(State.is_candidate server2); 
     (* 
      * Server2 started a new election.
+     *)
+
+  assert(No_leader::[] = notifications);
+    (* 
+     * Becoming a candidate and incrementing the terms 
+     * means that there are no longer a [Leader]. 
      *)
 
   assert(2 = server2.current_term); 
@@ -1185,9 +1276,16 @@ let ()  =
     | _ -> assert(false)
   ) msgs; 
 
+
+  (*
+   * Let's now communicate the [Request_vote] requset to server1
+   *
+   * -------------------------------------------------------------------------- 
+   *)
+  
   let now = now +. 0.001 in 
 
-  let server1, msgs = 
+  let server1, msgs, notification = 
     let msg = msg_for_server msgs 1 in 
     Raft_logic.handle_message server1 msg now 
   in 
@@ -1199,6 +1297,12 @@ let ()  =
      * term of server1, it should then 
      * increments its current term. 
      *) 
+
+  assert(No_leader::[] = notification);
+    (* 
+     * The change of term means that there are no current [Leader] 
+     * for it yet. 
+     *)
 
   assert(1 = List.length msgs); 
     (* 
@@ -1220,17 +1324,20 @@ let ()  =
   ) 
   | _  -> assert(false)
   end;
-
   
   (* 
    * Let's now have server1 starts a new election. 
+   *
+   * -------------------------------------------------------------------------- 
    *) 
 
   let now = now +. default_configuration.election_timeout in 
 
-  let server1, msgs = 
+  let server1, msgs, notifications = 
     Raft_logic.handle_new_election_timeout server1 now 
   in 
+
+  assert([] = notifications);
 
   assert(State.is_candidate server1); 
   assert(3 = server1.current_term);
@@ -1247,8 +1354,15 @@ let ()  =
     | _ -> assert(false)
     end
   ) msgs; 
+  
+  (* 
+   * Let's communicate the [Request_vote] from server1 to server2.
+   * (server0 is still not available)
+   *
+   * -------------------------------------------------------------------------- 
+   *) 
 
-  let server2, msgs = 
+  let server2, msgs, notifications = 
     let msg = msg_for_server msgs 2 in 
     Raft_logic.handle_message server2 msg now 
   in 
@@ -1263,6 +1377,12 @@ let ()  =
      *)
 
   assert(3 = server2.current_term);
+
+  assert([] = notifications); 
+    (* 
+     * Server2 already knew there was no [Leader] since it was a candidate
+     * in the previous term and never got elected. 
+     *)
 
   assert(1 = List.length msgs); 
 
@@ -1284,13 +1404,16 @@ let ()  =
   (* 
    * Let's now handle the successful vote response from 
    * server2. 
-   *)
+   *
+   * -------------------------------------------------------------------------- 
+   *) 
 
-  let server1, msgs =
+  let server1, msgs, notifications =
     let msg = msg_for_server msgs 1 in  
     Raft_logic.handle_message server1 msg now 
   in 
 
+  assert((New_leader {leader_id = 1})::[] = notifications);
   assert(State.is_leader server1); 
     (* 
      * One vote is enough to become a [Leader].
@@ -1326,14 +1449,21 @@ let ()  =
     | _ -> assert(false)
   ) msgs;
 
+  (* 
+   * Let's now propagate the first [Append_entries] from server1  which shall
+   * establish its leadership.
+   *
+   * -------------------------------------------------------------------------- 
+   *) 
 
   let now = now +.  0.001 in 
 
-  let server2, msgs = 
+  let server2, msgs, notifications = 
     let msg = msg_for_server msgs 2 in 
     Raft_logic.handle_message server2 msg now
   in
 
+  assert((New_leader {leader_id = 1})::[] = notifications);
   assert(State.is_follower server2);
   assert(3 = server2.current_term);
 
@@ -1361,18 +1491,22 @@ let ()  =
   end;
 
   (*
-   * Let's propagate that response back to server1. 
+   * Let's propagate that unsuccessful response back to server1. 
+   *
+   * -------------------------------------------------------------------------- 
    *)
 
   let now = now +. 0.001 in
 
-  let server1, msgs = 
+  let server1, msgs, notifications = 
     let msg = msg_for_server msgs 1 in 
     Raft_logic.handle_message server1 msg now
   in
 
   assert(State.is_leader server1);
   assert(3 = server1.current_term);
+
+  assert([] = notifications);
 
   assert(1 = List.length msgs);
     (*
@@ -1392,9 +1526,16 @@ let ()  =
   | _ -> assert(false)
   end;
 
+  (* 
+   * Let's communicate this new [Append_entries] (with the 3rd log entry) request 
+   * to server1
+   *
+   * -------------------------------------------------------------------------- 
+   *)
+
   let now = now +. 0.001 in 
   
-  let server2, msgs = 
+  let server2, msgs, notifications = 
     let msg = msg_for_server msgs 2 in 
     Raft_logic.handle_message server2 msg now
   in
@@ -1405,6 +1546,12 @@ let ()  =
   assert(3 = List.length server2.log); 
     (* 
      * server2 has correctly replicated the 3rd [log_entry]. 
+     *)
+
+  assert([] = notifications);
+  assert(2  = server2.commit_index); 
+    (*  The 3rd log while succesfully replicated is not  yet 
+     *  commited.
      *)
 
   assert(1 = List.length msgs); 
@@ -1424,10 +1571,16 @@ let ()  =
   | _ -> assert(false)
   end;
 
+  (*
+   * Let's communicate the successful [Append_entries] response back to 
+   * server1.
+   *
+   * -------------------------------------------------------------------------- 
+   *)
 
   let now = now +. 0.001  in 
 
-  let server1, msgs = 
+  let server1, msgs, notifications = 
     let msg = msg_for_server msgs 1 in 
     Raft_logic.handle_message server1 msg now 
   in
@@ -1435,6 +1588,7 @@ let ()  =
   assert(State.is_leader server1);
   assert(3 = server1.current_term);
 
+  assert((Committed_data {ids = ["c"]})::[] = notifications);
   assert(3 = server1.commit_index);
     (*
      * The 3rd [log_entry] has been replicated one one other 

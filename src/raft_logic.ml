@@ -149,10 +149,6 @@ let handle_request_vote_request state request now =
       if candidate_term > state.current_term
       then 
         Follower.become ~term:candidate_term ~now state
-        (* TODO [NOTIFICATION]: No_leader notification should be added 
-         * here, provided that the previous state was follower
-         * with a leader assigned. 
-         *)
       else 
         state
     in
@@ -215,16 +211,6 @@ let handle_request_vote_response state response now =
      *
      *)
     let state = Follower.become ~term:voter_term ~now state in
-    (* TODO [NOTIFICATION] this function will 
-     * return notifications that we should propagate.
-     *
-     * AFAIK, notification should be empty since this server is already
-     * a candidate and therefore the [No_leader] notication 
-     * would have been computed then. Even if the voter_term is 
-     * greated it does not mean there is a [New_leader], (only when 
-     * receiving an [Append_entries] request would you know that there is
-     * a new leader. 
-     *)
     (state, [])
 
   else
@@ -239,9 +225,6 @@ let handle_request_vote_response state response now =
          *
          *)
         let state = Leader.become state now in
-        (* TODO [NOTIFICATION] add [New_leader] here, or make 
-         * it generated from [Leader.become].
-         *)
 
         (*
          * As a new leader, the server must send Append entries request
@@ -310,9 +293,6 @@ let handle_append_entries_request state request now =
      * let's ensure that this server is a follower.
      *)
     let state  = Follower.become ~current_leader:leader_id ~term:leader_term ~now state in
-    (* TODO [NOTIFICATION] this function will return new notification
-     * in case the current leader is a new one.
-     *)
 
     (* Next step is to handle the log entries from the leader.
      *
@@ -340,9 +320,6 @@ let handle_append_entries_request state request now =
       then {state with
         commit_index = min leader_commit receiver_last_log_index
       }
-        (* TODO [NOTIFICATION] this is where we should 
-         * compute the [Committed_data] notification. 
-         *)
       else state
     in
 
@@ -369,8 +346,6 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
      * it must convert to a follower and update to that term.
      *)
     let state = Follower.become ~term:receiver_term ~now state in
-    (* TODO [NOTIFICATION], this might return No_leader notification 
-     *)
     (state, [])
 
   else
@@ -411,8 +386,6 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
              receiver_last_log_index > state.commit_index
           then 
             receiver_last_log_index
-            (* TODO [NOTIFICATION] Should return a new [Committed_data] notification.
-             *)
           else 
             state.commit_index
         in
@@ -453,20 +426,23 @@ let make_initial_state ~configuration ~now ~id () =
   Follower.create ~configuration ~now ~id ()
 
 let handle_message state message now =
-  match message with
-  | Request_vote_request ({candidate_id; _ } as r) ->
-    let state, response = handle_request_vote_request state r now in
-    (state, [(Request_vote_response response, candidate_id)])
+  let state', message_to_send = 
+    match message with
+    | Request_vote_request ({candidate_id; _ } as r) ->
+      let state, response = handle_request_vote_request state r now in
+      (state, [(Request_vote_response response, candidate_id)])
 
-  | Append_entries_request ({leader_id; _ } as r) ->
-    let state, response = handle_append_entries_request state r now in
-    (state, [(Append_entries_response response, leader_id)])
+    | Append_entries_request ({leader_id; _ } as r) ->
+      let state, response = handle_append_entries_request state r now in
+      (state, [(Append_entries_response response, leader_id)])
 
-  | Request_vote_response r ->
-    handle_request_vote_response state r now
+    | Request_vote_response r ->
+      handle_request_vote_response state r now
 
-  | Append_entries_response r ->
-    handle_append_entries_response state r now
+    | Append_entries_response r ->
+      handle_append_entries_response state r now
+  in
+  (state', message_to_send , State.notifications state state')
 
 (* Iterates over all the other server ids. (ie the ones different
  * from the state id).
@@ -483,14 +459,14 @@ let fold_over_servers f e0 {id; configuration = {nb_of_server;_ }; _ } =
   aux e0 (nb_of_server - 1)
 
 let handle_new_election_timeout state now =
-  let state = Candidate.become ~now state in
+  let state' = Candidate.become ~now state in
   let msgs  =
     fold_over_servers (fun acc server_id ->
-      let request = make_request_vote_request state  in
+      let request = make_request_vote_request state' in
       (Request_vote_request request, server_id) :: acc
-    ) [] state
+    ) [] state'
   in
-  (state, msgs)
+  (state', msgs, State.notifications state state')
 
 let handle_heartbeat_timeout ({role; configuration; _ } as state) now =
   match state.role with
