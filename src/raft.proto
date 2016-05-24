@@ -374,8 +374,22 @@ message LogIntervalRope {
 message LogInterval {
   required int32    prev_index      = 1; 
   required int32    prev_term       = 2; 
-  repeated LogEntry rev_log_entries = 3;  
-  required int32    last_index      = 4;
+  required int32    last_index      = 3;
+ 
+  message Compacted { 
+    required string record_id = 1;
+      // A Unique identifier to find the LogInterval in 
+      // the permanent storage
+  }
+
+  message Expanded {
+    repeated LogEntry entries = 1;
+  }
+
+  oneof rev_log_entries {
+    Compacted compacted = 4;
+    Expanded  expanded  = 5;
+  }
 }
 
 // [ServerIndex]
