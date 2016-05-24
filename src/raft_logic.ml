@@ -35,7 +35,12 @@ module Log_entry_util = struct
 
     let max = state.configuration.max_nb_logs_per_message in
 
-    let rev_log_entries = keep_first_n local_cache.rev_log_entries max in
+    let rev_log_entries = 
+      match local_cache.rev_log_entries with
+      | Compacted _ -> [] 
+      | Expanded {entries} -> 
+        keep_first_n entries max 
+    in
 
     let request = {
       leader_term = state.current_term;

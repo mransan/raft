@@ -6,6 +6,9 @@ module Rev_log_cache = struct
   
   let  size = 10_000 
 
+  let make_expanded entries = 
+    Expanded {entries}
+
   let make since log = 
     
     let last_index = 
@@ -18,14 +21,24 @@ module Rev_log_cache = struct
       | [] ->
         if since = 0 
         then 
-          {prev_index =0; prev_term =0; rev_log_entries; last_index}
+          {
+            prev_index =0; 
+            prev_term =0; 
+            rev_log_entries = make_expanded rev_log_entries; 
+            last_index
+          }
         else begin  
           Printf.eprintf "[Raft_logic] Internal error invalid log index\n%!";
           failwith "[Raft_logic] Internal error invalid log index"
         end
   
       | {index; term; _ }::tl when index = since -> 
-        {prev_index = index; prev_term = term; rev_log_entries; last_index}
+        {
+          prev_index = index; 
+          prev_term = term; 
+          rev_log_entries = make_expanded rev_log_entries; 
+          last_index
+        }
   
       | hd::tl -> aux (hd::rev_log_entries) tl  
     in
@@ -120,23 +133,30 @@ module Rev_log_cache = struct
     if since = prev_index 
     then t 
     else 
-      let rec aux = function
-        | [] -> (
-          Printf.eprintf "[Raft_logic] Internal error invalid log index\n%!";
-          failwith "[Raft_logic] Internal error invalid log index"
-        )
-          (* 
-           * The caller should have called [contains_next_of] 
-           * to ensure that this cache contains data next to [since].
-           *)
+      match rev_log_entries with
+      | Compacted _ -> t 
+      | Expanded  {entries } ->
+        let rec aux = function
+          | [] -> (
+            Printf.eprintf "[Raft_logic] Internal error invalid log index\n%!";
+            failwith "[Raft_logic] Internal error invalid log index"
+          )
+            (* 
+             * The caller should have called [contains_next_of] 
+             * to ensure that this cache contains data next to [since].
+             *)
 
-        | {index; term; _}::tl when index = since ->
-          {t with prev_index = index; prev_term = term; rev_log_entries = tl; } 
+          | {index; term; _}::tl when index = since ->
+            {t with 
+             prev_index = index; 
+             prev_term = term; 
+             rev_log_entries = make_expanded tl; 
+            } 
 
-        | _::tl ->
-          aux tl 
-      in 
-      aux rev_log_entries 
+          | _::tl ->
+            aux tl 
+        in 
+        aux entries
   
   let rec find i = function
     | Interval ({prev_index; _ } as interval) -> (
@@ -159,7 +179,7 @@ module Rev_log_cache = struct
     | [] -> {
       prev_index = 0; 
       prev_term = 0;
-      rev_log_entries = [];
+      rev_log_entries = make_expanded [];
       last_index = 0;
     }
     | {index; _}::_ -> 
@@ -187,6 +207,15 @@ module Rev_log_cache = struct
             else 
               sub since @@ find since t 
 
+  let fold f e0 rope = 
+    let rec aux acc = function
+      | Interval log_interval -> 
+        f acc log_interval
+
+      | Append {lhs;rhs; _} ->
+        aux (aux acc lhs) rhs 
+    in
+    aux e0 rope
 
 end (* Rev_log_cache *) 
 
@@ -375,11 +404,76 @@ module State = struct
     in 
     notifications
 
-    let current_leader {id; role; _} = 
+  let current_leader {id; role; _} = 
       match role with
       | Follower {current_leader; _ }-> current_leader
       | Candidate _ -> None 
       | Leader _ -> Some id 
+
+  let collect_all_non_compacted_logs state = 
+    match state.global_cache with
+    | None -> []
+    | Some gc -> 
+      Rev_log_cache.fold (fun acc -> function
+        | {rev_log_entries = Compacted _; _} -> acc 
+        | log_interval -> log_interval::acc 
+      ) [] gc 
+
+  let compaction state = 
+
+    let non_compacted = collect_all_non_compacted_logs state in 
+
+    match state.role with
+    | Candidate _ -> []
+    | Follower  _ -> 
+      begin match non_compacted with
+      | _::_::to_be_compacted -> to_be_compacted 
+      (* 
+       * We don't want to compact the last 2 logs ... first 
+       * the machine memory should have enough capacity (hopefully)
+       * second in the event that this Follower become a Leader it's likely
+       * that it will have to sync other followers which will have less entries
+       * than itself. Therefore having the last 2 cache available would avoid
+       * reloading compacted logs. 
+       *
+       * We also assume that a Follower would never need to un-compact a previously
+       * compacted log which is Ok since it is not used by other Followers to replicate
+       * data. (Maybe one day we would allow a [Follower] to be used to return previously 
+       * commited log, since a follower is usually less busy then the [Leader]. 
+       *) 
+      | _ -> []
+      end
+
+    | Leader {indices} -> []
+      (* For each server next_index we should keep expanded 2 log intervals:
+       * a) The one that the next index belongs to 
+       * b) The next one after a)
+       *
+       * This strategy should allow detecting early enough the log interval which needs 
+       * un-compacting while still maitainig memory usage low enough. 
+       * In the worst case the number of logs kept uncompacted would be:
+       *         (nb of servers - 1) * 2 * Rev_log_cache.size  
+       *
+       * All other logs should be compacted
+       *
+       * > Note that we should make this `2` value part of the configuration. 
+       *
+       * Algorithm:
+       * 
+       * a) find the 2 log interval defined above for each next index. 
+       *    > complexity is log(nb of log interval) 
+       *
+       * b) if any of those log interval are compacted, return `Expand` notification
+       *    > complexity is proportional to nb of servers. 
+       *
+       * c) if 
+       *      - Su is the set of log interval to be uncompacted 
+       *      - A  is the set of the log intervals 
+       *    then iterate through [A - Su] and add `Compact` notification if those 
+       *    log intervals are expande.
+       *
+       *    > complexity is linear with the number of log interval
+       *)
 end 
 
 
