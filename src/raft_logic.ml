@@ -1,12 +1,12 @@
 
 open Raft_pb
 
-module State            = Raft_helper.State
-module Follower         = Raft_helper.Follower
-module Candidate        = Raft_helper.Candidate
-module Leader           = Raft_helper.Leader
+module State            = Raft_state
+module Follower         = Raft_role.Follower
+module Candidate        = Raft_role.Candidate
+module Leader           = Raft_role.Leader
 module Configuration    = Raft_helper.Configuration
-module Rev_log_cache    = Raft_helper.Rev_log_cache
+module Rev_log_cache    = Raft_revlogcache
 module Timeout_event    = Raft_helper.Timeout_event
 
 type time = float

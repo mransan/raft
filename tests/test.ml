@@ -1,9 +1,9 @@
 open Raft_pb
 
-module State     = Raft_helper.State 
-module Candidate = Raft_helper.Candidate
-module Follower  = Raft_helper.Follower
-module Leader    = Raft_helper.Leader 
+module State     = Raft_state
+module Candidate = Raft_role.Candidate
+module Follower  = Raft_role.Follower
+module Leader    = Raft_role.Leader 
 module Timeout_event = Raft_helper.Timeout_event 
 
 module Logic     = Raft_logic  
