@@ -283,9 +283,27 @@ module State = struct
 
   let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state = 
 
-    assert(prev_log_index >= state.commit_index);
-    (* This is an invariant of the RAFT protocol. If this was not true
-     * then we would remove commited entries from the log. 
+    (* --------------------------------------------------------
+     * ? assert(prev_log_index >= (state.commit_index - 1));  ?
+     * --------------------------------------------------------
+     *
+     * We cannot make the assertion above since it is possible 
+     * that an [Append_entries] request would be sent twice (either 
+     * mistake from [Leader] or the network will duplicate). 
+     *
+     * In such a case the first is likely to increase the commit index
+     * of the [Follower] to a value greated than the [prev_log_index]. So 
+     * on the second request it will fail
+     * 
+     * Ti    commit_index = x , prev_log_index x + 10 
+     * Ti+1  request with leader_commit = x + 20 , and 100 logs added  
+     * Ti+2  commit_index = x + 20, prev_log_index x + 110 
+     * Ti+3  duplicate of Ti+1 request 
+     * >>    We can see now that commit_index > prev_log_index 
+     *
+     * What we actually need to verify is that all the logs being 
+     * sent are the same as the previous ones! This code was there 
+     * in a previous implementation. 
      *)
     
     (* This functions merges the request log entries with the
