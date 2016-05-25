@@ -4,18 +4,29 @@ module Rev_log_cache = struct
 
   type local_cache = Raft_pb.log_interval
   
-  let  size = 10_000 
-
   let make_expanded entries = 
     Expanded {entries}
 
-  let make since log = 
+  let make ?until ~since log = 
     
-    let last_index = 
-      match log with
-      | {index;_}::_ -> index
-      | _ -> 0
-    in
+    let last_index, log = 
+      match until with
+      | None -> 
+        let last_index = 
+          match log with
+          | {index;_}::_ -> index
+          | _ -> 0
+        in
+        (last_index, log) 
+
+      | Some until -> 
+        let rec aux = function
+          | ({index; _ }::tl) as log when index = until -> log  
+          | _::tl -> aux tl 
+          | [] -> []
+        in
+        (until, aux log) 
+    in 
 
     let rec aux rev_log_entries = function
       | [] ->
@@ -62,20 +73,22 @@ module Rev_log_cache = struct
       | None -> 0 
       | Some gc -> last_cached_index gc 
     in 
-    match state.log with 
-    | [] -> state
-      (* 
-       * Leader contains no log -> no cache to build. 
-       *)
+  
+    (* We can only cache the logs which are commited
+     *)
 
-    | {index;_}::tl when (index - since) > size -> 
+    let commit_index = state.commit_index in 
+    if commit_index - since < state.configuration.log_interval_size
+    then state
+    else 
+
       (* 
        * The cache threshold is reached, let's 
        * append to the cache a new log interval with 
        * all the logs since the last cache update.
        *)
 
-      let new_interval = Interval (make since state.log) in 
+      let new_interval = Interval (make ~until:commit_index ~since state.log) in 
       let last_index   = last_cached_index new_interval in 
 
       let rope_height = function
@@ -112,10 +125,6 @@ module Rev_log_cache = struct
       in  
       {state with global_cache = Some gc}
 
-    | _ -> state 
-      (* 
-       * Not enough log to perform a cache build 
-       *)
 
   (*
    * Returns true if the local cache contains at least one 
@@ -207,15 +216,18 @@ module Rev_log_cache = struct
             else 
               sub since @@ find since t 
 
-  let fold f e0 rope = 
-    let rec aux acc = function
-      | Interval log_interval -> 
-        f acc log_interval
+  let fold f e0 global_cache = 
+    match global_cache with
+    | None -> e0
+    | Some rope ->
+      let rec aux acc = function
+        | Interval log_interval -> 
+          f acc log_interval
 
-      | Append {lhs;rhs; _} ->
-        aux (aux acc lhs) rhs 
-    in
-    aux e0 rope
+        | Append {lhs;rhs; _} ->
+          aux (aux acc lhs) rhs 
+      in
+      aux e0 rope
 
 end (* Rev_log_cache *) 
 
@@ -270,6 +282,11 @@ module State = struct
     Rev_log_cache.update_global_cache {state with log; log_size; }
 
   let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state = 
+
+    assert(prev_log_index >= state.commit_index);
+    (* This is an invariant of the RAFT protocol. If this was not true
+     * then we would remove commited entries from the log. 
+     *)
     
     (* This functions merges the request log entries with the
      * current log of the server. The current log is first split by
@@ -410,24 +427,23 @@ module State = struct
       | Candidate _ -> None 
       | Leader _ -> Some id 
 
+  (* The latest non compacted log will be at the front 
+   * of the list. 
+   *)
   let collect_all_non_compacted_logs state = 
-    match state.global_cache with
-    | None -> []
-    | Some gc -> 
-      Rev_log_cache.fold (fun acc -> function
-        | {rev_log_entries = Compacted _; _} -> acc 
-        | log_interval -> log_interval::acc 
-      ) [] gc 
+    Rev_log_cache.fold (fun acc -> function
+      | {rev_log_entries = Compacted _; _} -> acc 
+      | log_interval -> log_interval::acc 
+    ) [] state.global_cache 
 
   let compaction state = 
 
-    let non_compacted = collect_all_non_compacted_logs state in 
-
     match state.role with
-    | Candidate _ -> []
+    | Candidate _ -> ([], [])
     | Follower  _ -> 
+      let non_compacted = collect_all_non_compacted_logs state in 
       begin match non_compacted with
-      | _::_::to_be_compacted -> to_be_compacted 
+      | _::_::to_be_compacted -> ([], to_be_compacted) 
       (* 
        * We don't want to compact the last 2 logs ... first 
        * the machine memory should have enough capacity (hopefully)
@@ -441,10 +457,10 @@ module State = struct
        * data. (Maybe one day we would allow a [Follower] to be used to return previously 
        * commited log, since a follower is usually less busy then the [Leader]. 
        *) 
-      | _ -> []
+      | _ -> ([], [])
       end
 
-    | Leader {indices} -> []
+    | Leader {indices} -> 
       (* For each server next_index we should keep expanded 2 log intervals:
        * a) The one that the next index belongs to 
        * b) The next one after a)
@@ -458,22 +474,42 @@ module State = struct
        *
        * > Note that we should make this `2` value part of the configuration. 
        *
-       * Algorithm:
-       * 
-       * a) find the 2 log interval defined above for each next index. 
-       *    > complexity is log(nb of log interval) 
-       *
-       * b) if any of those log interval are compacted, return `Expand` notification
-       *    > complexity is proportional to nb of servers. 
-       *
-       * c) if 
-       *      - Su is the set of log interval to be uncompacted 
-       *      - A  is the set of the log intervals 
-       *    then iterate through [A - Su] and add `Compact` notification if those 
-       *    log intervals are expande.
-       *
-       *    > complexity is linear with the number of log interval
        *)
+
+      let next_indices = 
+        let cmp (x:int) (y:int) = compare x y in 
+        indices
+        |> List.map (fun {next_index; _ } -> next_index)
+        |> List.sort_uniq cmp
+      in
+
+      let ((c, e,_ ), _) = Rev_log_cache.fold (fun ((c, e, append_next), next_indices) log_interval -> 
+
+        match next_indices with
+        | [] -> 
+          if append_next
+          then ((c, log_interval::e, false), next_indices)
+          else ((log_interval::c, e, false), next_indices)
+
+        | next_index::tl ->
+          if Rev_log_cache.contains_next_of next_index log_interval
+          then ((c, log_interval::e, true), tl)
+          else 
+            begin 
+              assert(next_index > log_interval.last_index);
+              if append_next
+              then ((c, log_interval::e, false), next_indices)
+              else ((log_interval::c, e, false), next_indices)
+            end 
+      ) (([], [], false), next_indices) state.global_cache in 
+
+      let is_compacted = function | {rev_log_entries = Compacted _ ; _ } -> true | _ -> false in 
+      let is_expanded  = function | {rev_log_entries = Expanded  _ ; _ } -> true | _ -> false in 
+
+      let c = List.filter is_expanded  c in 
+      let e = List.filter is_compacted e in 
+      (e, c)
+
 end 
 
 
@@ -562,7 +598,7 @@ module Leader = struct
         else 
           let next_index = last_log_index + 1 in 
           let match_index = 0 in 
-          let local_cache = Rev_log_cache.make last_log_index state.log in
+          let local_cache = Rev_log_cache.make ~since:last_log_index state.log in
 
           let index:server_index = {
             server_id = i; 

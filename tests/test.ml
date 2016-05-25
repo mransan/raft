@@ -9,13 +9,14 @@ module Timeout_event = Raft_helper.Timeout_event
 module Logic     = Raft_logic  
 
 let default_configuration = {
-  nb_of_server           = 3; 
-  election_timeout       = 0.1;
+  nb_of_server = 3; 
+  election_timeout = 0.1;
   election_timeout_range = 0.0; 
     (* To get deterministic number for testing.
      *) 
-  hearbeat_timeout       = 0.02;
+  hearbeat_timeout = 0.02;
   max_nb_logs_per_message = 10;
+  log_interval_size = 5;
 }
 
 let initial_state  

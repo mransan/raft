@@ -187,6 +187,7 @@ type configuration = {
   election_timeout_range : float;
   hearbeat_timeout : float;
   max_nb_logs_per_message : int;
+  log_interval_size : int;
 }
 
 and configuration_mutable = {
@@ -195,6 +196,7 @@ and configuration_mutable = {
   mutable election_timeout_range : float;
   mutable hearbeat_timeout : float;
   mutable max_nb_logs_per_message : int;
+  mutable log_interval_size : int;
 }
 
 type log_interval_rope =
@@ -510,12 +512,14 @@ let rec default_configuration
   ?election_timeout_range:((election_timeout_range:float) = 0.)
   ?hearbeat_timeout:((hearbeat_timeout:float) = 0.)
   ?max_nb_logs_per_message:((max_nb_logs_per_message:int) = 0)
+  ?log_interval_size:((log_interval_size:int) = 0)
   () : configuration  = {
   nb_of_server;
   election_timeout;
   election_timeout_range;
   hearbeat_timeout;
   max_nb_logs_per_message;
+  log_interval_size;
 }
 
 and default_configuration_mutable () : configuration_mutable = {
@@ -524,6 +528,7 @@ and default_configuration_mutable () : configuration_mutable = {
   election_timeout_range = 0.;
   hearbeat_timeout = 0.;
   max_nb_logs_per_message = 0;
+  log_interval_size = 0;
 }
 
 let rec default_log_interval_rope () : log_interval_rope = Interval (default_log_interval ())
@@ -1186,6 +1191,13 @@ let rec decode_configuration d =
     | Some (5, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(5)", pk))
     )
+    | Some (6, Pbrt.Varint) -> (
+      v.log_interval_size <- Pbrt.Decoder.int_as_varint d;
+      loop ()
+    )
+    | Some (6, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(6)", pk))
+    )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
@@ -1653,6 +1665,8 @@ let rec encode_configuration (v:configuration) encoder =
   Pbrt.Encoder.float_as_bits64 v.hearbeat_timeout encoder;
   Pbrt.Encoder.key (5, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.max_nb_logs_per_message encoder;
+  Pbrt.Encoder.key (6, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.log_interval_size encoder;
   ()
 
 let rec encode_log_interval_rope (v:log_interval_rope) encoder = 
@@ -1936,6 +1950,7 @@ let rec pp_configuration fmt (v:configuration) =
     Pbrt.Pp.pp_record_field "election_timeout_range" Pbrt.Pp.pp_float fmt v.election_timeout_range;
     Pbrt.Pp.pp_record_field "hearbeat_timeout" Pbrt.Pp.pp_float fmt v.hearbeat_timeout;
     Pbrt.Pp.pp_record_field "max_nb_logs_per_message" Pbrt.Pp.pp_int fmt v.max_nb_logs_per_message;
+    Pbrt.Pp.pp_record_field "log_interval_size" Pbrt.Pp.pp_int fmt v.log_interval_size;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

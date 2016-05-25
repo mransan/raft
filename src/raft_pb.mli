@@ -106,6 +106,7 @@ type configuration = {
   election_timeout_range : float;
   hearbeat_timeout : float;
   max_nb_logs_per_message : int;
+  log_interval_size : int;
 }
 
 type log_interval_rope =
@@ -286,6 +287,7 @@ val default_configuration :
   ?election_timeout_range:float ->
   ?hearbeat_timeout:float ->
   ?max_nb_logs_per_message:int ->
+  ?log_interval_size:int ->
   unit ->
   configuration
 (** [default_configuration ()] is the default value for type [configuration] *)
