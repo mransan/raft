@@ -1,3 +1,6 @@
 Raft_pb
 Raft_helper
 Raft_logic
+Raft_state
+Raft_role
+Raft_revlogcache

@@ -1,21 +1,22 @@
 open Raft_pb
 
-module State     = Raft_helper.State 
-module Candidate = Raft_helper.Candidate
-module Follower  = Raft_helper.Follower
-module Leader    = Raft_helper.Leader 
+module State     = Raft_state
+module Candidate = Raft_role.Candidate
+module Follower  = Raft_role.Follower
+module Leader    = Raft_role.Leader 
 module Timeout_event = Raft_helper.Timeout_event 
 
 module Logic     = Raft_logic  
 
 let default_configuration = {
-  nb_of_server           = 3; 
-  election_timeout       = 0.1;
+  nb_of_server = 3; 
+  election_timeout = 0.1;
   election_timeout_range = 0.0; 
     (* To get deterministic number for testing.
      *) 
-  hearbeat_timeout       = 0.02;
+  hearbeat_timeout = 0.02;
   max_nb_logs_per_message = 10;
+  log_interval_size = 5;
 }
 
 let initial_state  
@@ -1509,6 +1510,7 @@ let ()  =
   assert([] = notifications);
 
   assert(1 = List.length msgs);
+  assert(2 = server1.commit_index);
     (*
      * A new request for server2 has been computed which 
      * should now contain the 3rd [log_entry]
@@ -1521,6 +1523,9 @@ let ()  =
     assert(r.prev_log_index = 2);
     assert(r.prev_log_term = 1);
     assert(1 = List.length r.rev_log_entries); 
+     (* The missing 3rd log entry is now part of the 
+      * request for server2 to catch up
+      *)
     assert(r.leader_commit = 2);
   )
   | _ -> assert(false)
@@ -1598,4 +1603,265 @@ let ()  =
 
   assert([] = msgs);
 
+
+  (*
+   * Let's now add 2 log entry at a time which would 
+   * make a total of 5 log entries. 
+   *
+   * We have set the log_interval_size to be 5, which mean that 
+   * a new log interval should be added to the cache after those 
+   * 2 entries were commited. 
+   *
+   *)
+
+  let new_log_response = 
+    let datas = [
+      (Bytes.of_string "Message4", "d"); 
+      (Bytes.of_string "Message5", "e");
+    ] in 
+    Raft_logic.handle_add_log_entries server1 datas now 
+  in
+
+  let server1, data45_msgs = 
+    let open Raft_logic in 
+    match new_log_response with
+    | Appended (state, msgs) -> (state, msgs) 
+    | Delay | Forward_to_leader _ -> assert(false)
+  in 
+
+  assert(5 = List.length server1.log);
+  assert(5 = State.last_log_index server1); 
+
+  assert(3 = server1.commit_index); 
+    (* The 2 logs have not been commited.
+     *)
+
+  assert(None = server1.global_cache);
+    (* Only 3 logs have been commited, this is less than 
+     * the [log_interval_size] so the global_cache
+     * is still empty.
+     *)
+
+  assert(2 = List.length data45_msgs);
+
+  List.iter (fun (msg, _) ->
+
+    match msg with
+    | Append_entries_request r -> ( 
+      let {
+        leader_term;
+        leader_id;
+        prev_log_index;
+        prev_log_term;
+        rev_log_entries;
+        leader_commit;
+      } =  r in 
+      assert(3 = leader_term);
+      assert(1 = leader_id);
+      assert(prev_log_index = 3);
+      assert(prev_log_term  = 1);
+      assert(2 = List.length rev_log_entries); 
+      assert(3 = leader_commit);
+    )
+    | _ -> assert(false);
+  ) data45_msgs;
+  
+  (*
+   * Server0 is still crashed, server2 is good so let's send the latest [Append_entries] 
+   * request.
+   *
+   * -------------------------------------------------------------------------- 
+   *)
+  
+  let now = now +. 0.001  in 
+
+  let server2, msgs, notifications = 
+    let msg = msg_for_server data45_msgs 2 in 
+    Raft_logic.handle_message server2 msg now 
+  in
+
+  assert(State.is_follower server2);
+  assert(3 = server2.current_term);
+
+  assert(5 = List.length server2.log);
+    (* The last 2 logs where succesfully replicated
+     *)
+  begin match server2.log with
+  | {data; _ } :: _ -> 
+    assert((Bytes.of_string "Message5") = data);
+    (* Let's make sure the order was properly replicated.
+     *)
+  | _ -> assert(false);
+  end;
+
+  assert(3 = server2.commit_index); 
+    (* Replicated from server1, previous one was 2 so we 
+     * can expect a notification.
+     *)
+
+  assert(1 = List.length notifications); 
+  begin match notifications with
+  | (Committed_data {ids = ["c"] }) :: [] -> ()
+  | _ -> assert(false);
+  end;
+  
+  begin match msgs with
+  | (Append_entries_response r, 1) :: [] -> (
+    let {
+      receiver_id;
+      receiver_term;
+      result;
+    } = r in 
+    assert(2 = receiver_id);
+    assert(3 = receiver_term);
+    assert(Success {receiver_last_log_index = 5} = result);
+  )
+  | _ -> assert(false);
+  end;
+
+  (* 
+   * Let's now communicate that succesful response to server1
+   * which should now have a commit index 
+   *
+   * -------------------------------------------------------------------------- 
+   *)
+  
+  let now = now +. 0.001  in 
+
+  let server1, msgs, notifications = 
+    let msg = msg_for_server msgs 1 in 
+    Raft_logic.handle_message server1 msg now 
+  in
+
+  assert(5 = server1.commit_index);
+  assert([] = msgs);
+  assert(1 = List.length notifications);
+
+  begin match notifications with
+  | (Committed_data {ids}) :: [] ->
+    assert(2 = List.length ids);
+  | _ -> assert(false);
+  end;
+
+  (* Now this is an implementation detail but the current implementation
+   * only triggers the update of the global cache upon adding new logs
+   * rather than on commit index increments. 
+   *
+   * The test of the cache is not something that a client API should
+   * rely upon, therefore those test might change in the future.
+   *
+   * -------------------------------------------------------------------------- 
+   *)
+  let new_log_response = 
+    let datas = [
+      (Bytes.of_string "Message6", "f"); 
+    ] in 
+    Raft_logic.handle_add_log_entries server1 datas now 
+  in
+
+  let server1, data6_msgs = 
+    let open Raft_logic in 
+    match new_log_response with
+    | Appended (state, msgs) -> (state, msgs) 
+    | Delay | Forward_to_leader _ -> assert(false)
+  in 
+
+  assert(5 = server1.commit_index);
+  assert(1 = List.length data6_msgs);
+    (* Note that server0 still has an outstanding requests so 
+     * new ones are sent.
+     *)
+
+  begin match server1.global_cache with
+  | None -> assert(false)
+  | Some (Interval {prev_index; prev_term; rev_log_entries; last_index}) ->
+    (* The commit_index is 5 and the previously cached index is 0 (ie no cache), 
+     * since our configure log_interval_size is 5, a new [LogInterval] should
+     * be appended. 
+     *
+     * Since the cache was previously empty then it should just be a single
+     * interval with the 5 log entries in it. 
+     *)
+    assert(0 = prev_index);
+    assert(0 = prev_term);
+    begin match rev_log_entries with
+    | Expanded {entries} -> 
+      assert(5 = List.length entries);
+      assert((List.hd entries).index = 1);
+        (* Make sure that the entries are stored in the reverse order 
+         * (ie earlier first). 
+         *)
+    | _ -> assert(false)
+    end;
+    assert(5 = last_index);
+      (* The last index is included in the cache (unlike prev_index).
+       *)
+  | Some (Append _) -> assert(false)
+  end;
+
+  let now = now +. default_configuration.hearbeat_timeout in 
+
+  let new_log_response = 
+    let datas = [
+      (Bytes.of_string "Message7", "g"); 
+      (Bytes.of_string "Message8", "h"); 
+      (Bytes.of_string "Message9", "i"); 
+      (Bytes.of_string "MessageA", "j"); 
+      (Bytes.of_string "MessageB", "k"); 
+      (Bytes.of_string "MessageC", "l"); 
+    ] in 
+    Raft_logic.handle_add_log_entries server1 datas now 
+  in
+
+  let server1, data7toC_msgs = 
+    let open Raft_logic in 
+    match new_log_response with
+    | Appended (state, msgs) -> (state, msgs) 
+    | Delay | Forward_to_leader _ -> assert(false)
+  in 
+
+  assert(12 = List.length server1.log);
+  assert(5  = server1.commit_index);
+   (* we did not do the [Append_entries] request for the 6th log 
+    * entries so no commit change.
+    *)
+
+  assert(2 = List.length data7toC_msgs); 
+   (* Both server0/server2 have oustanding requests as far as server
+    * is concerned, however we are past the [hearbeat_timeout] so 
+    * new messages must be sent.
+    *)
+
+  (* TODO add checks for the msgs *)
+
+  (* 
+   * Let's send the [Append_entries] to server2 
+   *)
+
+  let server2, msgs, notifications = 
+    let msg = msg_for_server data7toC_msgs 2 in 
+    Raft_logic.handle_message server2 msg now 
+  in
+
+  assert(State.is_follower server2);
+  assert(3 = server2.current_term);
+
+  assert(6 = List.length server2.log);
+    (* TODO explain cache
+     *)
+
+  assert(5 = server2.commit_index); 
+  assert(1 = List.length notifications);
+    (* commit index updated to match server1.
+     * and therefore a new notification with
+     * 2 entries is expected
+     *) 
+  begin match notifications with
+  | (Committed_data {ids})::[] -> assert(2 = List.length ids)
+  | _ -> assert(false)
+  end;
+
+  
+
+    
   ()

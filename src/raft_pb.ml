@@ -99,18 +99,38 @@ type message =
   | Append_entries_request of append_entries_request
   | Append_entries_response of append_entries_response
 
-type log_interval = {
+type log_interval_compacted = {
+  record_id : string;
+}
+
+and log_interval_compacted_mutable = {
+  mutable record_id : string;
+}
+
+type log_interval_expanded = {
+  entries : log_entry list;
+}
+
+and log_interval_expanded_mutable = {
+  mutable entries : log_entry list;
+}
+
+type log_interval_rev_log_entries =
+  | Compacted of log_interval_compacted
+  | Expanded of log_interval_expanded
+
+and log_interval = {
   prev_index : int;
   prev_term : int;
-  rev_log_entries : log_entry list;
   last_index : int;
+  rev_log_entries : log_interval_rev_log_entries;
 }
 
 and log_interval_mutable = {
   mutable prev_index : int;
   mutable prev_term : int;
-  mutable rev_log_entries : log_entry list;
   mutable last_index : int;
+  mutable rev_log_entries : log_interval_rev_log_entries;
 }
 
 type server_index = {
@@ -167,6 +187,7 @@ type configuration = {
   election_timeout_range : float;
   hearbeat_timeout : float;
   max_nb_logs_per_message : int;
+  log_interval_size : int;
 }
 
 and configuration_mutable = {
@@ -175,6 +196,7 @@ and configuration_mutable = {
   mutable election_timeout_range : float;
   mutable hearbeat_timeout : float;
   mutable max_nb_logs_per_message : int;
+  mutable log_interval_size : int;
 }
 
 type log_interval_rope =
@@ -379,23 +401,45 @@ and default_append_entries_response_mutable () : append_entries_response_mutable
 
 let rec default_message () : message = Request_vote_request (default_request_vote_request ())
 
-let rec default_log_interval 
+let rec default_log_interval_compacted 
+  ?record_id:((record_id:string) = "")
+  () : log_interval_compacted  = {
+  record_id;
+}
+
+and default_log_interval_compacted_mutable () : log_interval_compacted_mutable = {
+  record_id = "";
+}
+
+let rec default_log_interval_expanded 
+  ?entries:((entries:log_entry list) = [])
+  () : log_interval_expanded  = {
+  entries;
+}
+
+and default_log_interval_expanded_mutable () : log_interval_expanded_mutable = {
+  entries = [];
+}
+
+let rec default_log_interval_rev_log_entries () : log_interval_rev_log_entries = Compacted (default_log_interval_compacted ())
+
+and default_log_interval 
   ?prev_index:((prev_index:int) = 0)
   ?prev_term:((prev_term:int) = 0)
-  ?rev_log_entries:((rev_log_entries:log_entry list) = [])
   ?last_index:((last_index:int) = 0)
+  ?rev_log_entries:((rev_log_entries:log_interval_rev_log_entries) = Compacted (default_log_interval_compacted ()))
   () : log_interval  = {
   prev_index;
   prev_term;
-  rev_log_entries;
   last_index;
+  rev_log_entries;
 }
 
 and default_log_interval_mutable () : log_interval_mutable = {
   prev_index = 0;
   prev_term = 0;
-  rev_log_entries = [];
   last_index = 0;
+  rev_log_entries = Compacted (default_log_interval_compacted ());
 }
 
 let rec default_server_index 
@@ -468,12 +512,14 @@ let rec default_configuration
   ?election_timeout_range:((election_timeout_range:float) = 0.)
   ?hearbeat_timeout:((hearbeat_timeout:float) = 0.)
   ?max_nb_logs_per_message:((max_nb_logs_per_message:int) = 0)
+  ?log_interval_size:((log_interval_size:int) = 0)
   () : configuration  = {
   nb_of_server;
   election_timeout;
   election_timeout_range;
   hearbeat_timeout;
   max_nb_logs_per_message;
+  log_interval_size;
 }
 
 and default_configuration_mutable () : configuration_mutable = {
@@ -482,6 +528,7 @@ and default_configuration_mutable () : configuration_mutable = {
   election_timeout_range = 0.;
   hearbeat_timeout = 0.;
   max_nb_logs_per_message = 0;
+  log_interval_size = 0;
 }
 
 let rec default_log_interval_rope () : log_interval_rope = Interval (default_log_interval ())
@@ -869,12 +916,65 @@ let rec decode_message d =
   in
   loop ()
 
-let rec decode_log_interval d =
+let rec decode_log_interval_compacted d =
+  let v = default_log_interval_compacted_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+    )
+    | Some (1, Pbrt.Bytes) -> (
+      v.record_id <- Pbrt.Decoder.string d;
+      loop ()
+    )
+    | Some (1, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_compacted), field(1)", pk))
+    )
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:log_interval_compacted = Obj.magic v in
+  v
+
+let rec decode_log_interval_expanded d =
+  let v = default_log_interval_expanded_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+      v.entries <- List.rev v.entries;
+    )
+    | Some (1, Pbrt.Bytes) -> (
+      v.entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.entries;
+      loop ()
+    )
+    | Some (1, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_expanded), field(1)", pk))
+    )
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:log_interval_expanded = Obj.magic v in
+  v
+
+let rec decode_log_interval_rev_log_entries d = 
+  let rec loop () = 
+    let ret:log_interval_rev_log_entries = match Pbrt.Decoder.key d with
+      | None -> failwith "None of the known key is found"
+      | Some (4, _) -> Compacted (decode_log_interval_compacted (Pbrt.Decoder.nested d))
+      | Some (5, _) -> Expanded (decode_log_interval_expanded (Pbrt.Decoder.nested d))
+      | Some (n, payload_kind) -> (
+        Pbrt.Decoder.skip d payload_kind; 
+        loop () 
+      )
+    in
+    ret
+  in
+  loop ()
+
+and decode_log_interval d =
   let v = default_log_interval_mutable () in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
-      v.rev_log_entries <- List.rev v.rev_log_entries;
     )
     | Some (1, Pbrt.Varint) -> (
       v.prev_index <- Pbrt.Decoder.int_as_varint d;
@@ -890,19 +990,26 @@ let rec decode_log_interval d =
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval), field(2)", pk))
     )
-    | Some (3, Pbrt.Bytes) -> (
-      v.rev_log_entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.rev_log_entries;
+    | Some (3, Pbrt.Varint) -> (
+      v.last_index <- Pbrt.Decoder.int_as_varint d;
       loop ()
     )
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval), field(3)", pk))
     )
-    | Some (4, Pbrt.Varint) -> (
-      v.last_index <- Pbrt.Decoder.int_as_varint d;
+    | Some (4, Pbrt.Bytes) -> (
+      v.rev_log_entries <- Compacted (decode_log_interval_compacted (Pbrt.Decoder.nested d));
       loop ()
     )
     | Some (4, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval), field(4)", pk))
+    )
+    | Some (5, Pbrt.Bytes) -> (
+      v.rev_log_entries <- Expanded (decode_log_interval_expanded (Pbrt.Decoder.nested d));
+      loop ()
+    )
+    | Some (5, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval), field(5)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -1083,6 +1190,13 @@ let rec decode_configuration d =
     )
     | Some (5, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(5)", pk))
+    )
+    | Some (6, Pbrt.Varint) -> (
+      v.log_interval_size <- Pbrt.Decoder.int_as_varint d;
+      loop ()
+    )
+    | Some (6, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(6)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -1447,17 +1561,47 @@ let rec encode_message (v:message) encoder =
     Pbrt.Encoder.nested (encode_append_entries_response x) encoder;
   )
 
-let rec encode_log_interval (v:log_interval) encoder = 
+let rec encode_log_interval_compacted (v:log_interval_compacted) encoder = 
+  Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
+  Pbrt.Encoder.string v.record_id encoder;
+  ()
+
+let rec encode_log_interval_expanded (v:log_interval_expanded) encoder = 
+  List.iter (fun x -> 
+    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_log_entry x) encoder;
+  ) v.entries;
+  ()
+
+let rec encode_log_interval_rev_log_entries (v:log_interval_rev_log_entries) encoder = 
+  match v with
+  | Compacted x -> (
+    Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_log_interval_compacted x) encoder;
+  )
+  | Expanded x -> (
+    Pbrt.Encoder.key (5, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_log_interval_expanded x) encoder;
+  )
+
+and encode_log_interval (v:log_interval) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.prev_index encoder;
   Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.prev_term encoder;
-  List.iter (fun x -> 
-    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_log_entry x) encoder;
-  ) v.rev_log_entries;
-  Pbrt.Encoder.key (4, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (3, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.last_index encoder;
+  (
+    match v.rev_log_entries with
+    | Compacted x -> (
+      Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
+      Pbrt.Encoder.nested (encode_log_interval_compacted x) encoder;
+    )
+    | Expanded x -> (
+      Pbrt.Encoder.key (5, Pbrt.Bytes) encoder; 
+      Pbrt.Encoder.nested (encode_log_interval_expanded x) encoder;
+    )
+  );
   ()
 
 let rec encode_server_index (v:server_index) encoder = 
@@ -1521,6 +1665,8 @@ let rec encode_configuration (v:configuration) encoder =
   Pbrt.Encoder.float_as_bits64 v.hearbeat_timeout encoder;
   Pbrt.Encoder.key (5, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.max_nb_logs_per_message encoder;
+  Pbrt.Encoder.key (6, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.log_interval_size encoder;
   ()
 
 let rec encode_log_interval_rope (v:log_interval_rope) encoder = 
@@ -1724,13 +1870,34 @@ let rec pp_message fmt (v:message) =
   | Append_entries_request x -> Format.fprintf fmt "@[Append_entries_request(%a)@]" pp_append_entries_request x
   | Append_entries_response x -> Format.fprintf fmt "@[Append_entries_response(%a)@]" pp_append_entries_response x
 
-let rec pp_log_interval fmt (v:log_interval) = 
+let rec pp_log_interval_compacted fmt (v:log_interval_compacted) = 
+  let pp_i fmt () =
+    Format.pp_open_vbox fmt 1;
+    Pbrt.Pp.pp_record_field "record_id" Pbrt.Pp.pp_string fmt v.record_id;
+    Format.pp_close_box fmt ()
+  in
+  Pbrt.Pp.pp_brk pp_i fmt ()
+
+let rec pp_log_interval_expanded fmt (v:log_interval_expanded) = 
+  let pp_i fmt () =
+    Format.pp_open_vbox fmt 1;
+    Pbrt.Pp.pp_record_field "entries" (Pbrt.Pp.pp_list pp_log_entry) fmt v.entries;
+    Format.pp_close_box fmt ()
+  in
+  Pbrt.Pp.pp_brk pp_i fmt ()
+
+let rec pp_log_interval_rev_log_entries fmt (v:log_interval_rev_log_entries) =
+  match v with
+  | Compacted x -> Format.fprintf fmt "@[Compacted(%a)@]" pp_log_interval_compacted x
+  | Expanded x -> Format.fprintf fmt "@[Expanded(%a)@]" pp_log_interval_expanded x
+
+and pp_log_interval fmt (v:log_interval) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "prev_index" Pbrt.Pp.pp_int fmt v.prev_index;
     Pbrt.Pp.pp_record_field "prev_term" Pbrt.Pp.pp_int fmt v.prev_term;
-    Pbrt.Pp.pp_record_field "rev_log_entries" (Pbrt.Pp.pp_list pp_log_entry) fmt v.rev_log_entries;
     Pbrt.Pp.pp_record_field "last_index" Pbrt.Pp.pp_int fmt v.last_index;
+    Pbrt.Pp.pp_record_field "rev_log_entries" pp_log_interval_rev_log_entries fmt v.rev_log_entries;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
@@ -1783,6 +1950,7 @@ let rec pp_configuration fmt (v:configuration) =
     Pbrt.Pp.pp_record_field "election_timeout_range" Pbrt.Pp.pp_float fmt v.election_timeout_range;
     Pbrt.Pp.pp_record_field "hearbeat_timeout" Pbrt.Pp.pp_float fmt v.hearbeat_timeout;
     Pbrt.Pp.pp_record_field "max_nb_logs_per_message" Pbrt.Pp.pp_int fmt v.max_nb_logs_per_message;
+    Pbrt.Pp.pp_record_field "log_interval_size" Pbrt.Pp.pp_int fmt v.log_interval_size;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
