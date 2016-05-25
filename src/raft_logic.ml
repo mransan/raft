@@ -322,7 +322,7 @@ let handle_append_entries_request state request now =
        * is taken.
        *)
       if leader_commit > state.commit_index
-      then {state with
+      then Rev_log_cache.update_global_cache {state with
         commit_index = min leader_commit receiver_last_log_index
       }
       else state
@@ -379,7 +379,7 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
           leader_state
         in
 
-        let commit_index =
+        let state =
           (*
            * Check if the received log entry from has reached
            * a majority of server.
@@ -390,14 +390,10 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
           if Configuration.is_majority configuration (nb_of_replications + 1) &&
              receiver_last_log_index > state.commit_index
           then 
-            receiver_last_log_index
+            Rev_log_cache.update_global_cache {state with commit_index = receiver_last_log_index}
           else 
-            state.commit_index
+            state
         in
-        let state = {state with commit_index} in
-          (* TODO [PERFORMANCE] this allocation could be avoided if done in previous 
-           * [if] expression.
-           *)
 
         let leader_state, msgs_to_send = 
           Log_entry_util.compute_append_entries state leader_state now 

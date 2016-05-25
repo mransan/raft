@@ -48,7 +48,7 @@ let add_logs datas state =
 
     aux term last_log_index log log_size datas 
   in 
-  Rev_log_cache.update_global_cache {state with log; log_size; }
+  {state with log; log_size;}
 
 let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state = 
 
@@ -97,7 +97,6 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
 
     let (log_size, log) = aux log_size log rev_log_entries in 
     let state = {state with log ; log_size;} in
-    let state = Rev_log_cache.update_global_cache state in 
     (state, true)
   in
   
