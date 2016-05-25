@@ -599,6 +599,10 @@ module Leader = struct
           let next_index = last_log_index + 1 in 
           let match_index = 0 in 
           let local_cache = Rev_log_cache.make ~since:last_log_index state.log in
+            (* The cache is expected to be empty... which is fine since it will
+             * get filled at when a new log entry will be
+             * added. 
+             *)
 
           let index:server_index = {
             server_id = i; 
