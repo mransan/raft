@@ -225,11 +225,14 @@ let collect_all_non_compacted_logs state =
 let compaction state = 
 
   match state.role with
-  | Candidate _ -> ([], [])
+  | Candidate _ -> 
+    {to_be_expanded = []; to_be_compacted = []}
+
   | Follower  _ -> 
     let non_compacted = collect_all_non_compacted_logs state in 
     begin match non_compacted with
-    | _::_::to_be_compacted -> ([], to_be_compacted) 
+    | _::_::to_be_compacted -> 
+        {to_be_expanded = []; to_be_compacted}
     (* 
      * We don't want to compact the last 2 logs ... first 
      * the machine memory should have enough capacity (hopefully)
@@ -243,7 +246,8 @@ let compaction state =
      * data. (Maybe one day we would allow a [Follower] to be used to return previously 
      * commited log, since a follower is usually less busy then the [Leader]. 
      *) 
-    | _ -> ([], [])
+    | _ -> 
+        {to_be_expanded = []; to_be_compacted = []}
     end
 
   | Leader {indices} -> 
@@ -294,4 +298,4 @@ let compaction state =
 
     let c = List.filter is_expanded  c in 
     let e = List.filter is_compacted e in 
-    (e, c)
+    {to_be_compacted = c; to_be_expanded = e}

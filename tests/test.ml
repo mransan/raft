@@ -5,8 +5,11 @@ module Candidate = Raft_role.Candidate
 module Follower  = Raft_role.Follower
 module Leader    = Raft_role.Leader
 module Timeout_event = Raft_helper.Timeout_event
+module Rev_log_cache = Raft_revlogcache
 
 module Logic     = Raft_logic
+
+let option_val = function | Some x -> x | None -> failwith "option_val" 
 
 let default_configuration = {
   nb_of_server = 3;
@@ -2092,5 +2095,81 @@ let ()  =
     end;
   | _ -> assert(false);
   end;
+
+
+  (*
+   * Compaction test!
+   *
+   * The compaction algorithm will look at where the next 
+   * indices for all followers are with respect to the intervals 
+   * of the global cache. 
+   *
+   * server2 next index = 21 (it has replicated all logs) 
+   * server0 next index = 4  (server0 was down ever since server1
+   *   became leader and therefore its next index is still set to the
+   *   initial value : log size @ election time + 1
+   *
+   * The compaction will then recommend that the log interval to which 
+   * next indices belong to are kept expanded. Additionally the log intervals 
+   * following those should also be kept expanded to allow some headroom. 
+   *
+   * In our current global cache:
+   * - next index 21 : does not belong to any log interval -> no effect
+   * - next index 4  : belong to the right most log interval -> both ]0;5] and 
+   *   ]5;12] should be kept expanded 
+   * -> ]12;20] should be compacted.
+   *
+   *)
+  let {to_be_expanded = e; to_be_compacted = c} = State.compaction server1 in  
+
+  assert(e = []);
+    (* No compaction required *)
+  assert(1 = List.length c); 
+
+  begin match c with
+  | {prev_index = 12; prev_term = 3; last_index = 20; _ }::[] -> ()
+  | _ -> assert(false)
+  end;
+
+  let () =
+
+    (* This section gradually compact all the logs from left (earlier) to 
+     * right (later) and make sure the compaction
+     * algorithm works well.
+     *)
+
+    let f li= {li with rev_log_entries = Compacted {record_id = "test"}} in 
+    let server1 = 
+      let global_cache = Rev_log_cache.replace ~prev_index:0 ~f server1.global_cache in 
+      {server1 with global_cache} 
+    in  
+    let {to_be_expanded = e; to_be_compacted = c} = State.compaction server1 in  
+    assert(1 = List.length e); 
+      (* The log interval that we have intentionally compacted above
+       * is correctly selected for expansion.
+       *)
+    assert(1 = List.length c);
+      (* The log interval ]12;20] should still be compacted. 
+       *)
+    
+    let server1 = 
+      let global_cache = Rev_log_cache.replace ~prev_index:5 ~f server1.global_cache in 
+      {server1 with global_cache} 
+    in  
+    let {to_be_expanded = e; to_be_compacted = c} = State.compaction server1 in  
+    assert(2 = List.length e); 
+    assert(1 = List.length c); 
+    
+    let server1 = 
+      let global_cache = Rev_log_cache.replace ~prev_index:12 ~f server1.global_cache in 
+      {server1 with global_cache} 
+    in  
+    
+    let {to_be_expanded = e; to_be_compacted = c} = State.compaction server1 in  
+    assert(2 = List.length e); 
+    assert(0 = List.length c); 
+      (* The log interval ]12;20] is no longer required to be compacted
+       *)
+  in 
 
   ()

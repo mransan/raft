@@ -227,3 +227,19 @@ let fold f e0 global_cache =
         aux (aux acc lhs) rhs 
     in
     aux e0 rope
+
+let replace ~prev_index ~f = function
+  | None -> None
+  | Some rope ->  
+    let rec aux = function
+      | Interval interval -> 
+        assert(interval.prev_index = prev_index);  
+        Interval (f interval) 
+
+      | Append ({rhs; lhs; _} as append)  -> 
+        let lhs_last = last_cached_index lhs in 
+        if prev_index >= lhs_last 
+        then Append { append with rhs = aux rhs }
+        else Append { append with lhs = aux lhs }
+    in
+    Some (aux rope)

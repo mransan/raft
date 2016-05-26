@@ -279,6 +279,16 @@ type notification =
   | New_leader of notification_new_leader
   | No_leader
 
+type compaction_report = {
+  to_be_compacted : log_interval list;
+  to_be_expanded : log_interval list;
+}
+
+and compaction_report_mutable = {
+  mutable to_be_compacted : log_interval list;
+  mutable to_be_expanded : log_interval list;
+}
+
 let rec default_request_vote_request 
   ?candidate_term:((candidate_term:int) = 0)
   ?candidate_id:((candidate_id:int) = 0)
@@ -621,6 +631,19 @@ and default_notification_new_leader_mutable () : notification_new_leader_mutable
 }
 
 let rec default_notification () : notification = Committed_data (default_notification_commited_data ())
+
+let rec default_compaction_report 
+  ?to_be_compacted:((to_be_compacted:log_interval list) = [])
+  ?to_be_expanded:((to_be_expanded:log_interval list) = [])
+  () : compaction_report  = {
+  to_be_compacted;
+  to_be_expanded;
+}
+
+and default_compaction_report_mutable () : compaction_report_mutable = {
+  to_be_compacted = [];
+  to_be_expanded = [];
+}
 
 let rec decode_request_vote_request d =
   let v = default_request_vote_request_mutable () in
@@ -1445,6 +1468,34 @@ let rec decode_notification d =
   in
   loop ()
 
+let rec decode_compaction_report d =
+  let v = default_compaction_report_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+      v.to_be_expanded <- List.rev v.to_be_expanded;
+      v.to_be_compacted <- List.rev v.to_be_compacted;
+    )
+    | Some (1, Pbrt.Bytes) -> (
+      v.to_be_compacted <- (decode_log_interval (Pbrt.Decoder.nested d)) :: v.to_be_compacted;
+      loop ()
+    )
+    | Some (1, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(compaction_report), field(1)", pk))
+    )
+    | Some (2, Pbrt.Bytes) -> (
+      v.to_be_expanded <- (decode_log_interval (Pbrt.Decoder.nested d)) :: v.to_be_expanded;
+      loop ()
+    )
+    | Some (2, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(compaction_report), field(2)", pk))
+    )
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:compaction_report = Obj.magic v in
+  v
+
 let rec encode_request_vote_request (v:request_vote_request) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.candidate_term encoder;
@@ -1785,6 +1836,17 @@ let rec encode_notification (v:notification) encoder =
     Pbrt.Encoder.empty_nested encoder
   )
 
+let rec encode_compaction_report (v:compaction_report) encoder = 
+  List.iter (fun x -> 
+    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_log_interval x) encoder;
+  ) v.to_be_compacted;
+  List.iter (fun x -> 
+    Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_log_interval x) encoder;
+  ) v.to_be_expanded;
+  ()
+
 let rec pp_request_vote_request fmt (v:request_vote_request) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
@@ -2027,3 +2089,12 @@ let rec pp_notification fmt (v:notification) =
   | Committed_data x -> Format.fprintf fmt "@[Committed_data(%a)@]" pp_notification_commited_data x
   | New_leader x -> Format.fprintf fmt "@[New_leader(%a)@]" pp_notification_new_leader x
   | No_leader  -> Format.fprintf fmt "No_leader"
+
+let rec pp_compaction_report fmt (v:compaction_report) = 
+  let pp_i fmt () =
+    Format.pp_open_vbox fmt 1;
+    Pbrt.Pp.pp_record_field "to_be_compacted" (Pbrt.Pp.pp_list pp_log_interval) fmt v.to_be_compacted;
+    Pbrt.Pp.pp_record_field "to_be_expanded" (Pbrt.Pp.pp_list pp_log_interval) fmt v.to_be_expanded;
+    Format.pp_close_box fmt ()
+  in
+  Pbrt.Pp.pp_brk pp_i fmt ()

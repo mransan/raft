@@ -56,3 +56,5 @@ val update_local_cache :
     [log] data directly.
    
  *)
+
+val replace : prev_index:int -> f:(local_cache -> local_cache) -> global_cache -> global_cache 

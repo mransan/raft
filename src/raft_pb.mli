@@ -158,6 +158,11 @@ type notification =
   | New_leader of notification_new_leader
   | No_leader
 
+type compaction_report = {
+  to_be_compacted : log_interval list;
+  to_be_expanded : log_interval list;
+}
+
 
 (** {2 Default values} *)
 
@@ -345,6 +350,13 @@ val default_notification_new_leader :
 val default_notification : unit -> notification
 (** [default_notification ()] is the default value for type [notification] *)
 
+val default_compaction_report : 
+  ?to_be_compacted:log_interval list ->
+  ?to_be_expanded:log_interval list ->
+  unit ->
+  compaction_report
+(** [default_compaction_report ()] is the default value for type [compaction_report] *)
+
 
 (** {2 Protobuf Decoding} *)
 
@@ -428,6 +440,9 @@ val decode_notification_new_leader : Pbrt.Decoder.t -> notification_new_leader
 
 val decode_notification : Pbrt.Decoder.t -> notification
 (** [decode_notification decoder] decodes a [notification] value from [decoder] *)
+
+val decode_compaction_report : Pbrt.Decoder.t -> compaction_report
+(** [decode_compaction_report decoder] decodes a [compaction_report] value from [decoder] *)
 
 
 (** {2 Protobuf Toding} *)
@@ -513,6 +528,9 @@ val encode_notification_new_leader : notification_new_leader -> Pbrt.Encoder.t -
 val encode_notification : notification -> Pbrt.Encoder.t -> unit
 (** [encode_notification v encoder] encodes [v] with the given [encoder] *)
 
+val encode_compaction_report : compaction_report -> Pbrt.Encoder.t -> unit
+(** [encode_compaction_report v encoder] encodes [v] with the given [encoder] *)
+
 
 (** {2 Formatters} *)
 
@@ -596,3 +614,6 @@ val pp_notification_new_leader : Format.formatter -> notification_new_leader -> 
 
 val pp_notification : Format.formatter -> notification -> unit 
 (** [pp_notification v] formats v] *)
+
+val pp_compaction_report : Format.formatter -> compaction_report -> unit 
+(** [pp_compaction_report v] formats v] *)

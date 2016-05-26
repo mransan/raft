@@ -76,3 +76,5 @@ val current_leader: Raft_pb.state -> int option
 val notifications : Raft_pb.state -> Raft_pb.state -> Raft_pb.notification list 
 (** [notifications before after] computes the notification between 2 states 
   *)
+
+val compaction : Raft_pb.state -> Raft_pb.compaction_report 

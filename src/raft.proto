@@ -521,6 +521,11 @@ message Notification {
   }
 }
 
+message CompactionReport {
+  repeated LogInterval to_be_compacted = 1;
+  repeated LogInterval to_be_expanded = 2;
+}
+
 // Notes 
 // ---------------
 
