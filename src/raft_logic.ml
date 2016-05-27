@@ -80,7 +80,7 @@ module Log_entry_util = struct
           else
             let prev_index = next_index - 1 in
             let last_log_index = State.last_log_index state in
-            if prev_index == last_log_index
+            if prev_index = last_log_index
             then false
               (* The receipient has the most recent data so no need
                * to send a request.
@@ -322,7 +322,7 @@ let handle_append_entries_request state request now =
        * is taken.
        *)
       if leader_commit > state.commit_index
-      then Rev_log_cache.update_global_cache {state with
+      then Rev_log_cache.update_global_cache state.commit_index {state with
         commit_index = min leader_commit receiver_last_log_index
       }
       else state
@@ -390,7 +390,7 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
           if Configuration.is_majority configuration (nb_of_replications + 1) &&
              receiver_last_log_index > state.commit_index
           then 
-            Rev_log_cache.update_global_cache {state with commit_index = receiver_last_log_index}
+            Rev_log_cache.update_global_cache state.commit_index {state with commit_index = receiver_last_log_index}
           else 
             state
         in

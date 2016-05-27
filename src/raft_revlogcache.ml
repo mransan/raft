@@ -41,8 +41,8 @@ let make ?until ~since log =
           last_index
         }
       else begin  
-        Printf.eprintf "[Raft_logic] Internal error invalid log index\n%!";
-        failwith "[Raft_logic] Internal error invalid log index"
+        Printf.eprintf "[Raft_logic] Internal2 error invalid log index\n%!";
+        failwith "[Raft_logic] Internal2 error invalid log index"
       end
 
     | {index; term; _ }::tl when index = since -> 
@@ -66,7 +66,7 @@ let last_cached_index = function
   | Interval {last_index; _} -> last_index 
   | Append   {last_index; _} -> last_index
 
-let update_global_cache state = 
+let update_global_cache prev_commit_index state = 
 
   let gc    = state.global_cache in 
   let since = match gc with
@@ -77,8 +77,7 @@ let update_global_cache state =
   (* We can only cache the logs which are commited
    *)
 
-  let commit_index = state.commit_index in 
-  if commit_index - since < state.configuration.log_interval_size
+  if prev_commit_index - since < state.configuration.log_interval_size
   then state
   else 
 
@@ -88,7 +87,7 @@ let update_global_cache state =
      * all the logs since the last cache update.
      *)
 
-    let new_interval = Interval (make ~until:commit_index ~since state.log) in 
+    let new_interval = Interval (make ~until:prev_commit_index ~since state.log) in 
     let last_index   = last_cached_index new_interval in 
 
     let rope_height = function
@@ -123,7 +122,17 @@ let update_global_cache state =
       | None -> new_interval 
       | Some gc -> add gc 
     in  
-    {state with global_cache = Some gc}
+
+    let rec aux = function
+      | [] -> [] 
+      | ({index; _ } as l) ::tl when index = prev_commit_index -> [l] 
+      | log_entry::tl -> log_entry :: (aux tl) 
+    in
+    let state = {state with 
+     global_cache = Some gc; 
+     log = aux state.log}
+    in
+    state 
 
 (*
  * Returns true if the local cache contains at least one 

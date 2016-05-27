@@ -1751,6 +1751,9 @@ let ()  =
   in
 
   assert(5 = server1.commit_index);
+  List.iter (fun (msg, id) ->
+    Format.printf "%i : %a\n" id pp_message msg
+  ) msgs;
   assert([] = msgs);
   assert(1 = List.length notifications);
 
@@ -1760,10 +1763,7 @@ let ()  =
   | _ -> assert(false);
   end;
 
-  (* Now this is an implementation detail but the current implementation
-   * only triggers the update of the global cache upon adding new logs
-   * rather than on commit index increments.
-   *
+  (*
    * The test of the cache is not something that a client API should
    * rely upon, therefore those test might change in the future.
    *
