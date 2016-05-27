@@ -12,7 +12,7 @@ val empty : global_cache
 (** [empty] global cache to be used when initializing a state. 
   *)
 
-val update_global_cache : Raft_pb.state -> Raft_pb.state 
+val update_global_cache : int -> Raft_pb.state -> Raft_pb.state 
 (** [update_global_cache state]
     If a large enough number of log entry has been added to the state 
     log since, the a local cache of those added logs is computed and 
