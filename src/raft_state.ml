@@ -240,7 +240,22 @@ let notifications before after =
               if index = bcommit_index
               then ids 
               else aux (id :: ids) tl 
-        | [] ->  ids 
+        | [] ->  
+          assert(bcommit_index = 0); 
+          (* If commit_index is different than 0 then this means 
+           * that we could not identify all the [log_entry] which 
+           * have been commited between [before] and [after]. 
+           *
+           * One of the reason could be that the [log_entry]s are not
+           * in the [log] but rather in the [global_cache]. 
+           * This should be prevented by the fact that [Rev_log_cache.update_global_cache]
+           * only move the [log_entry] to the cache wihch are prior to the 
+           * previous commit index (ie the one of [before]. 
+           * 
+           * The other is a plain bug, all entries between 2 commit_index should be 
+           * in the log.
+           *) 
+          ids 
       in
       (Committed_data {ids = aux [] after.log})::notifications 
     else 

@@ -187,11 +187,15 @@ let find ~index = function
         else interval 
       | Append {rhs; lhs; _} -> 
         let lhs_last = last_cached_index lhs in 
-        if index >= lhs_last 
+        if index > lhs_last 
         then aux rhs 
         else aux lhs  
     in
     aux rope 
+
+let is_expanded = function
+  | {rev_log_entries = Expanded _ ; _ } -> true 
+  | _ -> false 
 
 let update_local_cache since log local_cache t = 
   match log with
@@ -206,7 +210,8 @@ let update_local_cache since log local_cache t =
       (* First check if it's in the local 
        * cache. 
        *)
-      if contains_next_of since local_cache
+      if is_expanded local_cache && 
+         contains_next_of since local_cache 
       then
         sub since local_cache
       else 
