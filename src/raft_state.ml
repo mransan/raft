@@ -50,7 +50,17 @@ let add_logs datas state =
   in 
   {state with log; log_size;}
 
+let find_term_of_index i log = 
+  let rec aux = function
+    | [] -> raise Not_found 
+    | {index; term;_} :: _ when index = i -> term 
+    | _::tl -> aux tl  
+  in
+  aux log 
+
 let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state = 
+
+  let commit_index = state.commit_index in
 
   (* --------------------------------------------------------
    * ? assert(prev_log_index >= (state.commit_index - 1));  ?
@@ -70,11 +80,41 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
    * Ti+3  duplicate of Ti+1 request 
    * >>    We can see now that commit_index > prev_log_index 
    *
-   * What we actually need to verify is that all the logs being 
-   * sent are the same as the previous ones! This code was there 
-   * in a previous implementation. 
+   * However the RAFT protocol guarantees that no commited entries will 
+   * later be invalidated/removed. (See Safety guarantee). 
+   * Therefore we can remove those duplicated entries from [rev_log_entries] 
+   * which are prior (and included) the latest commited entry. 
    *)
   
+  let prev_log_index, prev_log_term, rev_log_entries = 
+    if prev_log_index >= commit_index
+    then prev_log_index, prev_log_term, rev_log_entries
+    else 
+      (* prev_log_index is less than commit_index, we must therefore
+       * trim the log entries which are previous to the commit_index. 
+       *)
+      let rec aux = function 
+        | [] -> 
+          (* This case is possible if 2 [Append_entries] request arrives out of 
+           * order. 
+           * In this case the second request will contained [log_entry]s which have all
+           * been replicated. In those cases it's likely that the [log_entry] corresponding
+           * to this server commit_index might not be in the request [rev_log_entries]. 
+           *
+           * In such a case, none of the logs should be added, in fact they all have been 
+           * previously added before. 
+           *)
+          (commit_index, find_term_of_index commit_index state.log, [])
+          
+        | {index;term; _ }::tl when index < commit_index -> aux tl 
+        | {index;term; _ }::tl -> 
+          assert(index = commit_index); 
+          (index, term, tl) 
+      in
+      aux rev_log_entries
+  in
+
+
   (* This functions merges the request log entries with the
    * current log of the server. The current log is first split by
    * the caller into:
@@ -131,7 +171,8 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
 
     |  hd::tl -> aux (log_size - 1) tl
   in
-  match state.log with
+
+  begin match state.log with
   | {index; _}::tl when prev_log_index > index ->
     (*
      * This is the case when a new [Leader] which has more log entries
@@ -143,8 +184,8 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
      * In such a case, we send failure right away.
      *)
     (state, false)
-
   | _ -> aux state.log_size state.log
+  end
 
 let notifications before after = 
   
