@@ -31,6 +31,23 @@ val fold : ('a -> local_cache -> 'a) -> 'a -> global_cache -> 'a
     the earliest entries. 
   *)
 
+val find : index:int -> global_cache -> local_cache 
+(** [find ~index global_cache] finds the interval ]prev_index;last_index] which contains
+    [index]. 
+
+    raises [Not_found] in case no [log_interval] contains [index].
+  *) 
+
+val replace : local_cache -> global_cache -> global_cache 
+(** [replace local_cache global_cache] replaces the matching [local_cache] 
+    in [global_cache]. 
+
+    This is particularly (and uniquely useful when compacting a [local_cache]
+    in the global cache.
+
+    raises [Failure] if [local_cache] cannot be matched.
+  *)
+
 (** {2 Local Cache} *)
 
 val make : ?until:int -> since:int -> Raft_pb.log_entry list -> local_cache
@@ -61,5 +78,3 @@ val update_local_cache :
     [log] data directly.
    
  *)
-
-val replace : prev_index:int -> f:(local_cache -> local_cache) -> global_cache -> global_cache 

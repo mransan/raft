@@ -2212,16 +2212,19 @@ let ()  =
 
   let () =
 
+    let compact ~prev_index state = 
+      let interval = Rev_log_cache.find ~index:(prev_index + 1) state.global_cache in  
+      let interval = {interval with 
+        rev_log_entries = Compacted {record_id = "test"}} in 
+      {state with global_cache = Rev_log_cache.replace interval state.global_cache}
+    in 
+        
     (* This section gradually compact all the logs from left (earlier) to 
      * right (later) and make sure the compaction
      * algorithm works well.
      *)
 
-    let f li= {li with rev_log_entries = Compacted {record_id = "test"}} in 
-    let server1 = 
-      let global_cache = Rev_log_cache.replace ~prev_index:0 ~f server1.global_cache in 
-      {server1 with global_cache} 
-    in  
+    let server1 = compact ~prev_index:0 server1 in 
     let {to_be_expanded = e; to_be_compacted = c} = State.compaction server1 in  
     assert(1 = List.length e); 
       (* The log interval that we have intentionally compacted above
@@ -2231,19 +2234,12 @@ let ()  =
       (* The log interval ]12;20] should still be compacted. 
        *)
     
-    let server1 = 
-      let global_cache = Rev_log_cache.replace ~prev_index:5 ~f server1.global_cache in 
-      {server1 with global_cache} 
-    in  
+    let server1 = compact ~prev_index:5 server1 in  
     let {to_be_expanded = e; to_be_compacted = c} = State.compaction server1 in  
     assert(2 = List.length e); 
     assert(1 = List.length c); 
     
-    let server1 = 
-      let global_cache = Rev_log_cache.replace ~prev_index:12 ~f server1.global_cache in 
-      {server1 with global_cache} 
-    in  
-    
+    let server1 = compact ~prev_index:12 server1 in  
     let {to_be_expanded = e; to_be_compacted = c} = State.compaction server1 in  
     assert(2 = List.length e); 
     assert(0 = List.length c); 

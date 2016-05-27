@@ -175,21 +175,23 @@ let sub since ({prev_index; rev_log_entries; _} as t) =
       in 
       aux entries
 
-let rec find i = function
-  | Interval ({prev_index; _ } as interval) -> (
-    begin 
-      if i < prev_index 
-      then Printf.eprintf "Error i: %i, prev_index: %i\n%!" i prev_index; 
-    end;
-
-    assert(i >= prev_index); 
-    interval
-  )
-  | Append {rhs; lhs; _} -> 
-    let lhs_last = last_cached_index lhs in 
-    if i >= lhs_last 
-    then find i rhs 
-    else find i lhs  
+let find ~index = function
+  | None -> raise Not_found
+  | Some rope ->
+      
+    let rec aux = function
+      |Interval interval -> 
+        if index <= interval.prev_index || 
+           index > interval.last_index  
+        then raise Not_found
+        else interval 
+      | Append {rhs; lhs; _} -> 
+        let lhs_last = last_cached_index lhs in 
+        if index >= lhs_last 
+        then aux rhs 
+        else aux lhs  
+    in
+    aux rope 
 
 let update_local_cache since log local_cache t = 
   match log with
@@ -217,12 +219,12 @@ let update_local_cache since log local_cache t =
          *)
         match t with
         | None   -> make since log 
-        | Some t ->
-          if since >= (last_cached_index t)
+        | Some rope  ->
+          if since >= (last_cached_index rope)
           then  
             make since log 
           else 
-            sub since @@ find since t 
+            sub since @@ find (since + 1) t 
 
 let fold f e0 global_cache = 
   match global_cache with
@@ -237,13 +239,13 @@ let fold f e0 global_cache =
     in
     aux e0 rope
 
-let replace ~prev_index ~f = function
-  | None -> None
+let replace ({prev_index; _ } as replacement) = function
+  | None -> assert(false)
   | Some rope ->  
     let rec aux = function
       | Interval interval -> 
         assert(interval.prev_index = prev_index);  
-        Interval (f interval) 
+        Interval replacement 
 
       | Append ({rhs; lhs; _} as append)  -> 
         let lhs_last = last_cached_index lhs in 
