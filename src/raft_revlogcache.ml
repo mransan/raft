@@ -66,7 +66,7 @@ let last_cached_index = function
   | Interval {last_index; _} -> last_index 
   | Append   {last_index; _} -> last_index
 
-let update_global_cache prev_commit_index state = 
+let update_global_cache ~prev_commit_index state = 
 
   let gc    = state.global_cache in 
   let since = match gc with

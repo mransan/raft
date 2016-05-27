@@ -12,12 +12,17 @@ val empty : global_cache
 (** [empty] global cache to be used when initializing a state. 
   *)
 
-val update_global_cache : int -> Raft_pb.state -> Raft_pb.state 
-(** [update_global_cache state]
-    If a large enough number of log entry has been added to the state 
-    log since, the a local cache of those added logs is computed and 
-    added to the state log. 
-   
+val update_global_cache : prev_commit_index:int -> Raft_pb.state -> Raft_pb.state 
+(** [update_global_cache ~prev_commit_index state]
+    If a large enough number of [log_entry]s have been added to the [state]
+    log between :
+    {li 
+    {- The last log entry stored in the global cache }
+    {- The [prev_commit_index]}   
+    } 
+    then those [log_entry]s are added to the cache. Additionally except for 
+    the [prev_commit_index] those [log_entries] are also removed from the 
+    [state] log. 
   *)
 
 val fold : ('a -> local_cache -> 'a) -> 'a -> global_cache -> 'a 
