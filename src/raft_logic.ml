@@ -334,8 +334,7 @@ let handle_append_entries_request state request now =
         make_response state (Success {receiver_last_log_index}) 
       else 
         make_response state (Log_failure {
-          receiver_last_log_index;
-          receiver_last_log_term;
+          receiver_commit_index = state.commit_index;
         }) 
     in
 

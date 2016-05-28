@@ -1495,8 +1495,7 @@ let ()  =
     assert(r.receiver_id = 2);
     assert(r.receiver_term = 3);
     assert(r.result = Log_failure {
-      receiver_last_log_index = 2;
-      receiver_last_log_term =1;
+      receiver_commit_index = 2;
     });
       (*
        * server2 did not replicate the 3rd [log_entry] that server1

@@ -177,8 +177,7 @@ message AppendEntriesResponse {
     } 
 
     message LogFailureData {
-      required int32 receiver_last_log_index = 1; 
-      required int32 receiver_last_log_term  = 2;
+      required int32 receiver_commit_index = 1; 
     }
     
     message NoData {

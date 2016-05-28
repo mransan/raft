@@ -36,8 +36,7 @@ type append_entries_response_success_data = {
 }
 
 type append_entries_response_log_failure_data = {
-  receiver_last_log_index : int;
-  receiver_last_log_term : int;
+  receiver_commit_index : int;
 }
 
 type append_entries_response_result =
@@ -210,8 +209,7 @@ val default_append_entries_response_success_data :
 (** [default_append_entries_response_success_data ()] is the default value for type [append_entries_response_success_data] *)
 
 val default_append_entries_response_log_failure_data : 
-  ?receiver_last_log_index:int ->
-  ?receiver_last_log_term:int ->
+  ?receiver_commit_index:int ->
   unit ->
   append_entries_response_log_failure_data
 (** [default_append_entries_response_log_failure_data ()] is the default value for type [append_entries_response_log_failure_data] *)

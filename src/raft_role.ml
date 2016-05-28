@@ -149,64 +149,24 @@ module Leader = struct
     (leader_state, nb_of_replications) 
 
   let decrement_next_index ~log_failure ~receiver_id state leader_state = 
-    let {receiver_last_log_index ; receiver_last_log_term } = log_failure in 
+    let {receiver_commit_index} = log_failure in 
 
     let latest_log_index, latest_log_term = match state.log with
       | [] -> (0, 0) 
       | {index; term; data = _} :: _ -> (index, term)
     in
 
-    assert(receiver_last_log_index < latest_log_index);  
+    assert(receiver_commit_index < latest_log_index);  
       (* 
        * This is an invariant. When receiving the [Append_entries]
        * request, in case of [Log_failure] the server is responsible
        * to find the earlier log entry to synchronize with the [Leader]. 
        * 
        *)
-
-    (* 
-     * Next step is to make sur that both the [receiver_last_log_index]
-     * and [receiver_last_log_term] are matching an log entry in the [Leader] 
-     * log.   
-     *
-     * If the match is found it means that the log entry sent 
-     * by the receiver is the good common log entry to synchronize the [Leader]
-     * and its [Follower]. 
-     *
-     * In the case there is no match then we jump back to a previous term to 
-     * find a entry to synchronize upon.
-     *)
-    let receiver_last_log_index = 
-      let rec aux = function 
-        | [] -> 0 
-        | {index; term; _}::tl -> 
-          if index > receiver_last_log_index
-          then aux tl 
-          else 
-            if term = receiver_last_log_term
-            then 
-              (* Receiver last log entry is a match with a [Leader] log 
-               * entry.
-               *) 
-              receiver_last_log_index
-            else 
-              (* Same index but different term, in this case, 
-               * let's just go back to the last index of the previous term
-               *)
-              let rec aux = function 
-                | [] -> 0 
-                | {index; term; _}::tl when term <> receiver_last_log_term -> index
-                | _::tl -> aux tl 
-              in 
-              aux tl 
-      in
-      aux state.log
-    in
-
     update_index ~receiver_id ~f:(fun index -> 
       {index with 
-       next_index = receiver_last_log_index + 1; 
-       match_index = receiver_last_log_index}
+       next_index = receiver_commit_index + 1; 
+       match_index = receiver_commit_index}
     )  leader_state
 
   let record_response_received ~receiver_id leader_state = 
