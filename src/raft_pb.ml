@@ -67,13 +67,11 @@ and append_entries_response_success_data_mutable = {
 }
 
 type append_entries_response_log_failure_data = {
-  receiver_last_log_index : int;
-  receiver_last_log_term : int;
+  receiver_commit_index : int;
 }
 
 and append_entries_response_log_failure_data_mutable = {
-  mutable receiver_last_log_index : int;
-  mutable receiver_last_log_term : int;
+  mutable receiver_commit_index : int;
 }
 
 type append_entries_response_result =
@@ -379,16 +377,13 @@ and default_append_entries_response_success_data_mutable () : append_entries_res
 }
 
 let rec default_append_entries_response_log_failure_data 
-  ?receiver_last_log_index:((receiver_last_log_index:int) = 0)
-  ?receiver_last_log_term:((receiver_last_log_term:int) = 0)
+  ?receiver_commit_index:((receiver_commit_index:int) = 0)
   () : append_entries_response_log_failure_data  = {
-  receiver_last_log_index;
-  receiver_last_log_term;
+  receiver_commit_index;
 }
 
 and default_append_entries_response_log_failure_data_mutable () : append_entries_response_log_failure_data_mutable = {
-  receiver_last_log_index = 0;
-  receiver_last_log_term = 0;
+  receiver_commit_index = 0;
 }
 
 let rec default_append_entries_response_result () : append_entries_response_result = Success (default_append_entries_response_success_data ())
@@ -839,18 +834,11 @@ let rec decode_append_entries_response_log_failure_data d =
     | None -> (
     )
     | Some (1, Pbrt.Varint) -> (
-      v.receiver_last_log_index <- Pbrt.Decoder.int_as_varint d;
+      v.receiver_commit_index <- Pbrt.Decoder.int_as_varint d;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_response_log_failure_data), field(1)", pk))
-    )
-    | Some (2, Pbrt.Varint) -> (
-      v.receiver_last_log_term <- Pbrt.Decoder.int_as_varint d;
-      loop ()
-    )
-    | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_response_log_failure_data), field(2)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -1551,9 +1539,7 @@ let rec encode_append_entries_response_success_data (v:append_entries_response_s
 
 let rec encode_append_entries_response_log_failure_data (v:append_entries_response_log_failure_data) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.receiver_last_log_index encoder;
-  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.receiver_last_log_term encoder;
+  Pbrt.Encoder.int_as_varint v.receiver_commit_index encoder;
   ()
 
 let rec encode_append_entries_response_result (v:append_entries_response_result) encoder = 
@@ -1903,8 +1889,7 @@ let rec pp_append_entries_response_success_data fmt (v:append_entries_response_s
 let rec pp_append_entries_response_log_failure_data fmt (v:append_entries_response_log_failure_data) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "receiver_last_log_index" Pbrt.Pp.pp_int fmt v.receiver_last_log_index;
-    Pbrt.Pp.pp_record_field "receiver_last_log_term" Pbrt.Pp.pp_int fmt v.receiver_last_log_term;
+    Pbrt.Pp.pp_record_field "receiver_commit_index" Pbrt.Pp.pp_int fmt v.receiver_commit_index;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

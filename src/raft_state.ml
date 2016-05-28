@@ -113,7 +113,8 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
       in
       aux rev_log_entries
   in
-
+   
+  assert(prev_log_index >= (state.commit_index - 1));
 
   (* This functions merges the request log entries with the
    * current log of the server. The current log is first split by
