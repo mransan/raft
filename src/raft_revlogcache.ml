@@ -66,6 +66,42 @@ let last_cached_index = function
   | Interval {last_index; _} -> last_index 
   | Append   {last_index; _} -> last_index
 
+
+let add new_interval gc = 
+
+  let last_index   = last_cached_index new_interval in 
+  let rope_height = function
+    | Interval _ -> 0 
+    | Append  {height; _} -> height 
+  in 
+
+  let rec aux = function 
+    | Interval x -> Append {
+      height = 1; 
+      lhs = Interval x; 
+      rhs = new_interval; 
+      last_index;
+    }
+    | (Append {height; rhs; lhs; _ }  as a)-> 
+      let lhs_height = rope_height lhs in 
+      let rhs_height = rope_height rhs in 
+      if lhs_height = rhs_height
+      then (* balanced! *)
+        Append {height = height + 1; lhs = a; rhs = new_interval;last_index}
+      else begin 
+        begin 
+          if lhs_height <= rhs_height
+          then Printf.eprintf "lhs_height(%i) <  rhs_height(%i)\n%!"
+          lhs_height rhs_height;
+        end;
+        assert(lhs_height > rhs_height); 
+        Append {height; lhs; rhs = aux rhs; last_index} 
+      end  
+  in
+  match gc with
+    | None    -> Some (new_interval) 
+    | Some gc -> Some (aux gc) 
+
 let update_global_cache ~prev_commit_index state = 
 
   let gc    = state.global_cache in 
@@ -88,40 +124,7 @@ let update_global_cache ~prev_commit_index state =
      *)
 
     let new_interval = Interval (make ~until:prev_commit_index ~since state.log) in 
-    let last_index   = last_cached_index new_interval in 
-
-    let rope_height = function
-      | Interval _ -> 0 
-      | Append  {height; _} -> height 
-    in 
-
-    let rec add = function 
-      | Interval x -> Append {
-        height = 1; 
-        lhs = Interval x; 
-        rhs = new_interval; 
-        last_index;
-      }
-      | (Append {height; rhs; lhs; _ }  as a)-> 
-        let lhs_height = rope_height lhs in 
-        let rhs_height = rope_height rhs in 
-        if lhs_height = rhs_height
-        then (* balanced! *)
-          Append {height = height + 1; lhs = a; rhs = new_interval;last_index}
-        else begin 
-          begin 
-            if lhs_height <= rhs_height
-            then Printf.eprintf "lhs_height(%i) <  rhs_height(%i)\n%!"
-            lhs_height rhs_height;
-          end;
-          assert(lhs_height > rhs_height); 
-          Append {height; lhs; rhs = add rhs; last_index} 
-        end  
-    in
-    let gc = match gc with
-      | None -> new_interval 
-      | Some gc -> add gc 
-    in  
+    let global_cache = add new_interval gc in 
 
     let rec aux = function
       | [] -> [] 
@@ -129,10 +132,22 @@ let update_global_cache ~prev_commit_index state =
       | log_entry::tl -> log_entry :: (aux tl) 
     in
     let state = {state with 
-     global_cache = Some gc; 
+     global_cache;
      log = aux state.log}
     in
     state 
+
+let int_compare (x:int) (y:int) = Pervasives.compare x y 
+
+let from_list log_intervals = 
+
+  let log_intervals = List.sort (fun x y -> 
+    int_compare x.prev_index y.prev_index
+  ) log_intervals in 
+  
+  List.fold_left (fun gc log_interval -> 
+    add (Interval log_interval) gc
+  ) None log_intervals 
 
 (*
  * Returns true if the local cache contains at least one 
@@ -194,7 +209,7 @@ let find ~index = function
     aux rope 
 
 let is_expanded = function
-  | {rev_log_entries = Expanded _ ; _ } -> true 
+  | ({rev_log_entries = Expanded _ ; _ } : log_interval) -> true 
   | _ -> false 
 
 let update_local_cache since log local_cache t = 

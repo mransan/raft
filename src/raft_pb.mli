@@ -145,7 +145,7 @@ type timeout_event = {
 }
 
 type notification_commited_data = {
-  ids : string list;
+  rev_log_entries : log_entry list;
 }
 
 type notification_new_leader = {
@@ -334,7 +334,7 @@ val default_timeout_event :
 (** [default_timeout_event ()] is the default value for type [timeout_event] *)
 
 val default_notification_commited_data : 
-  ?ids:string list ->
+  ?rev_log_entries:log_entry list ->
   unit ->
   notification_commited_data
 (** [default_notification_commited_data ()] is the default value for type [notification_commited_data] *)

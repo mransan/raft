@@ -48,6 +48,8 @@ val replace : local_cache -> global_cache -> global_cache
     raises [Failure] if [local_cache] cannot be matched.
   *)
 
+val from_list : local_cache list -> global_cache
+
 (** {2 Local Cache} *)
 
 val make : ?until:int -> since:int -> Raft_pb.log_entry list -> local_cache
