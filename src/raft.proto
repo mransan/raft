@@ -504,7 +504,7 @@ message TimeoutEvent {
 message Notification {
   
   message CommitedData {
-    repeated string ids = 1;
+    repeated LogEntry rev_log_entries = 1;
   }
 
   message NewLeader {

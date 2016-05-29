@@ -233,14 +233,14 @@ let notifications before after =
   let notifications = 
     if acommit_index > bcommit_index
     then 
-      let rec aux ids = function 
-        | {index;id;_ }::tl -> 
+      let rec aux rev_log_entries = function 
+        | ({index;_ } as log_entry) ::tl -> 
             if index > acommit_index 
-            then aux ids tl 
+            then aux rev_log_entries tl 
             else 
               if index = bcommit_index
-              then ids 
-              else aux (id :: ids) tl 
+              then rev_log_entries
+              else aux (log_entry :: rev_log_entries) tl 
         | [] ->  
           assert(bcommit_index = 0); 
           (* If commit_index is different than 0 then this means 
@@ -256,9 +256,9 @@ let notifications before after =
            * The other is a plain bug, all entries between 2 commit_index should be 
            * in the log.
            *) 
-          ids 
+          rev_log_entries 
       in
-      (Committed_data {ids = aux [] after.log})::notifications 
+      (Committed_data {rev_log_entries = aux [] after.log})::notifications 
     else 
       notifications
   in 
@@ -350,8 +350,8 @@ let compaction state =
           end 
     ) (([], [], false), next_indices) state.global_cache in 
 
-    let is_compacted = function | {rev_log_entries = Compacted _ ; _ } -> true | _ -> false in 
-    let is_expanded  = function | {rev_log_entries = Expanded  _ ; _ } -> true | _ -> false in 
+    let is_compacted : log_interval -> bool = function | {rev_log_entries = Compacted _ ; _ } -> true | _ -> false in 
+    let is_expanded  : log_interval -> bool = function | {rev_log_entries = Expanded  _ ; _ } -> true | _ -> false in 
 
     let c = List.filter is_expanded  c in 
     let e = List.filter is_compacted e in 

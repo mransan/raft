@@ -257,11 +257,11 @@ and timeout_event_mutable = {
 }
 
 type notification_commited_data = {
-  ids : string list;
+  rev_log_entries : log_entry list;
 }
 
 and notification_commited_data_mutable = {
-  mutable ids : string list;
+  mutable rev_log_entries : log_entry list;
 }
 
 type notification_new_leader = {
@@ -606,13 +606,13 @@ and default_timeout_event_mutable () : timeout_event_mutable = {
 }
 
 let rec default_notification_commited_data 
-  ?ids:((ids:string list) = [])
+  ?rev_log_entries:((rev_log_entries:log_entry list) = [])
   () : notification_commited_data  = {
-  ids;
+  rev_log_entries;
 }
 
 and default_notification_commited_data_mutable () : notification_commited_data_mutable = {
-  ids = [];
+  rev_log_entries = [];
 }
 
 let rec default_notification_new_leader 
@@ -1406,10 +1406,10 @@ let rec decode_notification_commited_data d =
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
-      v.ids <- List.rev v.ids;
+      v.rev_log_entries <- List.rev v.rev_log_entries;
     )
     | Some (1, Pbrt.Bytes) -> (
-      v.ids <- (Pbrt.Decoder.string d) :: v.ids;
+      v.rev_log_entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.rev_log_entries;
       loop ()
     )
     | Some (1, pk) -> raise (
@@ -1798,8 +1798,8 @@ let rec encode_timeout_event (v:timeout_event) encoder =
 let rec encode_notification_commited_data (v:notification_commited_data) encoder = 
   List.iter (fun x -> 
     Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.string x encoder;
-  ) v.ids;
+    Pbrt.Encoder.nested (encode_log_entry x) encoder;
+  ) v.rev_log_entries;
   ()
 
 let rec encode_notification_new_leader (v:notification_new_leader) encoder = 
@@ -2056,7 +2056,7 @@ let rec pp_timeout_event fmt (v:timeout_event) =
 let rec pp_notification_commited_data fmt (v:notification_commited_data) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "ids" (Pbrt.Pp.pp_list Pbrt.Pp.pp_string) fmt v.ids;
+    Pbrt.Pp.pp_record_field "rev_log_entries" (Pbrt.Pp.pp_list pp_log_entry) fmt v.rev_log_entries;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

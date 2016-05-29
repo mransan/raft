@@ -789,7 +789,10 @@ let ()  =
 
   assert(State.is_leader server0);
   assert(1 = server0.commit_index);
-  assert((Committed_data {ids = ["01"]})::[] = notifications);
+  begin match notifications with 
+  | (Committed_data { rev_log_entries = [{id = "01"; _ }]})::[] -> ()
+  | _ -> assert(false)
+  end; 
     (*
      * server1 has replicated the log successfully so this means
      * that a majority of servers have done the replication.
@@ -899,7 +902,10 @@ let ()  =
      * with [index = 2].
      *)
 
-  assert((Committed_data {ids = ["01"]})::[] = notifications);
+  begin match notifications with 
+  | (Committed_data { rev_log_entries = [{id = "01"; _ }]})::[] -> ()
+  | _ -> assert(false)
+  end; 
   assert(1 = server1.commit_index);
     (*
      * The [Append_entries] request contained the [commit_index]
@@ -941,7 +947,10 @@ let ()  =
 
   assert(State.is_leader server0);
 
-  assert((Committed_data {ids = ["02"]})::[] = notifications);
+  begin match notifications with 
+  | (Committed_data { rev_log_entries = [{id = "02"; _ }]})::[] -> ()
+  | _ -> assert(false)
+  end; 
   assert(2 = server0.commit_index);
     (*
      * A successfull replication is enough for a majority.
@@ -1029,7 +1038,10 @@ let ()  =
 
   assert(State.is_follower server1);
 
-  assert((Committed_data {ids = ["02"]})::[] = notifications);
+  begin match notifications with 
+  | (Committed_data { rev_log_entries = [{id = "02"; _ }]})::[] -> ()
+  | _ -> assert(false)
+  end; 
   assert(2 = server1.commit_index);
    (*
     * server1 is updating its commit index based on latest
@@ -1057,7 +1069,10 @@ let ()  =
   in
 
   assert(State.is_follower server2);
-  assert((Committed_data {ids = ["01"]})::[] = notications);
+  begin match notifications with 
+  | (Committed_data { rev_log_entries = [{id = "02"; _ }]})::[] -> ()
+  | _ -> assert(false)
+  end; 
   assert(1 = server2.commit_index);
    (*
     * server2 is updating its commit index based on latest
@@ -1148,7 +1163,10 @@ let ()  =
      *)
 
   assert(2 = server2.commit_index);
-  assert((Committed_data {ids = ["02"]})::[] = notifications);
+  begin match notifications with 
+  | (Committed_data { rev_log_entries = [{id = "02"; _ }]})::[] -> ()
+  | _ -> assert(false)
+  end; 
     (* This time the commit_index is 2 since both [log_entry] with
      * [index = 2] has been replicated and the [leader_commit] is equal
      * to 2.
@@ -1609,7 +1627,10 @@ let ()  =
   assert(State.is_leader server1);
   assert(3 = server1.current_term);
 
-  assert((Committed_data {ids = ["03"]})::[] = notifications);
+  begin match notifications with 
+  | (Committed_data { rev_log_entries = [{id = "03"; _ }]})::[] -> ()
+  | _ -> assert(false)
+  end; 
   assert(3 = server1.commit_index);
     (*
      * The 3rd [log_entry] has been replicated one one other
@@ -1716,10 +1737,10 @@ let ()  =
      *)
 
   assert(1 = List.length notifications);
-  begin match notifications with
-  | (Committed_data {ids = ["03"] }) :: [] -> ()
-  | _ -> assert(false);
-  end;
+  begin match notifications with 
+  | (Committed_data { rev_log_entries = [{id = "03"; _ }]})::[] -> ()
+  | _ -> assert(false)
+  end; 
 
   begin match msgs with
   | (Append_entries_response r, 1) :: [] -> (
@@ -1753,11 +1774,11 @@ let ()  =
   assert([] = msgs);
   assert(1 = List.length notifications);
 
-  begin match notifications with
-  | (Committed_data {ids}) :: [] ->
-    assert(2 = List.length ids);
-  | _ -> assert(false);
-  end;
+  begin match notifications with 
+  | (Committed_data { rev_log_entries }) :: [] -> 
+    assert(2 = List.length rev_log_entries)
+  | _ -> assert(false)
+  end; 
 
   (*
    * The test of the cache is not something that a client API should
@@ -1839,10 +1860,12 @@ let ()  =
 
   assert(5 = server2.commit_index);
   assert(1 = List.length notifications);
-  begin match notifications with
-  | (Committed_data {ids})::[] -> assert(2 = List.length ids)
+  begin match notifications with 
+  | (Committed_data { rev_log_entries }) :: [] -> 
+    assert(2 = List.length rev_log_entries)
   | _ -> assert(false)
-  end;
+  end; 
+
     (* commit index updated to match server1.
      * and therefore a new notification with
      * 2 entries is expected
