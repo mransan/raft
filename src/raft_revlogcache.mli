@@ -48,6 +48,11 @@ val replace : local_cache -> global_cache -> global_cache
     raises [Failure] if [local_cache] cannot be matched.
   *)
 
+val last_cached_index : global_cache -> int 
+(** [last_cached_index global_cache] returns the index of the last [log_entry] stored 
+    in the global cache.
+  *)
+
 val from_list : local_cache list -> global_cache
 
 (** {2 Local Cache} *)

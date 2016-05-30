@@ -63,13 +63,18 @@ let make ?until ~since log =
  *
  *)
 let last_cached_index = function 
+  | None -> 0 
+  | Some (Interval {last_index; _}) -> last_index 
+  | Some (Append   {last_index; _}) -> last_index
+
+let last_cached_index_rope = function 
   | Interval {last_index; _} -> last_index 
   | Append   {last_index; _} -> last_index
 
 
 let add new_interval gc = 
 
-  let last_index   = last_cached_index new_interval in 
+  let last_index   = last_cached_index_rope new_interval in 
   let rope_height = function
     | Interval _ -> 0 
     | Append  {height; _} -> height 
@@ -105,10 +110,7 @@ let add new_interval gc =
 let update_global_cache ~prev_commit_index state = 
 
   let gc    = state.global_cache in 
-  let since = match gc with
-    | None -> 0 
-    | Some gc -> last_cached_index gc 
-  in 
+  let since = last_cached_index gc in 
 
   (* We can only cache the logs which are commited
    *)
@@ -201,7 +203,7 @@ let find ~index = function
         then raise Not_found
         else interval 
       | Append {rhs; lhs; _} -> 
-        let lhs_last = last_cached_index lhs in 
+        let lhs_last = last_cached_index_rope lhs in 
         if index > lhs_last 
         then aux rhs 
         else aux lhs  
@@ -237,14 +239,11 @@ let update_local_cache since log local_cache t =
          * last cached entry then it's not in the global
          * cache. 
          *)
-        match t with
-        | None   -> make since log 
-        | Some rope  ->
-          if since >= (last_cached_index rope)
-          then  
-            make since log 
-          else 
-            sub since @@ find (since + 1) t 
+        if since >= (last_cached_index t)
+        then  
+          make since log 
+        else 
+          sub since @@ find (since + 1) t 
 
 let fold f e0 global_cache = 
   match global_cache with
@@ -268,7 +267,7 @@ let replace ({prev_index; _ } as replacement) = function
         Interval replacement 
 
       | Append ({rhs; lhs; _} as append)  -> 
-        let lhs_last = last_cached_index lhs in 
+        let lhs_last = last_cached_index_rope lhs in 
         if prev_index >= lhs_last 
         then Append { append with rhs = aux rhs }
         else Append { append with lhs = aux lhs }
