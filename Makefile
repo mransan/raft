@@ -2,7 +2,7 @@ OCB_INC   = -I src -I tests
 OCB_FLAGS = -use-ocamlfind -pkgs ocaml-protoc
 OCB       = ocamlbuild $(OCB_FLAGS) $(OCB_INC)
 
-.PHONY: test gen lib.native lib.byte lib.install lib.uninstall clean 
+.PHONY: test gen lib.native lib.byte lib.install lib.uninstall clean doc 
 
 test: 
 	$(OCB) test.native
@@ -48,3 +48,6 @@ lib.uninstall:
 
 clean:
 	$(OCB) -clean
+
+doc:
+	$(OCB) src/raft.docdir/index.html

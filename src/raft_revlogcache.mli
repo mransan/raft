@@ -16,7 +16,7 @@ val update_global_cache : prev_commit_index:int -> Raft_pb.state -> Raft_pb.stat
 (** [update_global_cache ~prev_commit_index state]
     If a large enough number of [log_entry]s have been added to the [state]
     log between :
-    {li 
+    {ul
     {- The last log entry stored in the global cache }
     {- The [prev_commit_index]}   
     } 
@@ -32,7 +32,7 @@ val fold : ('a -> local_cache -> 'a) -> 'a -> global_cache -> 'a
   *)
 
 val find : index:int -> global_cache -> local_cache 
-(** [find ~index global_cache] finds the interval ]prev_index;last_index] which contains
+(** [find ~index global_cache] finds the interval \]prev_index;last_index\] which contains
     [index]. 
 
     raises [Not_found] in case no [log_interval] contains [index].
@@ -59,7 +59,7 @@ val from_list : local_cache list -> global_cache
 
 val make : ?until:int -> since:int -> Raft_pb.log_entry list -> local_cache
 (** [make ~until ~since log] creates a local cache with the [log] entries 
-    in the range : `]since; until]`
+    in the range : \]since; until\]
    
     If [until] is not provided it defaults to the last log entries in [log].
   *)

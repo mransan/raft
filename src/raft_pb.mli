@@ -533,85 +533,85 @@ val encode_compaction_report : compaction_report -> Pbrt.Encoder.t -> unit
 (** {2 Formatters} *)
 
 val pp_request_vote_request : Format.formatter -> request_vote_request -> unit 
-(** [pp_request_vote_request v] formats v] *)
+(** [pp_request_vote_request v] formats [v] *)
 
 val pp_request_vote_response : Format.formatter -> request_vote_response -> unit 
-(** [pp_request_vote_response v] formats v] *)
+(** [pp_request_vote_response v] formats [v] *)
 
 val pp_log_entry : Format.formatter -> log_entry -> unit 
-(** [pp_log_entry v] formats v] *)
+(** [pp_log_entry v] formats [v] *)
 
 val pp_append_entries_request : Format.formatter -> append_entries_request -> unit 
-(** [pp_append_entries_request v] formats v] *)
+(** [pp_append_entries_request v] formats [v] *)
 
 val pp_append_entries_response_success_data : Format.formatter -> append_entries_response_success_data -> unit 
-(** [pp_append_entries_response_success_data v] formats v] *)
+(** [pp_append_entries_response_success_data v] formats [v] *)
 
 val pp_append_entries_response_log_failure_data : Format.formatter -> append_entries_response_log_failure_data -> unit 
-(** [pp_append_entries_response_log_failure_data v] formats v] *)
+(** [pp_append_entries_response_log_failure_data v] formats [v] *)
 
 val pp_append_entries_response_result : Format.formatter -> append_entries_response_result -> unit 
-(** [pp_append_entries_response_result v] formats v] *)
+(** [pp_append_entries_response_result v] formats [v] *)
 
 val pp_append_entries_response : Format.formatter -> append_entries_response -> unit 
-(** [pp_append_entries_response v] formats v] *)
+(** [pp_append_entries_response v] formats [v] *)
 
 val pp_message : Format.formatter -> message -> unit 
-(** [pp_message v] formats v] *)
+(** [pp_message v] formats [v] *)
 
 val pp_log_interval_compacted : Format.formatter -> log_interval_compacted -> unit 
-(** [pp_log_interval_compacted v] formats v] *)
+(** [pp_log_interval_compacted v] formats [v] *)
 
 val pp_log_interval_expanded : Format.formatter -> log_interval_expanded -> unit 
-(** [pp_log_interval_expanded v] formats v] *)
+(** [pp_log_interval_expanded v] formats [v] *)
 
 val pp_log_interval_rev_log_entries : Format.formatter -> log_interval_rev_log_entries -> unit 
-(** [pp_log_interval_rev_log_entries v] formats v] *)
+(** [pp_log_interval_rev_log_entries v] formats [v] *)
 
 val pp_log_interval : Format.formatter -> log_interval -> unit 
-(** [pp_log_interval v] formats v] *)
+(** [pp_log_interval v] formats [v] *)
 
 val pp_server_index : Format.formatter -> server_index -> unit 
-(** [pp_server_index v] formats v] *)
+(** [pp_server_index v] formats [v] *)
 
 val pp_leader_state : Format.formatter -> leader_state -> unit 
-(** [pp_leader_state v] formats v] *)
+(** [pp_leader_state v] formats [v] *)
 
 val pp_candidate_state : Format.formatter -> candidate_state -> unit 
-(** [pp_candidate_state v] formats v] *)
+(** [pp_candidate_state v] formats [v] *)
 
 val pp_follower_state : Format.formatter -> follower_state -> unit 
-(** [pp_follower_state v] formats v] *)
+(** [pp_follower_state v] formats [v] *)
 
 val pp_configuration : Format.formatter -> configuration -> unit 
-(** [pp_configuration v] formats v] *)
+(** [pp_configuration v] formats [v] *)
 
 val pp_log_interval_rope : Format.formatter -> log_interval_rope -> unit 
-(** [pp_log_interval_rope v] formats v] *)
+(** [pp_log_interval_rope v] formats [v] *)
 
 val pp_log_interval_rope_append : Format.formatter -> log_interval_rope_append -> unit 
-(** [pp_log_interval_rope_append v] formats v] *)
+(** [pp_log_interval_rope_append v] formats [v] *)
 
 val pp_state_role : Format.formatter -> state_role -> unit 
-(** [pp_state_role v] formats v] *)
+(** [pp_state_role v] formats [v] *)
 
 val pp_state : Format.formatter -> state -> unit 
-(** [pp_state v] formats v] *)
+(** [pp_state v] formats [v] *)
 
 val pp_timeout_event_time_out_type : Format.formatter -> timeout_event_time_out_type -> unit 
-(** [pp_timeout_event_time_out_type v] formats v] *)
+(** [pp_timeout_event_time_out_type v] formats [v] *)
 
 val pp_timeout_event : Format.formatter -> timeout_event -> unit 
-(** [pp_timeout_event v] formats v] *)
+(** [pp_timeout_event v] formats [v] *)
 
 val pp_notification_commited_data : Format.formatter -> notification_commited_data -> unit 
-(** [pp_notification_commited_data v] formats v] *)
+(** [pp_notification_commited_data v] formats [v] *)
 
 val pp_notification_new_leader : Format.formatter -> notification_new_leader -> unit 
-(** [pp_notification_new_leader v] formats v] *)
+(** [pp_notification_new_leader v] formats [v] *)
 
 val pp_notification : Format.formatter -> notification -> unit 
-(** [pp_notification v] formats v] *)
+(** [pp_notification v] formats [v] *)
 
 val pp_compaction_report : Format.formatter -> compaction_report -> unit 
-(** [pp_compaction_report v] formats v] *)
+(** [pp_compaction_report v] formats [v] *)
