@@ -481,7 +481,7 @@ module Builder = struct
       recent_entries = log_entry :: log.recent_entries; 
       log_size = log.log_size + 1; 
     } 
-    else log 
+    else {log with log_size = log.log_size + 1; }  
 
   let log_of_t2 x = x 
 

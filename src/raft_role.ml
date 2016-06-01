@@ -5,20 +5,17 @@ module State = Raft_state
 
 module Follower = struct 
 
-  let create ?current_leader 
-             ?current_term:(current_term = 0) 
-             ?voted_for 
-             ~configuration ~now ~id () = 
+  let create ~configuration ~now ~id () = 
     let {election_timeout = t ; election_timeout_range = r; _ } = configuration in 
     let timeout = t +. (Random.float r -. (r /. 2.)) in
     {
       id; 
-      current_term; 
+      current_term = 0; 
       log = Log.empty;
       commit_index = 0; 
       role = Follower {
-        voted_for; 
-        current_leader; 
+        voted_for = None; 
+        current_leader = None;
         election_deadline = now +.  timeout 
       };  
       configuration; 

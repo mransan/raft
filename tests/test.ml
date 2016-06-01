@@ -9,8 +9,6 @@ module Log = Raft_log
 
 module Logic     = Raft_logic
 
-let option_val = function | Some x -> x | None -> failwith "option_val" 
-
 let default_configuration = {
   nb_of_server = 3;
   election_timeout = 0.1;
@@ -29,11 +27,10 @@ let recent_log_hd {log = {recent_entries; _ }; _ } =
   List.hd recent_entries
 
 let initial_state
-  ?configuration:(configuration = default_configuration)
   ~now
   id =
 
-  Raft_logic.make_initial_state ~configuration ~now ~id ()
+  Raft_logic.make_initial_state ~configuration:default_configuration ~now ~id ()
 
 let now = 0.
 
@@ -2097,8 +2094,9 @@ let ()  =
   | _ -> assert(false)
   end;
 
-  let () =
+  
 
+  begin 
     let compact ~prev_index state = 
       let interval = Log.Past_interval.find ~index:(prev_index + 1) state.log in  
       let interval = {interval with 
@@ -2133,6 +2131,6 @@ let ()  =
     assert(0 = List.length c); 
       (* The log interval ]12;20] is no longer required to be compacted
        *)
-  in 
+  end;
 
   ()

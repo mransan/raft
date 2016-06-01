@@ -3,9 +3,6 @@
 module Follower : sig 
 
   val create : 
-    ?current_leader:int -> 
-    ?current_term:int -> 
-    ?voted_for:int -> 
     configuration:Raft_pb.configuration -> 
     now:float -> 
     id:int -> 

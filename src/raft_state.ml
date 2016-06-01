@@ -61,39 +61,36 @@ let notifications before after =
       notifications
   in
 
-  let notifications = 
-    if acommit_index > bcommit_index
-    then 
-      let rec aux rev_log_entries = function 
-        | ({index;_ } as log_entry) ::tl -> 
-            if index > acommit_index 
-            then aux rev_log_entries tl 
-            else 
-              if index = bcommit_index
-              then rev_log_entries
-              else aux (log_entry :: rev_log_entries) tl 
-        | [] ->  
-          assert(bcommit_index = 0); 
-          (* If commit_index is different than 0 then this means 
-           * that we could not identify all the [log_entry] which 
-           * have been commited between [before] and [after]. 
-           *
-           * One of the reason could be that the [log_entry]s are not
-           * in the [log] but rather in the [global_cache]. 
-           * This should be prevented by the fact that [Rev_log_cache.update_global_cache]
-           * only move the [log_entry] to the cache wihch are prior to the 
-           * previous commit index (ie the one of [before]. 
-           * 
-           * The other is a plain bug, all entries between 2 commit_index should be 
-           * in the log.
-           *) 
-          rev_log_entries 
-      in
-      (Committed_data {rev_log_entries = aux [] after.log.recent_entries})::notifications 
-    else 
-      notifications
-  in 
-  notifications
+  if acommit_index > bcommit_index
+  then 
+    let rec aux rev_log_entries = function 
+      | ({index;_ } as log_entry) ::tl -> 
+          if index > acommit_index 
+          then aux rev_log_entries tl 
+          else 
+            if index = bcommit_index
+            then rev_log_entries
+            else aux (log_entry :: rev_log_entries) tl 
+      | [] ->  
+        assert(bcommit_index = 0); 
+        (* If commit_index is different than 0 then this means 
+         * that we could not identify all the [log_entry] which 
+         * have been commited between [before] and [after]. 
+         *
+         * One of the reason could be that the [log_entry]s are not
+         * in the [log] but rather in the [global_cache]. 
+         * This should be prevented by the fact that [Rev_log_cache.update_global_cache]
+         * only move the [log_entry] to the cache wihch are prior to the 
+         * previous commit index (ie the one of [before]. 
+         * 
+         * The other is a plain bug, all entries between 2 commit_index should be 
+         * in the log.
+         *) 
+        rev_log_entries 
+    in
+    (Committed_data {rev_log_entries = aux [] after.log.recent_entries})::notifications 
+  else 
+    notifications
 
 let current_leader {id; role; _} = 
     match role with
