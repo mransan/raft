@@ -821,8 +821,6 @@ let ()  =
 
   let now = now +. 0.001 in
    
-  Format.printf "server0 : %a\n" pp_state server0 ;  
-
   let new_log_result =
     let data = Bytes.of_string "Message02" in
     Raft_logic.handle_add_log_entries server0 [(data,"02")] now
@@ -868,8 +866,6 @@ let ()  =
 
   begin match data2_msg with
   | (Append_entries_request r, 1) :: []  -> (
-    Format.printf "server0 : %a\n" pp_state server0 ;  
-    Format.printf "append entry request: %a\n" pp_append_entries_request r;  
     
     assert(r.leader_term = 1);
     assert(r.leader_id = 0);

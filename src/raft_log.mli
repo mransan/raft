@@ -64,6 +64,8 @@ val service : prev_commit_index:int -> Raft_pb.state -> Raft_pb.state
     [state] log. 
   *)
 
+val rev_log_entries_since : int -> Raft_pb.log -> (Raft_pb.log_entry list * int)  
+
 module Past_interval : sig 
 
   type t = Raft_pb.log_interval  
@@ -90,46 +92,41 @@ module Past_interval : sig
   
       raises [Not_found] in case no [log_interval] contains [index].
     *) 
+  
+  val contains_next_of : int -> t -> bool
+  (** [contains_next_of since interval] return true if [interval] contains 
+      the [log_entry] which index is next of [since]. 
+    *)
 end 
 
+(** Log Builder utilities to re-create a log value from disk records. 
+    
+    This expects the application to store on disk both the Past Intervals
+    as well as each log entries. 
 
-val rev_log_entries_since : int -> Raft_pb.log -> (Raft_pb.log_entry list * int)  
+    The building process is split into 2 phases: 
+    {ul
+    {- Adding the past intervals}
+    {- Adding all the log entries} 
+    }
 
-type past_entries = Raft_pb.log_interval_rope option
-
-type interval = Raft_pb.log_interval
-
-val from_list : interval list -> past_entries
-
-(** {2 Local Cache} *)
-
-val make : ?until:int -> since:int -> Raft_pb.log_entry list -> interval
-(** [make ~until ~since log] creates a local cache with the [log] entries 
-    in the range : \]since; until\]
-   
-    If [until] is not provided it defaults to the last log entries in [log].
   *)
+module Builder : sig 
 
-val contains_next_of : int -> interval  -> bool 
-(** [contains_next_of prev_index interval] returns [true] is [interval] 
-    contains the index following [prev_index]. 
-  *) 
+  type t1 
+  (* Phase 1 builder *)
 
-(*
-val update_interval : 
-  int -> 
-  interval  -> 
-  t -> 
-  interval
-  *)
-(** [update_interval since log interval past_entries] 
-   
-    Computes a local cache of log entries in reverse order 
-    since the given index.
-   
-    The computation of this new log cache might use a subset 
-    of the [interval] a subset of the [past_entries] or the 
-    [log] data directly.
-   
- *)
+  type t2 
+  (* Phase 2 builder *)
 
+  val make_t1 : unit -> t1 
+
+  val add_interval : t1 -> Past_interval.t -> t1 
+  
+  val t2_of_t1 : t1 -> t2 
+
+  val add_log_entry : t2 -> Raft_pb.log_entry -> t2 
+
+  val log_of_t2 : t2 -> Raft_pb.log 
+
+end (* Builder *) 

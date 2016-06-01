@@ -1,6 +1,158 @@
 open Raft_pb
 
+let last_cached_index_rope = function 
+  | Interval {last_index; _} -> last_index 
+  | Append   {last_index; _} -> last_index
+
+module Past_interval = struct 
+
+  type t = Raft_pb.log_interval 
+  
+  let make_expanded entries = 
+    Expanded {entries}
+
+  let make ?until ~since log = 
+    
+    let last_index, log = 
+      match until with
+      | None -> 
+        let last_index = 
+          match log with
+          | {index;_}::_ -> index
+          | _ -> 0
+        in
+        (last_index, log) 
+  
+      | Some until -> 
+        let rec aux = function
+          | ({index; _ }::tl) as log when index = until -> log  
+          | _::tl -> aux tl 
+          | [] -> []
+        in
+        (until, aux log) 
+    in 
+  
+    let rec aux rev_log_entries = function
+      | [] ->
+        if since = 0 
+        then 
+          {
+            prev_index =0; 
+            prev_term =0; 
+            rev_log_entries = make_expanded rev_log_entries; 
+            last_index
+          }
+        else begin  
+          Printf.eprintf "[Raft_logic] Internal2 error invalid log index\n%!";
+          failwith "[Raft_logic] Internal2 error invalid log index"
+        end
+  
+      | {index; term; _ }::tl when index = since -> 
+        {
+          prev_index = index; 
+          prev_term = term; 
+          rev_log_entries = make_expanded rev_log_entries; 
+          last_index
+        }
+  
+      | hd::tl -> aux (hd::rev_log_entries) tl  
+    in
+    aux [] log 
+
+  let fold f e0 {past_entries; _ } = 
+    match past_entries with
+    | None -> e0
+    | Some rope ->
+      let rec aux acc = function
+        | Interval log_interval -> 
+          f acc log_interval
+  
+        | Append {lhs;rhs; _} ->
+          aux (aux acc lhs) rhs 
+      in
+      aux e0 rope
+  
+  let replace ({prev_index; _ } as replacement) ({past_entries; _} as log) =   
+    match past_entries with 
+    | None -> assert(false)
+    | Some rope ->  
+      let rec aux = function
+        | Interval interval -> 
+          assert(interval.prev_index = prev_index);  
+          Interval replacement 
+  
+        | Append ({rhs; lhs; _} as append)  -> 
+          let lhs_last = last_cached_index_rope lhs in 
+          if prev_index >= lhs_last 
+          then Append { append with rhs = aux rhs }
+          else Append { append with lhs = aux lhs }
+      in
+      {log with past_entries = Some (aux rope)}
+  
+  let find ~index {past_entries; _ } = 
+    match past_entries with 
+    | None -> raise Not_found
+    | Some rope ->
+        
+      let rec aux = function
+        |Interval interval -> 
+          if index <= interval.prev_index || 
+             index > interval.last_index  
+          then raise Not_found
+          else interval 
+        | Append {rhs; lhs; _} -> 
+          let lhs_last = last_cached_index_rope lhs in 
+          if index > lhs_last 
+          then aux rhs 
+          else aux lhs  
+      in
+      aux rope 
+  (*
+   * Returns the sub (ie subset) local cache starting a the given
+   * [since] index. 
+   *
+   *)
+  let sub since ({prev_index; rev_log_entries; _} as t) = 
+    if since = prev_index 
+    then t 
+    else 
+      match rev_log_entries with
+      | Compacted _ -> t 
+      | Expanded  {entries } ->
+        let rec aux = function
+          | [] -> (
+            Printf.eprintf "[Raft_logic] Internal error invalid log index\n%!";
+            failwith "[Raft_logic] Internal error invalid log index"
+          )
+            (* 
+             * The caller should have called [contains_next_of] 
+             * to ensure that this cache contains data next to [since].
+             *)
+  
+          | {index; term; _}::tl when index = since ->
+            {t with 
+             prev_index = index; 
+             prev_term = term; 
+             rev_log_entries = make_expanded tl; 
+            } 
+  
+          | _::tl ->
+            aux tl 
+        in 
+        aux entries
+  (*
+   * Returns true if the local cache contains at least one 
+   * next logs after [i]
+   *)
+  let contains_next_of i {last_index; prev_index;_ } = 
+    prev_index <= i && i < last_index
+end (* Past_interval *)
+
 type t = log
+
+type interval = Raft_pb.log_interval
+
+type past_entries = Raft_pb.log_interval_rope option
 
 let last_log_index_and_term {log = {recent_entries; _ }; _ } = 
   match recent_entries with
@@ -16,61 +168,6 @@ let empty = {
   log_size = 0; 
 }
 
-type interval = Raft_pb.log_interval
-
-type past_entries = Raft_pb.log_interval_rope option
-
-let make_expanded entries = 
-  Expanded {entries}
-
-let make ?until ~since log = 
-  
-  let last_index, log = 
-    match until with
-    | None -> 
-      let last_index = 
-        match log with
-        | {index;_}::_ -> index
-        | _ -> 0
-      in
-      (last_index, log) 
-
-    | Some until -> 
-      let rec aux = function
-        | ({index; _ }::tl) as log when index = until -> log  
-        | _::tl -> aux tl 
-        | [] -> []
-      in
-      (until, aux log) 
-  in 
-
-  let rec aux rev_log_entries = function
-    | [] ->
-      if since = 0 
-      then 
-        {
-          prev_index =0; 
-          prev_term =0; 
-          rev_log_entries = make_expanded rev_log_entries; 
-          last_index
-        }
-      else begin  
-        Printf.eprintf "[Raft_logic] Internal2 error invalid log index\n%!";
-        failwith "[Raft_logic] Internal2 error invalid log index"
-      end
-
-    | {index; term; _ }::tl when index = since -> 
-      {
-        prev_index = index; 
-        prev_term = term; 
-        rev_log_entries = make_expanded rev_log_entries; 
-        last_index
-      }
-
-    | hd::tl -> aux (hd::rev_log_entries) tl  
-  in
-  aux [] log 
-
 (* 
  * Return the latest log entry index stored in the given 
  * local cache. 
@@ -80,10 +177,6 @@ let last_cached_index = function
   | None -> 0 
   | Some (Interval {last_index; _}) -> last_index 
   | Some (Append   {last_index; _}) -> last_index
-
-let last_cached_index_rope = function 
-  | Interval {last_index; _} -> last_index 
-  | Append   {last_index; _} -> last_index
 
 let add new_interval gc = 
 
@@ -138,7 +231,7 @@ let service ~prev_commit_index state =
      * all the logs since the last cache update.
      *)
 
-    let new_interval = Interval (make ~until:prev_commit_index ~since state.log.recent_entries) in 
+    let new_interval = Interval (Past_interval.make ~until:prev_commit_index ~since state.log.recent_entries) in 
     let past_entries = add new_interval gc in 
 
     let rec aux = function
@@ -164,102 +257,6 @@ let from_list log_intervals =
   List.fold_left (fun gc log_interval -> 
     add (Interval log_interval) gc
   ) None log_intervals 
-
-(*
- * Returns true if the local cache contains at least one 
- * next logs after [i]
- *)
-let contains_next_of i {last_index; prev_index;_ } = 
-  prev_index <= i && i < last_index
-
-(*
- * Returns the sub (ie subset) local cache starting a the given
- * [since] index. 
- *
- *)
-let sub since ({prev_index; rev_log_entries; _} as t) = 
-  if since = prev_index 
-  then t 
-  else 
-    match rev_log_entries with
-    | Compacted _ -> t 
-    | Expanded  {entries } ->
-      let rec aux = function
-        | [] -> (
-          Printf.eprintf "[Raft_logic] Internal error invalid log index\n%!";
-          failwith "[Raft_logic] Internal error invalid log index"
-        )
-          (* 
-           * The caller should have called [contains_next_of] 
-           * to ensure that this cache contains data next to [since].
-           *)
-
-        | {index; term; _}::tl when index = since ->
-          {t with 
-           prev_index = index; 
-           prev_term = term; 
-           rev_log_entries = make_expanded tl; 
-          } 
-
-        | _::tl ->
-          aux tl 
-      in 
-      aux entries
-
-module Past_interval = struct 
-
-  type t = Raft_pb.log_interval 
-
-  let fold f e0 {past_entries; _ } = 
-    match past_entries with
-    | None -> e0
-    | Some rope ->
-      let rec aux acc = function
-        | Interval log_interval -> 
-          f acc log_interval
-  
-        | Append {lhs;rhs; _} ->
-          aux (aux acc lhs) rhs 
-      in
-      aux e0 rope
-  
-  let replace ({prev_index; _ } as replacement) ({past_entries; _} as log) =   
-    match past_entries with 
-    | None -> assert(false)
-    | Some rope ->  
-      let rec aux = function
-        | Interval interval -> 
-          assert(interval.prev_index = prev_index);  
-          Interval replacement 
-  
-        | Append ({rhs; lhs; _} as append)  -> 
-          let lhs_last = last_cached_index_rope lhs in 
-          if prev_index >= lhs_last 
-          then Append { append with rhs = aux rhs }
-          else Append { append with lhs = aux lhs }
-      in
-      {log with past_entries = Some (aux rope)}
-  
-  let find ~index {past_entries; _ } = 
-    match past_entries with 
-    | None -> raise Not_found
-    | Some rope ->
-        
-      let rec aux = function
-        |Interval interval -> 
-          if index <= interval.prev_index || 
-             index > interval.last_index  
-          then raise Not_found
-          else interval 
-        | Append {rhs; lhs; _} -> 
-          let lhs_last = last_cached_index_rope lhs in 
-          if index > lhs_last 
-          then aux rhs 
-          else aux lhs  
-      in
-      aux rope 
-end (* Past_interval *)
-
 
 let add_logs datas state = 
 
@@ -435,15 +432,9 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
   | _ -> aux state.log.log_size state.log.recent_entries
   end
 
-let is_expanded = function
-  | ({rev_log_entries = Expanded _ ; _ } : log_interval) -> true 
-  | _ -> false 
-
 let rev_log_entries_since since log = 
-  let {
-    recent_entries ; 
-    past_entries; 
-  } = log in 
+  let {recent_entries ; past_entries;} = log in 
+
   match recent_entries with
   | []  -> [], 0  
   | {index; _}::_ -> 
@@ -458,10 +449,40 @@ let rev_log_entries_since since log =
     let interval = 
       if since >= (last_cached_index past_entries)
       then  
-        make since recent_entries
+        Past_interval.make since recent_entries
       else 
-        sub since @@ Past_interval.find (since + 1) log 
+        Past_interval.sub since @@ Past_interval.find (since + 1) log 
     in
     match interval.rev_log_entries with
     | Expanded {entries} -> entries, interval.prev_term
-    | Compacted _ -> [], interval.prev_term
+    | Compacted _        -> [], interval.prev_term
+
+
+module Builder = struct 
+
+  type t1 = Past_interval.t list 
+
+  type t2 = Raft_pb.log  
+
+  let make_t1 () = []
+
+  let add_interval intervals interval = interval::intervals
+  
+  let t2_of_t1 past_entries = {
+    past_entries = from_list past_entries; 
+    recent_entries =[]; 
+    log_size = 0; 
+  } 
+
+  let add_log_entry log log_entry = 
+    let from = last_cached_index log.past_entries in 
+    if log_entry.index >= from 
+    then {log with 
+      recent_entries = log_entry :: log.recent_entries; 
+      log_size = log.log_size + 1; 
+    } 
+    else log 
+
+  let log_of_t2 x = x 
+
+end (* Builder *) 
