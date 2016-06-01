@@ -1,8 +1,8 @@
 open Raft_pb
 
-module Rev_log_cache = Raft_revlogcache
-module State         = Raft_state
-module Leader        = Raft_role.Leader
+module Log    = Raft_log
+module State  = Raft_state
+module Leader = Raft_role.Leader
 
 module Configuration = struct
 

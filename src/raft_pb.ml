@@ -131,6 +131,36 @@ and log_interval_mutable = {
   mutable rev_log_entries : log_interval_rev_log_entries;
 }
 
+type log_interval_rope_append = {
+  height : int;
+  lhs : log_interval_rope;
+  rhs : log_interval_rope;
+  last_index : int;
+}
+
+and log_interval_rope_append_mutable = {
+  mutable height : int;
+  mutable lhs : log_interval_rope;
+  mutable rhs : log_interval_rope;
+  mutable last_index : int;
+}
+
+and log_interval_rope =
+  | Interval of log_interval
+  | Append of log_interval_rope_append
+
+type log = {
+  recent_entries : log_entry list;
+  log_size : int;
+  past_entries : log_interval_rope option;
+}
+
+and log_mutable = {
+  mutable recent_entries : log_entry list;
+  mutable log_size : int;
+  mutable past_entries : log_interval_rope option;
+}
+
 type server_index = {
   server_id : int;
   next_index : int;
@@ -197,24 +227,6 @@ and configuration_mutable = {
   mutable log_interval_size : int;
 }
 
-type log_interval_rope =
-  | Interval of log_interval
-  | Append of log_interval_rope_append
-
-and log_interval_rope_append = {
-  height : int;
-  lhs : log_interval_rope;
-  rhs : log_interval_rope;
-  last_index : int;
-}
-
-and log_interval_rope_append_mutable = {
-  mutable height : int;
-  mutable lhs : log_interval_rope;
-  mutable rhs : log_interval_rope;
-  mutable last_index : int;
-}
-
 type state_role =
   | Leader of leader_state
   | Candidate of candidate_state
@@ -223,23 +235,19 @@ type state_role =
 and state = {
   id : int;
   current_term : int;
-  log : log_entry list;
-  log_size : int;
+  log : log;
   commit_index : int;
   role : state_role;
   configuration : configuration;
-  global_cache : log_interval_rope option;
 }
 
 and state_mutable = {
   mutable id : int;
   mutable current_term : int;
-  mutable log : log_entry list;
-  mutable log_size : int;
+  mutable log : log;
   mutable commit_index : int;
   mutable role : state_role;
   mutable configuration : configuration;
-  mutable global_cache : log_interval_rope option;
 }
 
 type timeout_event_time_out_type =
@@ -447,6 +455,43 @@ and default_log_interval_mutable () : log_interval_mutable = {
   rev_log_entries = Compacted (default_log_interval_compacted ());
 }
 
+let rec default_log_interval_rope_append 
+  ?height:((height:int) = 0)
+  ?lhs:((lhs:log_interval_rope) = default_log_interval_rope ())
+  ?rhs:((rhs:log_interval_rope) = default_log_interval_rope ())
+  ?last_index:((last_index:int) = 0)
+  () : log_interval_rope_append  = {
+  height;
+  lhs;
+  rhs;
+  last_index;
+}
+
+and default_log_interval_rope_append_mutable () : log_interval_rope_append_mutable = {
+  height = 0;
+  lhs = default_log_interval_rope ();
+  rhs = default_log_interval_rope ();
+  last_index = 0;
+}
+
+and default_log_interval_rope () : log_interval_rope = Interval (default_log_interval ())
+
+let rec default_log 
+  ?recent_entries:((recent_entries:log_entry list) = [])
+  ?log_size:((log_size:int) = 0)
+  ?past_entries:((past_entries:log_interval_rope option) = None)
+  () : log  = {
+  recent_entries;
+  log_size;
+  past_entries;
+}
+
+and default_log_mutable () : log_mutable = {
+  recent_entries = [];
+  log_size = 0;
+  past_entries = None;
+}
+
 let rec default_server_index 
   ?server_id:((server_id:int) = 0)
   ?next_index:((next_index:int) = 0)
@@ -536,58 +581,31 @@ and default_configuration_mutable () : configuration_mutable = {
   log_interval_size = 0;
 }
 
-let rec default_log_interval_rope () : log_interval_rope = Interval (default_log_interval ())
-
-and default_log_interval_rope_append 
-  ?height:((height:int) = 0)
-  ?lhs:((lhs:log_interval_rope) = default_log_interval_rope ())
-  ?rhs:((rhs:log_interval_rope) = default_log_interval_rope ())
-  ?last_index:((last_index:int) = 0)
-  () : log_interval_rope_append  = {
-  height;
-  lhs;
-  rhs;
-  last_index;
-}
-
-and default_log_interval_rope_append_mutable () : log_interval_rope_append_mutable = {
-  height = 0;
-  lhs = default_log_interval_rope ();
-  rhs = default_log_interval_rope ();
-  last_index = 0;
-}
-
 let rec default_state_role () : state_role = Leader (default_leader_state ())
 
 and default_state 
   ?id:((id:int) = 0)
   ?current_term:((current_term:int) = 0)
-  ?log:((log:log_entry list) = [])
-  ?log_size:((log_size:int) = 0)
+  ?log:((log:log) = default_log ())
   ?commit_index:((commit_index:int) = 0)
   ?role:((role:state_role) = Leader (default_leader_state ()))
   ?configuration:((configuration:configuration) = default_configuration ())
-  ?global_cache:((global_cache:log_interval_rope option) = None)
   () : state  = {
   id;
   current_term;
   log;
-  log_size;
   commit_index;
   role;
   configuration;
-  global_cache;
 }
 
 and default_state_mutable () : state_mutable = {
   id = 0;
   current_term = 0;
-  log = [];
-  log_size = 0;
+  log = default_log ();
   commit_index = 0;
   role = Leader (default_leader_state ());
   configuration = default_configuration ();
-  global_cache = None;
 }
 
 let rec default_timeout_event_time_out_type () = (New_leader_election:timeout_event_time_out_type)
@@ -1028,6 +1046,95 @@ and decode_log_interval d =
   let v:log_interval = Obj.magic v in
   v
 
+let rec decode_log_interval_rope_append d =
+  let v = default_log_interval_rope_append_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+    )
+    | Some (1, Pbrt.Varint) -> (
+      v.height <- Pbrt.Decoder.int_as_varint d;
+      loop ()
+    )
+    | Some (1, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_rope_append), field(1)", pk))
+    )
+    | Some (2, Pbrt.Bytes) -> (
+      v.lhs <- decode_log_interval_rope (Pbrt.Decoder.nested d);
+      loop ()
+    )
+    | Some (2, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_rope_append), field(2)", pk))
+    )
+    | Some (3, Pbrt.Bytes) -> (
+      v.rhs <- decode_log_interval_rope (Pbrt.Decoder.nested d);
+      loop ()
+    )
+    | Some (3, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_rope_append), field(3)", pk))
+    )
+    | Some (4, Pbrt.Varint) -> (
+      v.last_index <- Pbrt.Decoder.int_as_varint d;
+      loop ()
+    )
+    | Some (4, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_rope_append), field(4)", pk))
+    )
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:log_interval_rope_append = Obj.magic v in
+  v
+
+and decode_log_interval_rope d = 
+  let rec loop () = 
+    let ret:log_interval_rope = match Pbrt.Decoder.key d with
+      | None -> failwith "None of the known key is found"
+      | Some (1, _) -> Interval (decode_log_interval (Pbrt.Decoder.nested d))
+      | Some (2, _) -> Append (decode_log_interval_rope_append (Pbrt.Decoder.nested d))
+      | Some (n, payload_kind) -> (
+        Pbrt.Decoder.skip d payload_kind; 
+        loop () 
+      )
+    in
+    ret
+  in
+  loop ()
+
+let rec decode_log d =
+  let v = default_log_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+      v.recent_entries <- List.rev v.recent_entries;
+    )
+    | Some (1, Pbrt.Bytes) -> (
+      v.recent_entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.recent_entries;
+      loop ()
+    )
+    | Some (1, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log), field(1)", pk))
+    )
+    | Some (2, Pbrt.Varint) -> (
+      v.log_size <- Pbrt.Decoder.int_as_varint d;
+      loop ()
+    )
+    | Some (2, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log), field(2)", pk))
+    )
+    | Some (3, Pbrt.Bytes) -> (
+      v.past_entries <- Some (decode_log_interval_rope (Pbrt.Decoder.nested d));
+      loop ()
+    )
+    | Some (3, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log), field(3)", pk))
+    )
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:log = Obj.magic v in
+  v
+
 let rec decode_server_index d =
   let v = default_server_index_mutable () in
   let rec loop () = 
@@ -1215,61 +1322,6 @@ let rec decode_configuration d =
   let v:configuration = Obj.magic v in
   v
 
-let rec decode_log_interval_rope d = 
-  let rec loop () = 
-    let ret:log_interval_rope = match Pbrt.Decoder.key d with
-      | None -> failwith "None of the known key is found"
-      | Some (1, _) -> Interval (decode_log_interval (Pbrt.Decoder.nested d))
-      | Some (2, _) -> Append (decode_log_interval_rope_append (Pbrt.Decoder.nested d))
-      | Some (n, payload_kind) -> (
-        Pbrt.Decoder.skip d payload_kind; 
-        loop () 
-      )
-    in
-    ret
-  in
-  loop ()
-
-and decode_log_interval_rope_append d =
-  let v = default_log_interval_rope_append_mutable () in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-    )
-    | Some (1, Pbrt.Varint) -> (
-      v.height <- Pbrt.Decoder.int_as_varint d;
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_rope_append), field(1)", pk))
-    )
-    | Some (2, Pbrt.Bytes) -> (
-      v.lhs <- decode_log_interval_rope (Pbrt.Decoder.nested d);
-      loop ()
-    )
-    | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_rope_append), field(2)", pk))
-    )
-    | Some (3, Pbrt.Bytes) -> (
-      v.rhs <- decode_log_interval_rope (Pbrt.Decoder.nested d);
-      loop ()
-    )
-    | Some (3, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_rope_append), field(3)", pk))
-    )
-    | Some (4, Pbrt.Varint) -> (
-      v.last_index <- Pbrt.Decoder.int_as_varint d;
-      loop ()
-    )
-    | Some (4, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_rope_append), field(4)", pk))
-    )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  let v:log_interval_rope_append = Obj.magic v in
-  v
-
 let rec decode_state_role d = 
   let rec loop () = 
     let ret:state_role = match Pbrt.Decoder.key d with
@@ -1291,7 +1343,6 @@ and decode_state d =
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
-      v.log <- List.rev v.log;
     )
     | Some (1, Pbrt.Varint) -> (
       v.id <- Pbrt.Decoder.int_as_varint d;
@@ -1308,18 +1359,11 @@ and decode_state d =
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(2)", pk))
     )
     | Some (3, Pbrt.Bytes) -> (
-      v.log <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.log;
+      v.log <- decode_log (Pbrt.Decoder.nested d);
       loop ()
     )
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(3)", pk))
-    )
-    | Some (10, Pbrt.Varint) -> (
-      v.log_size <- Pbrt.Decoder.int_as_varint d;
-      loop ()
-    )
-    | Some (10, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(10)", pk))
     )
     | Some (4, Pbrt.Varint) -> (
       v.commit_index <- Pbrt.Decoder.int_as_varint d;
@@ -1355,13 +1399,6 @@ and decode_state d =
     )
     | Some (9, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(9)", pk))
-    )
-    | Some (11, Pbrt.Bytes) -> (
-      v.global_cache <- Some (decode_log_interval_rope (Pbrt.Decoder.nested d));
-      loop ()
-    )
-    | Some (11, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(11)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -1641,6 +1678,45 @@ and encode_log_interval (v:log_interval) encoder =
   );
   ()
 
+let rec encode_log_interval_rope_append (v:log_interval_rope_append) encoder = 
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.height encoder;
+  Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
+  Pbrt.Encoder.nested (encode_log_interval_rope v.lhs) encoder;
+  Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
+  Pbrt.Encoder.nested (encode_log_interval_rope v.rhs) encoder;
+  Pbrt.Encoder.key (4, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.last_index encoder;
+  ()
+
+and encode_log_interval_rope (v:log_interval_rope) encoder = 
+  match v with
+  | Interval x -> (
+    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_log_interval x) encoder;
+  )
+  | Append x -> (
+    Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_log_interval_rope_append x) encoder;
+  )
+
+let rec encode_log (v:log) encoder = 
+  List.iter (fun x -> 
+    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_log_entry x) encoder;
+  ) v.recent_entries;
+  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.log_size encoder;
+  (
+    match v.past_entries with 
+    | Some x -> (
+      Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
+      Pbrt.Encoder.nested (encode_log_interval_rope x) encoder;
+    )
+    | None -> ();
+  );
+  ()
+
 let rec encode_server_index (v:server_index) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.server_id encoder;
@@ -1706,28 +1782,6 @@ let rec encode_configuration (v:configuration) encoder =
   Pbrt.Encoder.int_as_varint v.log_interval_size encoder;
   ()
 
-let rec encode_log_interval_rope (v:log_interval_rope) encoder = 
-  match v with
-  | Interval x -> (
-    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_log_interval x) encoder;
-  )
-  | Append x -> (
-    Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_log_interval_rope_append x) encoder;
-  )
-
-and encode_log_interval_rope_append (v:log_interval_rope_append) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.height encoder;
-  Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
-  Pbrt.Encoder.nested (encode_log_interval_rope v.lhs) encoder;
-  Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
-  Pbrt.Encoder.nested (encode_log_interval_rope v.rhs) encoder;
-  Pbrt.Encoder.key (4, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.last_index encoder;
-  ()
-
 let rec encode_state_role (v:state_role) encoder = 
   match v with
   | Leader x -> (
@@ -1748,12 +1802,8 @@ and encode_state (v:state) encoder =
   Pbrt.Encoder.int_as_varint v.id encoder;
   Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.current_term encoder;
-  List.iter (fun x -> 
-    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_log_entry x) encoder;
-  ) v.log;
-  Pbrt.Encoder.key (10, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.log_size encoder;
+  Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
+  Pbrt.Encoder.nested (encode_log v.log) encoder;
   Pbrt.Encoder.key (4, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.commit_index encoder;
   (
@@ -1773,14 +1823,6 @@ and encode_state (v:state) encoder =
   );
   Pbrt.Encoder.key (9, Pbrt.Bytes) encoder; 
   Pbrt.Encoder.nested (encode_configuration v.configuration) encoder;
-  (
-    match v.global_cache with 
-    | Some x -> (
-      Pbrt.Encoder.key (11, Pbrt.Bytes) encoder; 
-      Pbrt.Encoder.nested (encode_log_interval_rope x) encoder;
-    )
-    | None -> ();
-  );
   ()
 
 let rec encode_timeout_event_time_out_type (v:timeout_event_time_out_type) encoder =
@@ -1949,6 +1991,32 @@ and pp_log_interval fmt (v:log_interval) =
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
+let rec pp_log_interval_rope_append fmt (v:log_interval_rope_append) = 
+  let pp_i fmt () =
+    Format.pp_open_vbox fmt 1;
+    Pbrt.Pp.pp_record_field "height" Pbrt.Pp.pp_int fmt v.height;
+    Pbrt.Pp.pp_record_field "lhs" pp_log_interval_rope fmt v.lhs;
+    Pbrt.Pp.pp_record_field "rhs" pp_log_interval_rope fmt v.rhs;
+    Pbrt.Pp.pp_record_field "last_index" Pbrt.Pp.pp_int fmt v.last_index;
+    Format.pp_close_box fmt ()
+  in
+  Pbrt.Pp.pp_brk pp_i fmt ()
+
+and pp_log_interval_rope fmt (v:log_interval_rope) =
+  match v with
+  | Interval x -> Format.fprintf fmt "@[Interval(%a)@]" pp_log_interval x
+  | Append x -> Format.fprintf fmt "@[Append(%a)@]" pp_log_interval_rope_append x
+
+let rec pp_log fmt (v:log) = 
+  let pp_i fmt () =
+    Format.pp_open_vbox fmt 1;
+    Pbrt.Pp.pp_record_field "recent_entries" (Pbrt.Pp.pp_list pp_log_entry) fmt v.recent_entries;
+    Pbrt.Pp.pp_record_field "log_size" Pbrt.Pp.pp_int fmt v.log_size;
+    Pbrt.Pp.pp_record_field "past_entries" (Pbrt.Pp.pp_option pp_log_interval_rope) fmt v.past_entries;
+    Format.pp_close_box fmt ()
+  in
+  Pbrt.Pp.pp_brk pp_i fmt ()
+
 let rec pp_server_index fmt (v:server_index) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
@@ -2002,22 +2070,6 @@ let rec pp_configuration fmt (v:configuration) =
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
-let rec pp_log_interval_rope fmt (v:log_interval_rope) =
-  match v with
-  | Interval x -> Format.fprintf fmt "@[Interval(%a)@]" pp_log_interval x
-  | Append x -> Format.fprintf fmt "@[Append(%a)@]" pp_log_interval_rope_append x
-
-and pp_log_interval_rope_append fmt (v:log_interval_rope_append) = 
-  let pp_i fmt () =
-    Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "height" Pbrt.Pp.pp_int fmt v.height;
-    Pbrt.Pp.pp_record_field "lhs" pp_log_interval_rope fmt v.lhs;
-    Pbrt.Pp.pp_record_field "rhs" pp_log_interval_rope fmt v.rhs;
-    Pbrt.Pp.pp_record_field "last_index" Pbrt.Pp.pp_int fmt v.last_index;
-    Format.pp_close_box fmt ()
-  in
-  Pbrt.Pp.pp_brk pp_i fmt ()
-
 let rec pp_state_role fmt (v:state_role) =
   match v with
   | Leader x -> Format.fprintf fmt "@[Leader(%a)@]" pp_leader_state x
@@ -2029,12 +2081,10 @@ and pp_state fmt (v:state) =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "id" Pbrt.Pp.pp_int fmt v.id;
     Pbrt.Pp.pp_record_field "current_term" Pbrt.Pp.pp_int fmt v.current_term;
-    Pbrt.Pp.pp_record_field "log" (Pbrt.Pp.pp_list pp_log_entry) fmt v.log;
-    Pbrt.Pp.pp_record_field "log_size" Pbrt.Pp.pp_int fmt v.log_size;
+    Pbrt.Pp.pp_record_field "log" pp_log fmt v.log;
     Pbrt.Pp.pp_record_field "commit_index" Pbrt.Pp.pp_int fmt v.commit_index;
     Pbrt.Pp.pp_record_field "role" pp_state_role fmt v.role;
     Pbrt.Pp.pp_record_field "configuration" pp_configuration fmt v.configuration;
-    Pbrt.Pp.pp_record_field "global_cache" (Pbrt.Pp.pp_option pp_log_interval_rope) fmt v.global_cache;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

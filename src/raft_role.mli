@@ -6,7 +6,6 @@ module Follower : sig
     ?current_leader:int -> 
     ?current_term:int -> 
     ?voted_for:int -> 
-    ?log:Raft_pb.log_entry list ->
     configuration:Raft_pb.configuration -> 
     now:float -> 
     id:int -> 

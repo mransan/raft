@@ -5,7 +5,7 @@ module Candidate = Raft_role.Candidate
 module Follower  = Raft_role.Follower
 module Leader    = Raft_role.Leader
 module Timeout_event = Raft_helper.Timeout_event
-module Rev_log_cache = Raft_revlogcache
+module Log = Raft_log
 
 module Logic     = Raft_logic
 
@@ -21,6 +21,12 @@ let default_configuration = {
   max_nb_logs_per_message = 10;
   log_interval_size = 5;
 }
+
+let recent_log_length {log = {recent_entries; _ }; _ } = 
+  List.length recent_entries  
+
+let recent_log_hd {log = {recent_entries; _ }; _ } = 
+  List.hd recent_entries
 
 let initial_state
   ?configuration:(configuration = default_configuration)
@@ -664,7 +670,6 @@ let ()  =
    *
    * --------------------------------------------------------------------------
    *)
-
   let new_log_result =
     let data = Bytes.of_string "Message01" in
     Raft_logic.handle_add_log_entries server0 [(data, "01")] now
@@ -682,12 +687,12 @@ let ()  =
     | Delay | Forward_to_leader _ -> assert(false)
   in
 
-  assert(1 = List.length server0.log);
+  assert(1 = recent_log_length server0);
     (*
      * The new log entry should have been appended to the current empty log.
      *)
 
-    begin match server0.log with
+  begin match server0.log.recent_entries with
   | {index = 1; term = 1; _ } :: []  -> ()
     (*
      * Log should start as 1 and be set to the current
@@ -745,7 +750,7 @@ let ()  =
      * re-inforce that server0 is the [Leader].
      *)
 
-  assert(1 = List.length server1.log);
+  assert(1 = recent_log_length server1);
     (*
      * The [log_entry] with index 1 has been replicated
      * on server1.
@@ -830,13 +835,13 @@ let ()  =
 
   assert(State.is_leader server0);
 
-  assert(2 = List.length server0.log);
+  assert(2 = recent_log_length server0);
     (*
      * The second log entry should have been appended to the
      * server log.
      *)
 
-  begin match List.hd server0.log with
+  begin match recent_log_hd server0 with 
   | {index = 2; term = 1; _ }  -> ()
     (*
      * Make sure the index is incremented by
@@ -896,7 +901,7 @@ let ()  =
   assert(State.is_follower server1);
 
 
-  assert(2 = List.length server1.log);
+  assert(2 = recent_log_length server1);
     (*
      * server1 should have correctly replicated the log
      * with [index = 2].
@@ -1082,7 +1087,7 @@ let ()  =
     * mechanism
     *)
 
-  assert(1 = List.length server2.log);
+  assert(1 = recent_log_length server2);
    (*
     * server2 should have caught up with server0 and replicated
     * all the logs in the cache (ie 1)
@@ -1130,7 +1135,7 @@ let ()  =
 
   assert(State.is_leader server0);
   assert(2 = server0.commit_index);
-  assert(2 = List.length server0.log);
+  assert(2 = recent_log_length server0);
   assert([] = notications);
 
   (*
@@ -1157,7 +1162,7 @@ let ()  =
   in
 
   assert(State.is_follower server2);
-  assert(2 = List.length server2.log);
+  assert(2 = recent_log_length server2);
     (* server2 has correctly replicated the [log_entry] with
      * [index = 2].
      *)
@@ -1230,7 +1235,7 @@ let ()  =
     | _ -> assert(false)
   in
   assert(State.is_leader server0);
-  assert(3 = List.length server0.log);
+  assert(3 = recent_log_length server0);
     (*
      * Correctly added log since server0 is a [Leader].
      *)
@@ -1253,7 +1258,7 @@ let ()  =
   in
 
   assert(State.is_follower server1);
-  assert(3 = List.length server1.log);
+  assert(3 = recent_log_length server1);
     (*
      * The 3rd [log_entry] is correctly replicated.
      *)
@@ -1582,7 +1587,7 @@ let ()  =
   assert(State.is_follower server2);
   assert(3 = server2.current_term);
 
-  assert(3 = List.length server2.log);
+  assert(3 = recent_log_length server2);
     (*
      * server2 has correctly replicated the 3rd [log_entry].
      *)
@@ -1666,14 +1671,14 @@ let ()  =
     | Delay | Forward_to_leader _ -> assert(false)
   in
 
-  assert(5 = List.length server1.log);
-  assert(5 = State.last_log_index server1);
+  assert(5 = recent_log_length server1);
+  assert(5 = Log.last_log_index server1);
 
   assert(3 = server1.commit_index);
     (* The 2 logs have not been commited.
      *)
 
-  assert(None = server1.global_cache);
+  assert(None = server1.log.past_entries );
     (* Only 3 logs have been commited, this is less than
      * the [log_interval_size] so the global_cache
      * is still empty.
@@ -1720,10 +1725,10 @@ let ()  =
   assert(State.is_follower server2);
   assert(3 = server2.current_term);
 
-  assert(5 = List.length server2.log);
+  assert(5 = recent_log_length server2);
     (* The last 2 logs where succesfully replicated
      *)
-  begin match server2.log with
+  begin match server2.log.recent_entries with
   | {data; _ } :: _ ->
     assert((Bytes.of_string "Message05") = data);
     (* Let's make sure the order was properly replicated.
@@ -1828,7 +1833,7 @@ let ()  =
     | Delay | Forward_to_leader _ -> assert(false)
   in
 
-  assert(12 = List.length server1.log);
+  assert(12 = recent_log_length server1); 
   assert(5  = server1.commit_index);
    (* we did not do the [Append_entries] request for the 6th log
     * entries so no commit change.
@@ -1854,7 +1859,7 @@ let ()  =
   assert(State.is_follower server2);
   assert(3 = server2.current_term);
 
-  assert(6 = List.length server2.log);
+  assert(6 = recent_log_length server2); 
     (* TODO explain cache
      *)
 
@@ -1912,7 +1917,7 @@ let ()  =
    *
    * Additionally the entries ]0;4] are also removed from the state log. 
    *) 
-  begin match server1.global_cache with
+  begin match server1.log.past_entries with
   | None -> assert(false)
   | Some (Interval {prev_index; prev_term; rev_log_entries; last_index}) ->
     (* The commit_index is 5 and the previously cached index is 0 (ie no cache),
@@ -1939,8 +1944,8 @@ let ()  =
   | Some (Append _) -> assert(false)
   end;
 
-  assert(12 = server1.log_size); 
-  assert(8  = List.length server1.log); 
+  assert(12 = server1.log.log_size); 
+  assert(8  = recent_log_length server1); 
 
   assert(1 = List.length msgs);
     (* Only one message back to server2, server1 still has an outstanding
@@ -1981,13 +1986,13 @@ let ()  =
      * the same way as previously tested in the [Leader].
      *
      *) 
-  begin match server2.global_cache with
+  begin match server2.log.past_entries with
   | Some (Interval {last_index = 5; _}) -> assert(true)
   | _ -> assert(false) 
   end;
 
-  assert(12 = server2.log_size);
-  assert(8  = List.length server2.log);
+  assert(12 = server2.log.log_size);
+  assert(8  = recent_log_length server2);
     (* All log replicated but the first 4 log were moved 
      * to the global cache
      *)
@@ -2033,7 +2038,7 @@ let ()  =
    *     `6 - 5 = 1 <  log_interval_size = 5`
    *
    *)
-  begin match server1.global_cache with
+  begin match server1.log.past_entries with
   | Some (Interval {last_index = 5; _}) -> assert(true)
   | _ -> assert(false) 
   end;
@@ -2071,7 +2076,7 @@ let ()  =
   in
   assert(20 = server1.commit_index);
   assert(12 = server2.commit_index);
-  assert(9  = List.length server1.log); 
+  assert(9  = recent_log_length server1); 
     (* 20 - 5 - 7 + 1 
      * where 20: total number of log 
      * where 5 : logs in first global cache interval 
@@ -2079,10 +2084,10 @@ let ()  =
      * where +1: because the last cached index is not removed from 
      *           the logs.
      *)
-  assert(16 = List.length server2.log);
+  assert(16 = recent_log_length server2);
 
-  assert(20 = server1.log_size);
-  assert(20 = server2.log_size);
+  assert(20 = server1.log.log_size);
+  assert(20 = server2.log.log_size);
   
   (* The global cache update will create a new cache entry since 
    *
@@ -2098,7 +2103,7 @@ let ()  =
    *            ]0;5]          ]5;12]
    *
    *)
-  begin match server1.global_cache with
+  begin match server1.log.past_entries with
   | None -> assert(false)
   | Some (Append a) ->
     let {
@@ -2153,8 +2158,8 @@ let ()  =
 
   assert(21 = server1.commit_index); 
   assert(20 = server2.commit_index);
-  assert(21 = server1.log_size);
-  assert(21 = server2.log_size);
+  assert(21 = server1.log.log_size);
+  assert(21 = server2.log.log_size);
 
 
   (* The latest update to the commit index from [20] to [21] triggered
@@ -2172,7 +2177,7 @@ let ()  =
    *
    *)
 
-  begin match server1.global_cache with
+  begin match server1.log.past_entries with
   | None -> assert(false)
   | Some (Append {rhs; lhs; last_index; height})  ->
     assert(2  = height);
@@ -2235,10 +2240,11 @@ let ()  =
   let () =
 
     let compact ~prev_index state = 
-      let interval = Rev_log_cache.find ~index:(prev_index + 1) state.global_cache in  
+      let interval = Log.Past_interval.find ~index:(prev_index + 1) state.log in  
       let interval = {interval with 
-        rev_log_entries = Compacted {record_id = "test"}} in 
-      {state with global_cache = Rev_log_cache.replace interval state.global_cache}
+        rev_log_entries = Compacted {record_id = "test"}} 
+      in 
+      {state with log = Log.Past_interval.replace interval state.log} 
     in 
         
     (* This section gradually compact all the logs from left (earlier) to 

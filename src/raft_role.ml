@@ -1,6 +1,6 @@
 open Raft_pb 
 
-module Rev_log_cache = Raft_revlogcache
+module Log= Raft_log
 module State = Raft_state
 
 module Follower = struct 
@@ -8,15 +8,13 @@ module Follower = struct
   let create ?current_leader 
              ?current_term:(current_term = 0) 
              ?voted_for 
-             ?log:(log = []) 
              ~configuration ~now ~id () = 
     let {election_timeout = t ; election_timeout_range = r; _ } = configuration in 
     let timeout = t +. (Random.float r -. (r /. 2.)) in
     {
       id; 
       current_term; 
-      log;
-      log_size = List.length log;
+      log = Log.empty;
       commit_index = 0; 
       role = Follower {
         voted_for; 
@@ -24,7 +22,6 @@ module Follower = struct
         election_deadline = now +.  timeout 
       };  
       configuration; 
-      global_cache = None; 
     }
 
   let become ?current_leader ~term ~now state = 
@@ -75,7 +72,7 @@ module Leader = struct
 
   let become state now = 
 
-    let last_log_index = State.last_log_index state in
+    let last_log_index = Log.last_log_index state in
     
     let {nb_of_server; hearbeat_timeout} = state.configuration in 
   
@@ -88,7 +85,7 @@ module Leader = struct
         else 
           let next_index = last_log_index + 1 in 
           let match_index = 0 in 
-          let local_cache = Rev_log_cache.make ~since:last_log_index state.log in
+          let local_cache = Log.make ~since:last_log_index state.log.recent_entries in
             (* The cache is expected to be empty... which is fine since it will
              * get filled at when a new log entry will be
              * added. 
@@ -151,10 +148,7 @@ module Leader = struct
   let decrement_next_index ~log_failure ~receiver_id state leader_state = 
     let {receiver_commit_index} = log_failure in 
 
-    let latest_log_index, latest_log_term = match state.log with
-      | [] -> (0, 0) 
-      | {index; term; data = _} :: _ -> (index, term)
-    in
+    let latest_log_index, latest_log_term = Log.last_log_index_and_term state in 
 
     assert(receiver_commit_index < latest_log_index);  
       (* 

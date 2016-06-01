@@ -1,13 +1,13 @@
 
 open Raft_pb
 
-module State            = Raft_state
-module Follower         = Raft_role.Follower
-module Candidate        = Raft_role.Candidate
-module Leader           = Raft_role.Leader
-module Configuration    = Raft_helper.Configuration
-module Rev_log_cache    = Raft_revlogcache
-module Timeout_event    = Raft_helper.Timeout_event
+module State         = Raft_state
+module Follower      = Raft_role.Follower
+module Candidate     = Raft_role.Candidate
+module Leader        = Raft_role.Leader
+module Configuration = Raft_helper.Configuration
+module Log           = Raft_log
+module Timeout_event = Raft_helper.Timeout_event
 
 type time = float
 
@@ -27,10 +27,8 @@ module Log_entry_util = struct
 
   let make_append_entries prev_log_index local_cache state =
 
-    let global_cache = state.global_cache in 
-
     let local_cache = 
-      Rev_log_cache.update_local_cache prev_log_index state.log local_cache global_cache 
+      Log.update_interval prev_log_index local_cache state.log 
     in
 
     let max = state.configuration.max_nb_logs_per_message in
@@ -79,7 +77,7 @@ module Log_entry_util = struct
              *)
           else
             let prev_index = next_index - 1 in
-            let last_log_index = State.last_log_index state in
+            let last_log_index = Log.last_log_index state in
             if prev_index = last_log_index
             then false
               (* The receipient has the most recent data so no need
@@ -120,7 +118,7 @@ end (* Log_entry_util *)
 (** {2 Request Vote} *)
 
 let make_request_vote_request state =
-  let index, term  = State.last_log_index_and_term state in
+  let index, term  = Log.last_log_index_and_term state in
   {
     candidate_term = state.current_term;
     candidate_id = state.id;
@@ -157,7 +155,7 @@ let handle_request_vote_request state request now =
       else 
         state
     in
-    let last_log_index = State.last_log_index state in
+    let last_log_index = Log.last_log_index state in
     if candidate_last_log_index < last_log_index
     then
       (*
@@ -309,10 +307,10 @@ let handle_append_entries_request state request now =
       leader_commit} = request in
       
     let state, success = 
-      State.merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state 
+      Log.merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state 
     in 
     let receiver_last_log_index, 
-        receiver_last_log_term = State.last_log_index_and_term state in  
+        receiver_last_log_term = Log.last_log_index_and_term state in  
     
     let state =
       (* Update this server commit index based on value sent from
@@ -322,7 +320,7 @@ let handle_append_entries_request state request now =
        * is taken.
        *)
       if leader_commit > state.commit_index
-      then Rev_log_cache.update_global_cache state.commit_index {state with
+      then Log.service state.commit_index {state with
         commit_index = min leader_commit receiver_last_log_index
       }
       else state
@@ -389,7 +387,7 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
           if Configuration.is_majority configuration (nb_of_replications + 1) &&
              receiver_last_log_index > state.commit_index
           then 
-            Rev_log_cache.update_global_cache state.commit_index {state with commit_index = receiver_last_log_index}
+            Log.service state.commit_index {state with commit_index = receiver_last_log_index}
           else 
             state
         in
@@ -501,7 +499,7 @@ let handle_add_log_entries state datas now =
 
   | Leader _ -> 
 
-    let state = State.add_logs datas state in 
+    let state = Log.add_logs datas state in 
     begin match state.role with
     | Follower  _ | Candidate _ -> assert(false)
       (* We don't expect the [Leader.add_log] functions to

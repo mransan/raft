@@ -185,6 +185,96 @@ message AppendEntriesResponse {
 
 } // AppendEntriesResponse
 
+
+// LOG 
+// ----------------------------------------------------------------------------
+
+// [LogEntry] 
+// 
+// RAFT protocol ensures consensus on the execution of a 
+// state machine. In other words each RAFT server must eventually
+// execute the exact same state machine instructions, hence leading to the
+// same state.
+//
+// Each instruction of the state machine is wrapped into a [LogEntry]. 
+// 
+// [data] 
+//   Placeholder for the application state machine instruction. 
+//
+// [index]
+//   Instruction index. Each newly added instruction increments by 1 
+//   the previous instruction index. 
+//
+// [term]
+//   During which term the log entry was inserted into the state [Log].
+//
+message LogEntry {
+  required int32 index = 1; // starts at 1  
+  required int32 term  = 2; // starts at 0
+  required bytes data  = 3; 
+  required string id   = 4;
+}
+
+// A subset of log entries. 
+//
+// The log interval is between ]prev_index; last_index]. 
+//
+// The log entries are in reverse order which means than the 
+// earliest entry (ie prev_index + 1) is the head of the list. 
+//
+// Invariants: 
+// * If rev_log_entries <> []
+//   then prev_index + 1 = (List.hd rev_log_entries).index 
+// * last_index >= prev_index 
+//   -> Due to increasing indices
+// * prev_index + (List.length rev_log_entries) = last_index 
+//   -> Due to the fact each new log index increments by one 
+//      the previous one. 
+//    
+message LogInterval {
+  required int32    prev_index      = 1; 
+  required int32    prev_term       = 2; 
+  required int32    last_index      = 3;
+ 
+  message Compacted { 
+    required string record_id = 1;
+      // A Unique identifier to find the LogInterval in 
+      // the permanent storage
+  }
+
+  message Expanded {
+    repeated LogEntry entries = 1;
+  }
+
+  oneof rev_log_entries {
+    Compacted compacted = 4;
+    Expanded  expanded  = 5;
+  }
+}
+
+// Rope data structure to keep track efficiently
+// of the log entries in reverse order. 
+// 
+message LogIntervalRope {
+  message Append {
+    required int32           height = 1; 
+    required LogIntervalRope lhs    = 2; 
+    required LogIntervalRope rhs    = 3;
+    required int32    last_index    = 4;
+  }
+  oneof t {
+    LogInterval interval = 1;
+    Append      append   = 2;
+  }
+}
+
+message Log {
+  repeated LogEntry        recent_entries = 1;
+  required int32 log_size                 = 2;
+  optional LogIntervalRope past_entries   = 3;
+}
+
+
 // STATE
 // ----------------------------------------------------------------------------
 // 
@@ -225,8 +315,7 @@ message AppendEntriesResponse {
 message State {
   required int32 id           = 1;
   required int32 current_term = 2; 
-  repeated LogEntry log       = 3; 
-  required int32 log_size     = 10;
+  required Log      log       = 3; 
   required int32 commit_index = 4; 
 
   oneof role {
@@ -236,34 +325,8 @@ message State {
   }
 
   required Configuration configuration = 9;
-  optional LogIntervalRope global_cache = 11;
 }
 
-// [LogEntry] 
-// 
-// RAFT protocol ensures consensus on the execution of a 
-// state machine. In other words each RAFT server must eventually
-// execute the exact same state machine instructions, hence leading to the
-// same state.
-//
-// Each instruction of the state machine is wrapped into a [LogEntry]. 
-// 
-// [data] 
-//   Placeholder for the application state machine instruction. 
-//
-// [index]
-//   Instruction index. Each newly added instruction increments by 1 
-//   the previous instruction index. 
-//
-// [term]
-//   During which term the log entry was inserted into the state [Log].
-//
-message LogEntry {
-  required int32 index = 1; // starts at 1  
-  required int32 term  = 2; // starts at 0
-  required bytes data  = 3; 
-  required string id   = 4;
-}
 
 // [LeaderState]
 //
@@ -338,58 +401,7 @@ message FollowerState {
   required double election_deadline = 3;
 }
 
-// Rope data structure to keep track efficiently
-// of the log entries in reverse order. 
-// 
-message LogIntervalRope {
-  message Append {
-    required int32           height = 1; 
-    required LogIntervalRope lhs    = 2; 
-    required LogIntervalRope rhs    = 3;
-    required int32    last_index    = 4;
-  }
-  oneof t {
-    LogInterval interval = 1;
-    Append      append   = 2;
-  }
-}
 
-// A subset of log entries. 
-//
-// The log interval is between ]prev_index; last_index]. 
-//
-// The log entries are in reverse order which means than the 
-// earliest entry (ie prev_index + 1) is the head of the list. 
-//
-// Invariants: 
-// * If rev_log_entries <> []
-//   then prev_index + 1 = (List.hd rev_log_entries).index 
-// * last_index >= prev_index 
-//   -> Due to increasing indices
-// * prev_index + (List.length rev_log_entries) = last_index 
-//   -> Due to the fact each new log index increments by one 
-//      the previous one. 
-//    
-message LogInterval {
-  required int32    prev_index      = 1; 
-  required int32    prev_term       = 2; 
-  required int32    last_index      = 3;
- 
-  message Compacted { 
-    required string record_id = 1;
-      // A Unique identifier to find the LogInterval in 
-      // the permanent storage
-  }
-
-  message Expanded {
-    repeated LogEntry entries = 1;
-  }
-
-  oneof rev_log_entries {
-    Compacted compacted = 4;
-    Expanded  expanded  = 5;
-  }
-}
 
 // [ServerIndex]
 //
