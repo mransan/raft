@@ -98,7 +98,8 @@ type server_index = {
   match_index : int;
   heartbeat_deadline : float;
   outstanding_request : bool;
-  local_cache : log_interval;
+  unsent_entries : log_entry list;
+  prev_term : int;
 }
 
 type leader_state = {
@@ -282,7 +283,8 @@ val default_server_index :
   ?match_index:int ->
   ?heartbeat_deadline:float ->
   ?outstanding_request:bool ->
-  ?local_cache:log_interval ->
+  ?unsent_entries:log_entry list ->
+  ?prev_term:int ->
   unit ->
   server_index
 (** [default_server_index ()] is the default value for type [server_index] *)

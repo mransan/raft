@@ -72,7 +72,7 @@ module Leader = struct
 
   let become state now = 
 
-    let last_log_index = Log.last_log_index state in
+    let last_log_index,last_log_term = Log.last_log_index_and_term state in
     
     let {nb_of_server; hearbeat_timeout} = state.configuration in 
   
@@ -84,8 +84,8 @@ module Leader = struct
           aux indices (i -1)
         else 
           let next_index = last_log_index + 1 in 
-          let match_index = 0 in 
-          let local_cache = Log.make ~since:last_log_index state.log.recent_entries in
+          let match_index = 0  in 
+          let unsent_entries = [] in 
             (* The cache is expected to be empty... which is fine since it will
              * get filled at when a new log entry will be
              * added. 
@@ -95,7 +95,8 @@ module Leader = struct
             server_id = i; 
             next_index; 
             match_index; 
-            local_cache; 
+            unsent_entries; 
+            prev_term = last_log_term;
             outstanding_request = false;
             heartbeat_deadline = now +. hearbeat_timeout;
               (* 

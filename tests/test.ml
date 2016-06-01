@@ -820,6 +820,8 @@ let ()  =
    *)
 
   let now = now +. 0.001 in
+   
+  Format.printf "server0 : %a\n" pp_state server0 ;  
 
   let new_log_result =
     let data = Bytes.of_string "Message02" in
@@ -866,6 +868,9 @@ let ()  =
 
   begin match data2_msg with
   | (Append_entries_request r, 1) :: []  -> (
+    Format.printf "server0 : %a\n" pp_state server0 ;  
+    Format.printf "append entry request: %a\n" pp_append_entries_request r;  
+    
     assert(r.leader_term = 1);
     assert(r.leader_id = 0);
     assert(r.prev_log_index = 1);
@@ -1008,11 +1013,7 @@ let ()  =
     assert(r.leader_term = 1);
     assert(r.leader_id = 0);
     assert(r.prev_log_term = 0);
-    assert(List.length r.rev_log_entries = 1);
-      (*
-       * server2 has nevery replied to serve0 [Leader].
-       * TODO Explain Caching
-       *)
+    assert(List.length r.rev_log_entries = 2);
 
     assert(r.prev_log_index = 0);
       (*
@@ -1078,16 +1079,13 @@ let ()  =
   | (Committed_data { rev_log_entries = [{id = "02"; _ }]})::[] -> ()
   | _ -> assert(false)
   end; 
-  assert(1 = server2.commit_index);
+  assert(2 = server2.commit_index);
    (*
     * server2 is updating its commit index based on latest
     * [leader_commit] value of 2 in the request it received.
-    *
-    * However it has not replicated the second log due to the cache
-    * mechanism
     *)
 
-  assert(1 = recent_log_length server2);
+  assert(2 = recent_log_length server2);
    (*
     * server2 should have caught up with server0 and replicated
     * all the logs in the cache (ie 1)
@@ -1102,9 +1100,9 @@ let ()  =
   | (Append_entries_response r, 0)::[] -> (
     assert(r.receiver_id = 2);
     assert(r.receiver_term = 1);
-    assert(r.result = Success {receiver_last_log_index = 1; });
+    assert(r.result = Success {receiver_last_log_index = 2; });
       (*
-       * server2 has successfully replicated the 1 log entries
+       * server2 has successfully replicated the 2 log entries
        *)
   )
   | _ -> assert(false)
@@ -1139,65 +1137,11 @@ let ()  =
   assert([] = notications);
 
   (*
-   * Because server2 has only one log replicated, the [Leader]
-   * must now send the remaining log.
+   * Both servers have replicated the 2 logs, no outstanding 
+   * logs to be sent.
    *)
-  assert(1 = List.length msg_to_send);
+  assert(0 = List.length msg_to_send);
 
-  begin match msg_to_send with
-  | (Append_entries_request r, 2)::[] -> (
-    assert(r.leader_term = 1);
-    assert(r.leader_id = 0);
-    assert(r.prev_log_index = 1);
-    assert(r.prev_log_term = 1);
-    assert(1 = List.length r.rev_log_entries);
-    assert(r.leader_commit  = 2);
-  )
-  | _ -> assert(false)
-  end;
-
-  let server2, msg_to_send, notications =
-    let msg = msg_for_server msg_to_send 2 in
-    Raft_logic.handle_message server2 msg now
-  in
-
-  assert(State.is_follower server2);
-  assert(2 = recent_log_length server2);
-    (* server2 has correctly replicated the [log_entry] with
-     * [index = 2].
-     *)
-
-  assert(2 = server2.commit_index);
-  begin match notifications with 
-  | (Committed_data { rev_log_entries = [{id = "02"; _ }]})::[] -> ()
-  | _ -> assert(false)
-  end; 
-    (* This time the commit_index is 2 since both [log_entry] with
-     * [index = 2] has been replicated and the [leader_commit] is equal
-     * to 2.
-     *)
-
-  assert(1 = List.length msg_to_send);
-    (* [Append_entries] response for server0.
-     *)
-  begin match msg_to_send with
-  | (Append_entries_response r, 0)::[] -> (
-    assert(r.receiver_id = 2);
-    assert(r.receiver_term = 1);
-    assert(r.result = Success {receiver_last_log_index = 2});
-  )
-  | _ -> assert(false)
-  end;
-
-  let server0, msgs, notifications =
-    let msg = msg_for_server msg_to_send 0  in
-    Raft_logic.handle_message server0 msg now
-  in
-
-  assert([] = msgs);
-  assert([] = notifications);
-  assert(State.is_leader server0);
-  assert(2 = server0.commit_index);
 
   (*
    * Let's now add a 3rd [log_entry] to the [Leader].
@@ -1798,7 +1742,7 @@ let ()  =
     Raft_logic.handle_add_log_entries server1 datas now
   in
 
-  let server1, data6_msgs =
+  let server1, data7_msgs =
     let open Raft_logic in
     match new_log_result with
     | Appended (state, msgs) -> (state, msgs)
@@ -1806,11 +1750,10 @@ let ()  =
   in
 
   assert(5 = server1.commit_index);
-  assert(1 = List.length data6_msgs);
+  assert(1 = List.length data7_msgs);
     (* Note that server0 still has an outstanding requests so
      * new ones are sent.
      *)
-
 
   let now = now +. default_configuration.hearbeat_timeout in
 
@@ -1826,7 +1769,7 @@ let ()  =
     Raft_logic.handle_add_log_entries server1 datas now
   in
 
-  let server1, data7toC_msgs =
+  let server1, data7to12_msgs =
     let open Raft_logic in
     match new_log_result with
     | Appended (state, msgs) -> (state, msgs)
@@ -1839,7 +1782,7 @@ let ()  =
     * entries so no commit change.
     *)
 
-  assert(2 = List.length data7toC_msgs);
+  assert(2 = List.length data7to12_msgs);
    (* Both server0/server2 have oustanding requests as far as server
     * is concerned, however we are past the [hearbeat_timeout] so
     * new messages must be sent.
@@ -1852,16 +1795,14 @@ let ()  =
    *)
 
   let server2, msgs, notifications =
-    let msg = msg_for_server data7toC_msgs 2 in
+    let msg = msg_for_server data7to12_msgs 2 in
     Raft_logic.handle_message server2 msg now
   in
 
   assert(State.is_follower server2);
   assert(3 = server2.current_term);
 
-  assert(6 = recent_log_length server2); 
-    (* TODO explain cache
-     *)
+  assert(12 = recent_log_length server2); 
 
   assert(5 = server2.commit_index);
   assert(1 = List.length notifications);
@@ -1870,7 +1811,6 @@ let ()  =
     assert(2 = List.length rev_log_entries)
   | _ -> assert(false)
   end; 
-
     (* commit index updated to match server1.
      * and therefore a new notification with
      * 2 entries is expected
@@ -1890,7 +1830,7 @@ let ()  =
     } = r in
     assert(2 = receiver_id);
     assert(3 = receiver_term);
-    assert(Success {receiver_last_log_index = 6} = result);
+    assert(Success {receiver_last_log_index = 12} = result);
   | _ -> assert(false)
   end;
 
@@ -1900,7 +1840,7 @@ let ()  =
   in
 
   assert(State.is_leader server1);
-  assert(6 = server1.commit_index);
+  assert(12 = server1.commit_index);
   
   (* 
    * The global cache is updated everytime the commit index is increased and there
@@ -1946,91 +1886,15 @@ let ()  =
 
   assert(12 = server1.log.log_size); 
   assert(8  = recent_log_length server1); 
-
-  assert(1 = List.length msgs);
-    (* Only one message back to server2, server1 still has an outstanding
-     * request to server0 so no point in sending another one until
-     * timeout time has elapsed (not the case right now).
-     *)
-  begin match msgs with
-  | (Append_entries_request r, 2)::[] ->
-    let {
-      leader_term;
-      leader_id;
-      prev_log_index;
-      prev_log_term;
-      rev_log_entries;
-      leader_commit;
-    } = r in
-    assert(3 = leader_term);
-    assert(1 = leader_id);
-    assert(prev_log_index = 6);
-    assert(prev_log_term = 3);
-    assert(6 = leader_commit);
-    assert(6 = List.length rev_log_entries);
-  | _ -> assert(false);
-  end;
-
-  let server2, msgs, notifications =
-    let msg = msg_for_server msgs 2 in
-    Raft_logic.handle_message server2 msg now
-  in
-
-
-  assert(6 = server2.commit_index);
-  assert(1 = List.length notifications);
-    (* Server2 increases its commit index to match server1 [Leader].
-     * which triggers a notification. 
-     *
-     * Additionally the global cache will be updated in exactly 
-     * the same way as previously tested in the [Leader].
-     *
-     *) 
-  begin match server2.log.past_entries with
-  | Some (Interval {last_index = 5; _}) -> assert(true)
-  | _ -> assert(false) 
-  end;
-
-  assert(12 = server2.log.log_size);
-  assert(8  = recent_log_length server2);
-    (* All log replicated but the first 4 log were moved 
-     * to the global cache
-     *)
-
-  assert(1 = List.length msgs);
-    (* Single response to server1 *)
-
-  begin match msgs with
-  | (Append_entries_response r, 1)::[] -> (
-    let {
-      receiver_id;
-      receiver_term;
-      result;
-    } = r in
-    assert(2 = receiver_id);
-    assert(3 = receiver_term);
-    assert(Success {receiver_last_log_index = 12} = result);
-  )
-  | _ -> assert(false);
-  end;
-
-  (*
-   * Let's communicate the successful response from server2 to
-   * server1.
-   *
-   * --------------------------------------------------------------------------
-   *)
-
-  let server1, msgs, notifications =
-    let msg = msg_for_server msgs 1 in
-    Raft_logic.handle_message server1 msg now
-  in
-
-  assert(12 = server1.commit_index);
   assert(1  = List.length notifications);
     (* New commited logs means notification back!
      *)
-  
+
+  assert(0 = List.length msgs);
+    (* No new messages to be send:
+     * Server2 has replicated all the logs 
+     * Server0 (still crashed) has an outstanding request. 
+     *)
   (* 
    * The commit index increased from 6 to 12. However [6] is not
    * commited log is not enough to trigger a new global cache 

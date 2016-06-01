@@ -427,7 +427,8 @@ message ServerIndex {
   required float heartbeat_deadline  = 5;
   required bool  outstanding_request = 6;
 
-  required LogInterval  local_cache  = 4;
+  repeated LogEntry unsent_entries   = 4;
+  required int32    prev_term        = 10;
 }
 
 // [Configuration] 

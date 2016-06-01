@@ -167,7 +167,8 @@ type server_index = {
   match_index : int;
   heartbeat_deadline : float;
   outstanding_request : bool;
-  local_cache : log_interval;
+  unsent_entries : log_entry list;
+  prev_term : int;
 }
 
 and server_index_mutable = {
@@ -176,7 +177,8 @@ and server_index_mutable = {
   mutable match_index : int;
   mutable heartbeat_deadline : float;
   mutable outstanding_request : bool;
-  mutable local_cache : log_interval;
+  mutable unsent_entries : log_entry list;
+  mutable prev_term : int;
 }
 
 type leader_state = {
@@ -498,14 +500,16 @@ let rec default_server_index
   ?match_index:((match_index:int) = 0)
   ?heartbeat_deadline:((heartbeat_deadline:float) = 0.)
   ?outstanding_request:((outstanding_request:bool) = false)
-  ?local_cache:((local_cache:log_interval) = default_log_interval ())
+  ?unsent_entries:((unsent_entries:log_entry list) = [])
+  ?prev_term:((prev_term:int) = 0)
   () : server_index  = {
   server_id;
   next_index;
   match_index;
   heartbeat_deadline;
   outstanding_request;
-  local_cache;
+  unsent_entries;
+  prev_term;
 }
 
 and default_server_index_mutable () : server_index_mutable = {
@@ -514,7 +518,8 @@ and default_server_index_mutable () : server_index_mutable = {
   match_index = 0;
   heartbeat_deadline = 0.;
   outstanding_request = false;
-  local_cache = default_log_interval ();
+  unsent_entries = [];
+  prev_term = 0;
 }
 
 let rec default_leader_state 
@@ -1140,6 +1145,7 @@ let rec decode_server_index d =
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
+      v.unsent_entries <- List.rev v.unsent_entries;
     )
     | Some (1, Pbrt.Varint) -> (
       v.server_id <- Pbrt.Decoder.int_as_varint d;
@@ -1177,11 +1183,18 @@ let rec decode_server_index d =
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(6)", pk))
     )
     | Some (4, Pbrt.Bytes) -> (
-      v.local_cache <- decode_log_interval (Pbrt.Decoder.nested d);
+      v.unsent_entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.unsent_entries;
       loop ()
     )
     | Some (4, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(4)", pk))
+    )
+    | Some (10, Pbrt.Varint) -> (
+      v.prev_term <- Pbrt.Decoder.int_as_varint d;
+      loop ()
+    )
+    | Some (10, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(10)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -1728,8 +1741,12 @@ let rec encode_server_index (v:server_index) encoder =
   Pbrt.Encoder.float_as_bits32 v.heartbeat_deadline encoder;
   Pbrt.Encoder.key (6, Pbrt.Varint) encoder; 
   Pbrt.Encoder.bool v.outstanding_request encoder;
-  Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
-  Pbrt.Encoder.nested (encode_log_interval v.local_cache) encoder;
+  List.iter (fun x -> 
+    Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_log_entry x) encoder;
+  ) v.unsent_entries;
+  Pbrt.Encoder.key (10, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.prev_term encoder;
   ()
 
 let rec encode_leader_state (v:leader_state) encoder = 
@@ -2025,7 +2042,8 @@ let rec pp_server_index fmt (v:server_index) =
     Pbrt.Pp.pp_record_field "match_index" Pbrt.Pp.pp_int fmt v.match_index;
     Pbrt.Pp.pp_record_field "heartbeat_deadline" Pbrt.Pp.pp_float fmt v.heartbeat_deadline;
     Pbrt.Pp.pp_record_field "outstanding_request" Pbrt.Pp.pp_bool fmt v.outstanding_request;
-    Pbrt.Pp.pp_record_field "local_cache" pp_log_interval fmt v.local_cache;
+    Pbrt.Pp.pp_record_field "unsent_entries" (Pbrt.Pp.pp_list pp_log_entry) fmt v.unsent_entries;
+    Pbrt.Pp.pp_record_field "prev_term" Pbrt.Pp.pp_int fmt v.prev_term;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

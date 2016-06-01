@@ -17,38 +17,44 @@ type message_to_send = message * int
 
 module Log_entry_util = struct
 
-  let rec keep_first_n l = function
-    | 0 -> []
+  let keep_first_n l n = 
+    let rec aux f l = function
+    | 0 -> f [] 
     | n ->
       begin match l with
-      | hd::tl -> hd::(keep_first_n tl (n - 1))
-      | []     -> []
+      | hd::tl -> aux (fun lhs -> f (hd::lhs)) tl (n-1) 
+      | []     -> f [] 
       end
-
-  let make_append_entries prev_log_index local_cache state =
-
-    let local_cache = 
-      Log.update_interval prev_log_index local_cache state.log 
     in
+    aux (fun x -> x) l n 
+
+  let rec sub since = function
+    | []             -> None
+    | {index; term; _}::tl -> 
+      if index = since then Some (tl, term) else sub since tl  
+
+  let make_append_entries prev_log_index prev_term unsent_entries state =
 
     let max = state.configuration.max_nb_logs_per_message in
 
-    let rev_log_entries = 
-      match local_cache.rev_log_entries with
-      | Compacted _ -> [] 
-      | Expanded {entries} -> 
-        keep_first_n entries max 
-    in
+    let unsent_entries, prev_term = 
+      match sub prev_log_index unsent_entries with
+      | None | Some ([], _ ) -> 
+        Log.rev_log_entries_since prev_log_index state.log
+      | Some (unsent_entries, prev_term) -> 
+        (unsent_entries, prev_term) 
+    in 
+    let to_send = keep_first_n unsent_entries max in 
 
     let request = {
       leader_term = state.current_term;
       leader_id = state.id;
       prev_log_index;
-      prev_log_term = local_cache.prev_term;
-      rev_log_entries;
+      prev_log_term = prev_term;
+      rev_log_entries = to_send; 
       leader_commit = state.commit_index;
     } in
-    (local_cache, request)
+    (unsent_entries, prev_term, request)
 
   let compute_append_entries state {indices} now =
 
@@ -58,7 +64,8 @@ module Log_entry_util = struct
         heartbeat_deadline;
         outstanding_request;
         next_index;
-        local_cache; _ } = server_index in
+        unsent_entries; 
+        prev_term; _ } = server_index in
 
       let shoud_send_request =
         if now >= heartbeat_deadline
@@ -90,12 +97,13 @@ module Log_entry_util = struct
 
       if shoud_send_request
       then
-        let local_cache, request = make_append_entries (next_index - 1) local_cache state in
+        let unsent_entries, prev_term, request = make_append_entries (next_index - 1) prev_term unsent_entries state in
         let server_index = 
           let outstanding_request = true in 
           let heartbeat_deadline = now +. state.configuration.hearbeat_timeout in 
           {server_index with
-            local_cache; 
+            unsent_entries; 
+            prev_term;
             outstanding_request; 
             heartbeat_deadline; 
           } 
@@ -236,12 +244,18 @@ let handle_request_vote_response state response now =
          *)
         begin match state.role with
         | Leader {indices} -> (
-          let indices, msgs_to_send = List.fold_left (fun (indices, msgs_to_send) ({server_id; next_index; local_cache } as index) ->
+          let indices, msgs_to_send = List.fold_left (fun (indices, msgs_to_send) index ->
 
+              let {
+                server_id; 
+                next_index; 
+                unsent_entries; 
+                prev_term;
+              } = index in 
               let prev_log_index = next_index - 1 in
-              let cache, req  = Log_entry_util.make_append_entries prev_log_index local_cache state in
+              let unsent_entries, prev_term, req  = Log_entry_util.make_append_entries prev_log_index prev_term unsent_entries state in
               let msg_to_send = (Append_entries_request req, server_id) in
-              ({index with local_cache}::indices, msg_to_send::msgs_to_send)
+              ({index with unsent_entries;prev_term}::indices, msg_to_send::msgs_to_send)
 
             ) ([], []) indices
           in
@@ -514,3 +528,4 @@ let handle_add_log_entries state datas now =
     end (* match state.role *)
 
 let next_timeout_event = Timeout_event.next
+

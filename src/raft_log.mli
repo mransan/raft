@@ -93,6 +93,8 @@ module Past_interval : sig
 end 
 
 
+val rev_log_entries_since : int -> Raft_pb.log -> (Raft_pb.log_entry list * int)  
+
 type past_entries = Raft_pb.log_interval_rope option
 
 type interval = Raft_pb.log_interval
@@ -113,11 +115,13 @@ val contains_next_of : int -> interval  -> bool
     contains the index following [prev_index]. 
   *) 
 
+(*
 val update_interval : 
   int -> 
   interval  -> 
   t -> 
   interval
+  *)
 (** [update_interval since log interval past_entries] 
    
     Computes a local cache of log entries in reverse order 

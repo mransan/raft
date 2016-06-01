@@ -260,44 +260,6 @@ module Past_interval = struct
       aux rope 
 end (* Past_interval *)
 
-let is_expanded = function
-  | ({rev_log_entries = Expanded _ ; _ } : log_interval) -> true 
-  | _ -> false 
-
-let update_interval since local_cache log = 
-  let {
-    recent_entries ; 
-    past_entries; 
-  } = log in 
-  match recent_entries with
-  | [] -> {
-    prev_index = 0; 
-    prev_term = 0;
-    rev_log_entries = make_expanded [];
-    last_index = 0;
-  }
-  | {index; _}::_ -> 
-
-      (* First check if it's in the local 
-       * cache. 
-       *)
-      if is_expanded local_cache && 
-         contains_next_of since local_cache 
-      then
-        sub since local_cache
-      else 
-        (* Now the data can either be in the global
-         * caches or not. 
-         *
-         * If the [since] index is greater than the 
-         * last cached entry then it's not in the global
-         * cache. 
-         *)
-        if since >= (last_cached_index past_entries)
-        then  
-          make since recent_entries
-        else 
-          sub since @@ Past_interval.find (since + 1) log 
 
 let add_logs datas state = 
 
@@ -473,3 +435,33 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
   | _ -> aux state.log.log_size state.log.recent_entries
   end
 
+let is_expanded = function
+  | ({rev_log_entries = Expanded _ ; _ } : log_interval) -> true 
+  | _ -> false 
+
+let rev_log_entries_since since log = 
+  let {
+    recent_entries ; 
+    past_entries; 
+  } = log in 
+  match recent_entries with
+  | []  -> [], 0  
+  | {index; _}::_ -> 
+
+    (* Now the data can either be in the global
+     * caches or not. 
+     *
+     * If the [since] index is greater than the 
+     * last cached entry then it's not in the global
+     * cache. 
+     *)
+    let interval = 
+      if since >= (last_cached_index past_entries)
+      then  
+        make since recent_entries
+      else 
+        sub since @@ Past_interval.find (since + 1) log 
+    in
+    match interval.rev_log_entries with
+    | Expanded {entries} -> entries, interval.prev_term
+    | Compacted _ -> [], interval.prev_term
