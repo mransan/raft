@@ -149,30 +149,6 @@ and log_interval_rope =
   | Interval of log_interval
   | Append of log_interval_rope_append
 
-type term_tree_leaf = {
-  term_tree_index : int;
-  term_tree_termi : int;
-}
-
-and term_tree_leaf_mutable = {
-  mutable term_tree_index : int;
-  mutable term_tree_termi : int;
-}
-
-type term_tree_node = {
-  term_tree_lhs : term_tree_leaf;
-  term_tree_rhs : term_tree_leaf;
-}
-
-and term_tree_node_mutable = {
-  mutable term_tree_lhs : term_tree_leaf;
-  mutable term_tree_rhs : term_tree_leaf;
-}
-
-type term_tree =
-  | Term_tree_leaf of term_tree_leaf
-  | Term_tree_node of term_tree_node
-
 type server_index = {
   server_id : int;
   next_index : int;
@@ -180,7 +156,6 @@ type server_index = {
   heartbeat_deadline : float;
   outstanding_request : bool;
   unsent_entries : log_entry list;
-  prev_term : int;
 }
 
 and server_index_mutable = {
@@ -190,7 +165,6 @@ and server_index_mutable = {
   mutable heartbeat_deadline : float;
   mutable outstanding_request : bool;
   mutable unsent_entries : log_entry list;
-  mutable prev_term : int;
 }
 
 type leader_state = {
@@ -472,34 +446,6 @@ and default_log_interval_rope_append_mutable () : log_interval_rope_append_mutab
 
 and default_log_interval_rope () : log_interval_rope = Interval (default_log_interval ())
 
-let rec default_term_tree_leaf 
-  ?term_tree_index:((term_tree_index:int) = 0)
-  ?term_tree_termi:((term_tree_termi:int) = 0)
-  () : term_tree_leaf  = {
-  term_tree_index;
-  term_tree_termi;
-}
-
-and default_term_tree_leaf_mutable () : term_tree_leaf_mutable = {
-  term_tree_index = 0;
-  term_tree_termi = 0;
-}
-
-let rec default_term_tree_node 
-  ?term_tree_lhs:((term_tree_lhs:term_tree_leaf) = default_term_tree_leaf ())
-  ?term_tree_rhs:((term_tree_rhs:term_tree_leaf) = default_term_tree_leaf ())
-  () : term_tree_node  = {
-  term_tree_lhs;
-  term_tree_rhs;
-}
-
-and default_term_tree_node_mutable () : term_tree_node_mutable = {
-  term_tree_lhs = default_term_tree_leaf ();
-  term_tree_rhs = default_term_tree_leaf ();
-}
-
-let rec default_term_tree () : term_tree = Term_tree_leaf (default_term_tree_leaf ())
-
 let rec default_server_index 
   ?server_id:((server_id:int) = 0)
   ?next_index:((next_index:int) = 0)
@@ -507,7 +453,6 @@ let rec default_server_index
   ?heartbeat_deadline:((heartbeat_deadline:float) = 0.)
   ?outstanding_request:((outstanding_request:bool) = false)
   ?unsent_entries:((unsent_entries:log_entry list) = [])
-  ?prev_term:((prev_term:int) = 0)
   () : server_index  = {
   server_id;
   next_index;
@@ -515,7 +460,6 @@ let rec default_server_index
   heartbeat_deadline;
   outstanding_request;
   unsent_entries;
-  prev_term;
 }
 
 and default_server_index_mutable () : server_index_mutable = {
@@ -525,7 +469,6 @@ and default_server_index_mutable () : server_index_mutable = {
   heartbeat_deadline = 0.;
   outstanding_request = false;
   unsent_entries = [];
-  prev_term = 0;
 }
 
 let rec default_leader_state 
@@ -1087,73 +1030,6 @@ and decode_log_interval_rope d =
   in
   loop ()
 
-let rec decode_term_tree_leaf d =
-  let v = default_term_tree_leaf_mutable () in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-    )
-    | Some (1, Pbrt.Varint) -> (
-      v.term_tree_index <- Pbrt.Decoder.int_as_varint d;
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(term_tree_leaf), field(1)", pk))
-    )
-    | Some (2, Pbrt.Varint) -> (
-      v.term_tree_termi <- Pbrt.Decoder.int_as_varint d;
-      loop ()
-    )
-    | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(term_tree_leaf), field(2)", pk))
-    )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  let v:term_tree_leaf = Obj.magic v in
-  v
-
-let rec decode_term_tree_node d =
-  let v = default_term_tree_node_mutable () in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-    )
-    | Some (1, Pbrt.Bytes) -> (
-      v.term_tree_lhs <- decode_term_tree_leaf (Pbrt.Decoder.nested d);
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(term_tree_node), field(1)", pk))
-    )
-    | Some (2, Pbrt.Bytes) -> (
-      v.term_tree_rhs <- decode_term_tree_leaf (Pbrt.Decoder.nested d);
-      loop ()
-    )
-    | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(term_tree_node), field(2)", pk))
-    )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  let v:term_tree_node = Obj.magic v in
-  v
-
-let rec decode_term_tree d = 
-  let rec loop () = 
-    let ret:term_tree = match Pbrt.Decoder.key d with
-      | None -> failwith "None of the known key is found"
-      | Some (1, _) -> Term_tree_leaf (decode_term_tree_leaf (Pbrt.Decoder.nested d))
-      | Some (2, _) -> Term_tree_node (decode_term_tree_node (Pbrt.Decoder.nested d))
-      | Some (n, payload_kind) -> (
-        Pbrt.Decoder.skip d payload_kind; 
-        loop () 
-      )
-    in
-    ret
-  in
-  loop ()
-
 let rec decode_server_index d =
   let v = default_server_index_mutable () in
   let rec loop () = 
@@ -1202,13 +1078,6 @@ let rec decode_server_index d =
     )
     | Some (4, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(4)", pk))
-    )
-    | Some (10, Pbrt.Varint) -> (
-      v.prev_term <- Pbrt.Decoder.int_as_varint d;
-      loop ()
-    )
-    | Some (10, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(10)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
@@ -1659,31 +1528,6 @@ and encode_log_interval_rope (v:log_interval_rope) encoder =
     Pbrt.Encoder.nested (encode_log_interval_rope_append x) encoder;
   )
 
-let rec encode_term_tree_leaf (v:term_tree_leaf) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.term_tree_index encoder;
-  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.term_tree_termi encoder;
-  ()
-
-let rec encode_term_tree_node (v:term_tree_node) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
-  Pbrt.Encoder.nested (encode_term_tree_leaf v.term_tree_lhs) encoder;
-  Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
-  Pbrt.Encoder.nested (encode_term_tree_leaf v.term_tree_rhs) encoder;
-  ()
-
-let rec encode_term_tree (v:term_tree) encoder = 
-  match v with
-  | Term_tree_leaf x -> (
-    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_term_tree_leaf x) encoder;
-  )
-  | Term_tree_node x -> (
-    Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_term_tree_node x) encoder;
-  )
-
 let rec encode_server_index (v:server_index) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.server_id encoder;
@@ -1699,8 +1543,6 @@ let rec encode_server_index (v:server_index) encoder =
     Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
     Pbrt.Encoder.nested (encode_log_entry x) encoder;
   ) v.unsent_entries;
-  Pbrt.Encoder.key (10, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.prev_term encoder;
   ()
 
 let rec encode_leader_state (v:leader_state) encoder = 
@@ -1950,29 +1792,6 @@ and pp_log_interval_rope fmt (v:log_interval_rope) =
   | Interval x -> Format.fprintf fmt "@[Interval(%a)@]" pp_log_interval x
   | Append x -> Format.fprintf fmt "@[Append(%a)@]" pp_log_interval_rope_append x
 
-let rec pp_term_tree_leaf fmt (v:term_tree_leaf) = 
-  let pp_i fmt () =
-    Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "term_tree_index" Pbrt.Pp.pp_int fmt v.term_tree_index;
-    Pbrt.Pp.pp_record_field "term_tree_termi" Pbrt.Pp.pp_int fmt v.term_tree_termi;
-    Format.pp_close_box fmt ()
-  in
-  Pbrt.Pp.pp_brk pp_i fmt ()
-
-let rec pp_term_tree_node fmt (v:term_tree_node) = 
-  let pp_i fmt () =
-    Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "term_tree_lhs" pp_term_tree_leaf fmt v.term_tree_lhs;
-    Pbrt.Pp.pp_record_field "term_tree_rhs" pp_term_tree_leaf fmt v.term_tree_rhs;
-    Format.pp_close_box fmt ()
-  in
-  Pbrt.Pp.pp_brk pp_i fmt ()
-
-let rec pp_term_tree fmt (v:term_tree) =
-  match v with
-  | Term_tree_leaf x -> Format.fprintf fmt "@[Term_tree_leaf(%a)@]" pp_term_tree_leaf x
-  | Term_tree_node x -> Format.fprintf fmt "@[Term_tree_node(%a)@]" pp_term_tree_node x
-
 let rec pp_server_index fmt (v:server_index) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
@@ -1982,7 +1801,6 @@ let rec pp_server_index fmt (v:server_index) =
     Pbrt.Pp.pp_record_field "heartbeat_deadline" Pbrt.Pp.pp_float fmt v.heartbeat_deadline;
     Pbrt.Pp.pp_record_field "outstanding_request" Pbrt.Pp.pp_bool fmt v.outstanding_request;
     Pbrt.Pp.pp_record_field "unsent_entries" (Pbrt.Pp.pp_list pp_log_entry) fmt v.unsent_entries;
-    Pbrt.Pp.pp_record_field "prev_term" Pbrt.Pp.pp_int fmt v.prev_term;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

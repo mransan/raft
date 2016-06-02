@@ -2,6 +2,80 @@ open Raft_pb
 
 module Rope = Raft_rope 
 
+module Term_tree = struct 
+  
+  type t =  {
+    previous_terms : int Rope.t;  
+    last_log_entry : log_entry; 
+  }
+
+  let empty = {
+    previous_terms = None;
+    last_log_entry = { index = 0; term = 0; id = ""; data = Bytes.create 0}; 
+  }
+
+  let new_log t log_entry = 
+    let {
+      previous_terms; 
+      last_log_entry = {term = last_term; index = last_index; _ };
+    } = t in 
+    let {index;term; _ } = log_entry in  
+
+    match term - last_term with
+    | 0 -> 
+      {t with last_log_entry = log_entry} 
+
+    | i when i > 0 -> 
+      let prev =  Rope.last_entry_index_in_rope previous_terms in 
+      let last =  last_index in  
+      let data =  last_term in 
+      { 
+        previous_terms = Rope.add prev last data previous_terms; 
+        last_log_entry = log_entry
+      }
+  
+    | _ -> assert(false)
+
+  let new_last t log_entry = 
+    let {
+      previous_terms; 
+      last_log_entry = {term = last_term; index = last_index; _ };
+    } = t in 
+    let {index;term; _ } = log_entry in  
+    if term = last_term
+    then {t with last_log_entry = log_entry}
+      (* The caller is simply removing logs from the current term 
+       * which is trivial. 
+       *)
+    else 
+      let check = fun {Rope.leaf_data = previous_term ; _ } -> 
+          previous_term >= term 
+      in 
+      {
+        previous_terms = Rope.remove_backward_while check previous_terms; 
+        last_log_entry = log_entry;
+      }
+
+  let pp fmt {previous_terms; last_log_entry} = 
+     let pp_previous_terms = Rope.pp Format.pp_print_int  in 
+     Format.fprintf fmt "{previous_terms: %a; last_log_entry: %a}" 
+       pp_previous_terms previous_terms pp_log_entry last_log_entry  
+
+  let term_of_index index {previous_terms; last_log_entry = {term; _ }} = 
+    if index = 0 
+    then 0 
+    else 
+      if index > Rope.last_entry_index_in_rope previous_terms 
+      then term 
+      else Rope.find ~index previous_terms 
+
+end 
+
+type term_tree = Term_tree.t 
+
+let pp_term_tree = Term_tree.pp 
+
+
 module Past_interval = struct 
 
   type t = Raft_pb.log_interval 
@@ -101,7 +175,7 @@ type t = {
   recent_entries : log_entry list;
   log_size : int;
   past_entries : Raft_pb.log_interval Raft_rope.t;
-  term_tree : term_tree option;
+  term_tree : term_tree; 
 } 
 
 module Past_entries = struct 
@@ -131,7 +205,7 @@ let empty = {
   recent_entries = [];
   past_entries = None;
   log_size = 0; 
-  term_tree  = None;
+  term_tree  = Term_tree.empty
 }
 
 let last_past_entry_index = Rope.last_entry_index_in_rope 
@@ -169,17 +243,20 @@ let int_compare (x:int) (y:int) = Pervasives.compare x y
 
 let add_logs current_term datas log = 
 
-  let rec aux term last_log_index recent_entries log_size = function
-    | [] -> (recent_entries, log_size)  
+  let rec aux term last_log_index recent_entries log_size term_tree = function
+    | [] -> (recent_entries, log_size, term_tree)  
     | (data, id)::tl -> 
       let last_log_index = last_log_index + 1 in 
-      let recent_entries = {
+      let new_log_entry = {
         index = last_log_index;
         term;
         data;
         id;
-      } :: recent_entries in 
-      aux term last_log_index recent_entries (log_size + 1) tl 
+      } in 
+      let recent_entries = new_log_entry :: recent_entries in 
+      let term_tree  = Term_tree.new_log term_tree new_log_entry in 
+
+      aux term last_log_index recent_entries (log_size + 1) term_tree tl 
   in 
 
   let term = current_term in 
@@ -187,10 +264,10 @@ let add_logs current_term datas log =
   let recent_entries = log.recent_entries in 
   let log_size = log.log_size in 
 
-  let recent_entries, log_size= 
-    aux term last_log_index recent_entries log_size datas 
+  let recent_entries, log_size, term_tree = 
+    aux term last_log_index recent_entries log_size log.term_tree datas 
   in 
-  {log with recent_entries; log_size }
+  {log with recent_entries; log_size; term_tree}
 
 let find_term_of_index i log_entries = 
   let rec aux = function
@@ -270,14 +347,29 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries ~commit_index log
    *)
   let merge_log_entries log log_size recent_entries =
 
-    let rec aux log_size recent_entries = function
-      | [] -> (log_size, recent_entries)
-      | hd::tl -> 
-        aux (log_size + 1) (hd::recent_entries) tl 
+    (* Before merging we need to make sure the term
+     * tree is correctly updated to reflce the recent_entries since
+     * those might have been affected by 
+     * the [aux] function below.
+     *)
+    let term_tree = match recent_entries with
+      | []      -> Term_tree.empty
+      | hd :: _ -> Term_tree.new_last log.term_tree hd 
     in
 
-    let (log_size, recent_entries) = aux log_size recent_entries rev_log_entries in 
-    let log = {log with recent_entries; log_size} in 
+    let rec aux log_size term_tree recent_entries = function
+      | [] -> (log_size, term_tree, recent_entries)
+      | hd::tl -> 
+        let term_tree = Term_tree.new_log term_tree hd in  
+        aux (log_size + 1) term_tree (hd::recent_entries) tl 
+    in
+
+    let (log_size, term_tree, recent_entries) = aux log_size term_tree recent_entries rev_log_entries in 
+    let log = {log with 
+      recent_entries; 
+      log_size; 
+      term_tree; 
+    } in 
     (log, true)
   in
   
@@ -337,7 +429,7 @@ let rev_log_entries_since since log =
   let {recent_entries ; past_entries;} = log in 
 
   match recent_entries with
-  | []  -> [], 0  
+  | []  -> []
   | {index; _}::_ -> 
 
     (* Now the data can either be in the recent or past
@@ -355,8 +447,11 @@ let rev_log_entries_since since log =
         Past_interval.sub since @@ Past_entries.find (since + 1) log 
     in
     match interval.rev_log_entries with
-    | Expanded {entries} -> entries, interval.prev_term
-    | Compacted _        -> [], interval.prev_term
+    | Expanded {entries} -> entries
+    | Compacted _        -> []
+
+let term_of_index index {term_tree; _} = 
+  Term_tree.term_of_index index term_tree 
 
 module Builder = struct 
 
@@ -382,7 +477,7 @@ module Builder = struct
     past_entries = from_list past_entries; 
     recent_entries =[]; 
     log_size = 0; 
-    term_tree = None;
+    term_tree = Term_tree.empty;
   } 
 
   let add_log_entry log log_entry = 
@@ -391,8 +486,13 @@ module Builder = struct
     then {log with 
       recent_entries = log_entry :: log.recent_entries; 
       log_size = log.log_size + 1; 
+      term_tree = Term_tree.new_log log.term_tree log_entry; 
     } 
-    else {log with log_size = log.log_size + 1; }  
+    else {
+      log with 
+      log_size = log.log_size + 1; 
+      term_tree = Term_tree.new_log log.term_tree log_entry;
+    }  
 
   let log_of_t2 x = x 
 

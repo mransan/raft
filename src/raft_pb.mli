@@ -86,20 +86,6 @@ and log_interval_rope =
   | Interval of log_interval
   | Append of log_interval_rope_append
 
-type term_tree_leaf = {
-  term_tree_index : int;
-  term_tree_termi : int;
-}
-
-type term_tree_node = {
-  term_tree_lhs : term_tree_leaf;
-  term_tree_rhs : term_tree_leaf;
-}
-
-type term_tree =
-  | Term_tree_leaf of term_tree_leaf
-  | Term_tree_node of term_tree_node
-
 type server_index = {
   server_id : int;
   next_index : int;
@@ -107,7 +93,6 @@ type server_index = {
   heartbeat_deadline : float;
   outstanding_request : bool;
   unsent_entries : log_entry list;
-  prev_term : int;
 }
 
 type leader_state = {
@@ -268,23 +253,6 @@ val default_log_interval_rope_append :
 val default_log_interval_rope : unit -> log_interval_rope
 (** [default_log_interval_rope ()] is the default value for type [log_interval_rope] *)
 
-val default_term_tree_leaf : 
-  ?term_tree_index:int ->
-  ?term_tree_termi:int ->
-  unit ->
-  term_tree_leaf
-(** [default_term_tree_leaf ()] is the default value for type [term_tree_leaf] *)
-
-val default_term_tree_node : 
-  ?term_tree_lhs:term_tree_leaf ->
-  ?term_tree_rhs:term_tree_leaf ->
-  unit ->
-  term_tree_node
-(** [default_term_tree_node ()] is the default value for type [term_tree_node] *)
-
-val default_term_tree : unit -> term_tree
-(** [default_term_tree ()] is the default value for type [term_tree] *)
-
 val default_server_index : 
   ?server_id:int ->
   ?next_index:int ->
@@ -292,7 +260,6 @@ val default_server_index :
   ?heartbeat_deadline:float ->
   ?outstanding_request:bool ->
   ?unsent_entries:log_entry list ->
-  ?prev_term:int ->
   unit ->
   server_index
 (** [default_server_index ()] is the default value for type [server_index] *)
@@ -412,15 +379,6 @@ val decode_log_interval_rope_append : Pbrt.Decoder.t -> log_interval_rope_append
 val decode_log_interval_rope : Pbrt.Decoder.t -> log_interval_rope
 (** [decode_log_interval_rope decoder] decodes a [log_interval_rope] value from [decoder] *)
 
-val decode_term_tree_leaf : Pbrt.Decoder.t -> term_tree_leaf
-(** [decode_term_tree_leaf decoder] decodes a [term_tree_leaf] value from [decoder] *)
-
-val decode_term_tree_node : Pbrt.Decoder.t -> term_tree_node
-(** [decode_term_tree_node decoder] decodes a [term_tree_node] value from [decoder] *)
-
-val decode_term_tree : Pbrt.Decoder.t -> term_tree
-(** [decode_term_tree decoder] decodes a [term_tree] value from [decoder] *)
-
 val decode_server_index : Pbrt.Decoder.t -> server_index
 (** [decode_server_index decoder] decodes a [server_index] value from [decoder] *)
 
@@ -505,15 +463,6 @@ val encode_log_interval_rope_append : log_interval_rope_append -> Pbrt.Encoder.t
 val encode_log_interval_rope : log_interval_rope -> Pbrt.Encoder.t -> unit
 (** [encode_log_interval_rope v encoder] encodes [v] with the given [encoder] *)
 
-val encode_term_tree_leaf : term_tree_leaf -> Pbrt.Encoder.t -> unit
-(** [encode_term_tree_leaf v encoder] encodes [v] with the given [encoder] *)
-
-val encode_term_tree_node : term_tree_node -> Pbrt.Encoder.t -> unit
-(** [encode_term_tree_node v encoder] encodes [v] with the given [encoder] *)
-
-val encode_term_tree : term_tree -> Pbrt.Encoder.t -> unit
-(** [encode_term_tree v encoder] encodes [v] with the given [encoder] *)
-
 val encode_server_index : server_index -> Pbrt.Encoder.t -> unit
 (** [encode_server_index v encoder] encodes [v] with the given [encoder] *)
 
@@ -597,15 +546,6 @@ val pp_log_interval_rope_append : Format.formatter -> log_interval_rope_append -
 
 val pp_log_interval_rope : Format.formatter -> log_interval_rope -> unit 
 (** [pp_log_interval_rope v] formats v] *)
-
-val pp_term_tree_leaf : Format.formatter -> term_tree_leaf -> unit 
-(** [pp_term_tree_leaf v] formats v] *)
-
-val pp_term_tree_node : Format.formatter -> term_tree_node -> unit 
-(** [pp_term_tree_node v] formats v] *)
-
-val pp_term_tree : Format.formatter -> term_tree -> unit 
-(** [pp_term_tree v] formats v] *)
 
 val pp_server_index : Format.formatter -> server_index -> unit 
 (** [pp_server_index v] formats v] *)

@@ -29,8 +29,16 @@ val find : index:int -> 'a t -> 'a
 
 val last_entry_index_in_rope : 'a t -> int 
 
+val last_leaf : 'a t -> 'a leaf option
+
 (** {2 Mutators} *)
 
 val replace : int -> 'a -> 'a t -> 'a t
 
 val add : int -> int -> 'a -> 'a t -> 'a t 
+
+val remove_backward_while : ('a leaf -> bool) -> 'a t -> 'a t 
+
+(** {2 Format} *)
+
+val pp : (Format.formatter -> 'a -> unit) -> Format.formatter -> 'a t -> unit 

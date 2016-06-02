@@ -110,3 +110,38 @@ let find ~index t =
         else aux append_lhs  
     in
     aux tree
+
+let rec last_leaf = function
+  | None -> None 
+  | Some tree -> 
+    let rec aux = function
+      | Leaf leaf -> Some leaf 
+      | Append {append_rhs; _} -> aux  append_rhs
+    in
+    aux tree
+
+let remove_backward_while f = function
+  | None -> None 
+  | Some tree -> 
+    let rec aux = function
+      | Leaf leaf -> 
+        if f leaf
+        then None
+        else Some (Leaf leaf)
+      | Append ({append_lhs; append_rhs; _ } as a) ->
+        match aux append_rhs with
+        | None -> aux append_lhs 
+        | Some tree -> Some (Append {a with append_rhs = tree; }) 
+    in 
+    aux tree
+
+let rec pp f fmt = function
+  | None -> Format.fprintf fmt "Empty"
+  | Some tree ->  
+    let rec pp_sub fmt = function
+      | Leaf {leaf_prev;leaf_last; leaf_data} -> 
+        Format.fprintf fmt "]prev:%i; last:%i] = data:%a," leaf_prev leaf_last f leaf_data
+      | Append {append_rhs; append_lhs; _ } ->
+        Format.fprintf fmt "%a %a" pp_sub append_lhs pp_sub append_rhs 
+    in
+    pp_sub fmt tree

@@ -11,11 +11,16 @@ module Past_interval : sig
     *)
 end 
 
+
+type term_tree 
+
+val pp_term_tree : Format.formatter -> term_tree -> unit 
+
 type t = {
   recent_entries : Raft_pb.log_entry list;
   log_size : int;
   past_entries : Raft_pb.log_interval Raft_rope.t;
-  term_tree : Raft_pb.term_tree option;
+  term_tree : term_tree;
 } 
 
 module Past_entries : sig
@@ -107,7 +112,9 @@ val service : prev_commit_index:int -> configuration:Raft_pb.configuration -> t 
     [state] log. 
   *)
 
-val rev_log_entries_since : int -> t -> (Raft_pb.log_entry list * int)  
+val rev_log_entries_since : int -> t -> Raft_pb.log_entry list
+
+val term_of_index : int -> t -> int 
 
 (** Log Builder utilities to re-create a log value from disk records. 
     

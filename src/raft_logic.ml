@@ -29,20 +29,18 @@ module Log_entry_util = struct
     aux (fun x -> x) l n 
 
   let rec sub since = function
-    | []             -> None
+    | []             -> []
     | {index; term; _}::tl -> 
-      if index = since then Some (tl, term) else sub since tl  
+      if index = since then tl else sub since tl  
 
-  let make_append_entries prev_log_index prev_term unsent_entries state =
+  let make_append_entries prev_log_index unsent_entries state =
 
     let max = state.State.configuration.max_nb_logs_per_message in
 
-    let unsent_entries, prev_term = 
+    let unsent_entries = 
       match sub prev_log_index unsent_entries with
-      | None | Some ([], _ ) -> 
-        Log.rev_log_entries_since prev_log_index state.State.log
-      | Some (unsent_entries, prev_term) -> 
-        (unsent_entries, prev_term) 
+      | [] -> Log.rev_log_entries_since prev_log_index state.State.log
+      | unsent_entries -> unsent_entries 
     in 
     let to_send = keep_first_n unsent_entries max in 
 
@@ -50,11 +48,11 @@ module Log_entry_util = struct
       leader_term = state.State.current_term;
       leader_id = state.State.id;
       prev_log_index;
-      prev_log_term = prev_term;
+      prev_log_term = Log.term_of_index prev_log_index state.State.log;
       rev_log_entries = to_send; 
       leader_commit = state.State.commit_index;
     } in
-    (unsent_entries, prev_term, request)
+    (unsent_entries, request)
 
   let compute_append_entries state {indices} now =
 
@@ -64,8 +62,7 @@ module Log_entry_util = struct
         heartbeat_deadline;
         outstanding_request;
         next_index;
-        unsent_entries; 
-        prev_term; _ } = server_index in
+        unsent_entries; _ } = server_index in
 
       let shoud_send_request =
         if now >= heartbeat_deadline
@@ -97,13 +94,12 @@ module Log_entry_util = struct
 
       if shoud_send_request
       then
-        let unsent_entries, prev_term, request = make_append_entries (next_index - 1) prev_term unsent_entries state in
+        let unsent_entries, request = make_append_entries (next_index - 1) unsent_entries state in
         let server_index = 
           let outstanding_request = true in 
           let heartbeat_deadline = now +. state.State.configuration.hearbeat_timeout in 
           {server_index with
             unsent_entries; 
-            prev_term;
             outstanding_request; 
             heartbeat_deadline; 
           } 
@@ -250,12 +246,11 @@ let handle_request_vote_response state response now =
                 server_id; 
                 next_index; 
                 unsent_entries; 
-                prev_term;
               } = index in 
               let prev_log_index = next_index - 1 in
-              let unsent_entries, prev_term, req  = Log_entry_util.make_append_entries prev_log_index prev_term unsent_entries state in
+              let unsent_entries, req  = Log_entry_util.make_append_entries prev_log_index unsent_entries state in
               let msg_to_send = (Append_entries_request req, server_id) in
-              ({index with unsent_entries;prev_term}::indices, msg_to_send::msgs_to_send)
+              ({index with unsent_entries;}::indices, msg_to_send::msgs_to_send)
 
             ) ([], []) indices
           in

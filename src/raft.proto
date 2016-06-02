@@ -268,23 +268,6 @@ message LogIntervalRope {
   }
 }
 
-message TermTree {
-  message Leaf {
-    required int32 term_tree_index = 1;
-    required int32 term_tree_termi = 2; 
-  }
-
-  message Node {
-    required Leaf term_tree_lhs = 1;
-    required Leaf term_tree_rhs = 2;
-  }
-
-  oneof t {
-    Leaf term_tree_leaf = 1;
-    Node term_tree_node = 2;
-  }
-}
-
 // message Log {
 //   repeated LogEntry recent_entries = 1;
 //   required int32 log_size = 2;
@@ -453,7 +436,6 @@ message ServerIndex {
   required bool  outstanding_request = 6;
 
   repeated LogEntry unsent_entries   = 4;
-  required int32    prev_term        = 10;
 }
 
 // [Configuration] 
