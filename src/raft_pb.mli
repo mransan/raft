@@ -86,11 +86,19 @@ and log_interval_rope =
   | Interval of log_interval
   | Append of log_interval_rope_append
 
-type log = {
-  recent_entries : log_entry list;
-  log_size : int;
-  past_entries : log_interval_rope option;
+type term_tree_leaf = {
+  term_tree_index : int;
+  term_tree_termi : int;
 }
+
+type term_tree_node = {
+  term_tree_lhs : term_tree_leaf;
+  term_tree_rhs : term_tree_leaf;
+}
+
+type term_tree =
+  | Term_tree_leaf of term_tree_leaf
+  | Term_tree_node of term_tree_node
 
 type server_index = {
   server_id : int;
@@ -117,6 +125,11 @@ type follower_state = {
   election_deadline : float;
 }
 
+type role =
+  | Leader of leader_state
+  | Candidate of candidate_state
+  | Follower of follower_state
+
 type configuration = {
   nb_of_server : int;
   election_timeout : float;
@@ -124,20 +137,6 @@ type configuration = {
   hearbeat_timeout : float;
   max_nb_logs_per_message : int;
   log_interval_size : int;
-}
-
-type state_role =
-  | Leader of leader_state
-  | Candidate of candidate_state
-  | Follower of follower_state
-
-and state = {
-  id : int;
-  current_term : int;
-  log : log;
-  commit_index : int;
-  role : state_role;
-  configuration : configuration;
 }
 
 type timeout_event_time_out_type =
@@ -269,13 +268,22 @@ val default_log_interval_rope_append :
 val default_log_interval_rope : unit -> log_interval_rope
 (** [default_log_interval_rope ()] is the default value for type [log_interval_rope] *)
 
-val default_log : 
-  ?recent_entries:log_entry list ->
-  ?log_size:int ->
-  ?past_entries:log_interval_rope option ->
+val default_term_tree_leaf : 
+  ?term_tree_index:int ->
+  ?term_tree_termi:int ->
   unit ->
-  log
-(** [default_log ()] is the default value for type [log] *)
+  term_tree_leaf
+(** [default_term_tree_leaf ()] is the default value for type [term_tree_leaf] *)
+
+val default_term_tree_node : 
+  ?term_tree_lhs:term_tree_leaf ->
+  ?term_tree_rhs:term_tree_leaf ->
+  unit ->
+  term_tree_node
+(** [default_term_tree_node ()] is the default value for type [term_tree_node] *)
+
+val default_term_tree : unit -> term_tree
+(** [default_term_tree ()] is the default value for type [term_tree] *)
 
 val default_server_index : 
   ?server_id:int ->
@@ -310,6 +318,9 @@ val default_follower_state :
   follower_state
 (** [default_follower_state ()] is the default value for type [follower_state] *)
 
+val default_role : unit -> role
+(** [default_role ()] is the default value for type [role] *)
+
 val default_configuration : 
   ?nb_of_server:int ->
   ?election_timeout:float ->
@@ -320,20 +331,6 @@ val default_configuration :
   unit ->
   configuration
 (** [default_configuration ()] is the default value for type [configuration] *)
-
-val default_state_role : unit -> state_role
-(** [default_state_role ()] is the default value for type [state_role] *)
-
-val default_state : 
-  ?id:int ->
-  ?current_term:int ->
-  ?log:log ->
-  ?commit_index:int ->
-  ?role:state_role ->
-  ?configuration:configuration ->
-  unit ->
-  state
-(** [default_state ()] is the default value for type [state] *)
 
 val default_timeout_event_time_out_type : unit -> timeout_event_time_out_type
 (** [default_timeout_event_time_out_type ()] is the default value for type [timeout_event_time_out_type] *)
@@ -415,8 +412,14 @@ val decode_log_interval_rope_append : Pbrt.Decoder.t -> log_interval_rope_append
 val decode_log_interval_rope : Pbrt.Decoder.t -> log_interval_rope
 (** [decode_log_interval_rope decoder] decodes a [log_interval_rope] value from [decoder] *)
 
-val decode_log : Pbrt.Decoder.t -> log
-(** [decode_log decoder] decodes a [log] value from [decoder] *)
+val decode_term_tree_leaf : Pbrt.Decoder.t -> term_tree_leaf
+(** [decode_term_tree_leaf decoder] decodes a [term_tree_leaf] value from [decoder] *)
+
+val decode_term_tree_node : Pbrt.Decoder.t -> term_tree_node
+(** [decode_term_tree_node decoder] decodes a [term_tree_node] value from [decoder] *)
+
+val decode_term_tree : Pbrt.Decoder.t -> term_tree
+(** [decode_term_tree decoder] decodes a [term_tree] value from [decoder] *)
 
 val decode_server_index : Pbrt.Decoder.t -> server_index
 (** [decode_server_index decoder] decodes a [server_index] value from [decoder] *)
@@ -430,14 +433,11 @@ val decode_candidate_state : Pbrt.Decoder.t -> candidate_state
 val decode_follower_state : Pbrt.Decoder.t -> follower_state
 (** [decode_follower_state decoder] decodes a [follower_state] value from [decoder] *)
 
+val decode_role : Pbrt.Decoder.t -> role
+(** [decode_role decoder] decodes a [role] value from [decoder] *)
+
 val decode_configuration : Pbrt.Decoder.t -> configuration
 (** [decode_configuration decoder] decodes a [configuration] value from [decoder] *)
-
-val decode_state_role : Pbrt.Decoder.t -> state_role
-(** [decode_state_role decoder] decodes a [state_role] value from [decoder] *)
-
-val decode_state : Pbrt.Decoder.t -> state
-(** [decode_state decoder] decodes a [state] value from [decoder] *)
 
 val decode_timeout_event_time_out_type : Pbrt.Decoder.t -> timeout_event_time_out_type
 (** [decode_timeout_event_time_out_type decoder] decodes a [timeout_event_time_out_type] value from [decoder] *)
@@ -505,8 +505,14 @@ val encode_log_interval_rope_append : log_interval_rope_append -> Pbrt.Encoder.t
 val encode_log_interval_rope : log_interval_rope -> Pbrt.Encoder.t -> unit
 (** [encode_log_interval_rope v encoder] encodes [v] with the given [encoder] *)
 
-val encode_log : log -> Pbrt.Encoder.t -> unit
-(** [encode_log v encoder] encodes [v] with the given [encoder] *)
+val encode_term_tree_leaf : term_tree_leaf -> Pbrt.Encoder.t -> unit
+(** [encode_term_tree_leaf v encoder] encodes [v] with the given [encoder] *)
+
+val encode_term_tree_node : term_tree_node -> Pbrt.Encoder.t -> unit
+(** [encode_term_tree_node v encoder] encodes [v] with the given [encoder] *)
+
+val encode_term_tree : term_tree -> Pbrt.Encoder.t -> unit
+(** [encode_term_tree v encoder] encodes [v] with the given [encoder] *)
 
 val encode_server_index : server_index -> Pbrt.Encoder.t -> unit
 (** [encode_server_index v encoder] encodes [v] with the given [encoder] *)
@@ -520,14 +526,11 @@ val encode_candidate_state : candidate_state -> Pbrt.Encoder.t -> unit
 val encode_follower_state : follower_state -> Pbrt.Encoder.t -> unit
 (** [encode_follower_state v encoder] encodes [v] with the given [encoder] *)
 
+val encode_role : role -> Pbrt.Encoder.t -> unit
+(** [encode_role v encoder] encodes [v] with the given [encoder] *)
+
 val encode_configuration : configuration -> Pbrt.Encoder.t -> unit
 (** [encode_configuration v encoder] encodes [v] with the given [encoder] *)
-
-val encode_state_role : state_role -> Pbrt.Encoder.t -> unit
-(** [encode_state_role v encoder] encodes [v] with the given [encoder] *)
-
-val encode_state : state -> Pbrt.Encoder.t -> unit
-(** [encode_state v encoder] encodes [v] with the given [encoder] *)
 
 val encode_timeout_event_time_out_type : timeout_event_time_out_type -> Pbrt.Encoder.t -> unit
 (** [encode_timeout_event_time_out_type v encoder] encodes [v] with the given [encoder] *)
@@ -595,8 +598,14 @@ val pp_log_interval_rope_append : Format.formatter -> log_interval_rope_append -
 val pp_log_interval_rope : Format.formatter -> log_interval_rope -> unit 
 (** [pp_log_interval_rope v] formats v] *)
 
-val pp_log : Format.formatter -> log -> unit 
-(** [pp_log v] formats v] *)
+val pp_term_tree_leaf : Format.formatter -> term_tree_leaf -> unit 
+(** [pp_term_tree_leaf v] formats v] *)
+
+val pp_term_tree_node : Format.formatter -> term_tree_node -> unit 
+(** [pp_term_tree_node v] formats v] *)
+
+val pp_term_tree : Format.formatter -> term_tree -> unit 
+(** [pp_term_tree v] formats v] *)
 
 val pp_server_index : Format.formatter -> server_index -> unit 
 (** [pp_server_index v] formats v] *)
@@ -610,14 +619,11 @@ val pp_candidate_state : Format.formatter -> candidate_state -> unit
 val pp_follower_state : Format.formatter -> follower_state -> unit 
 (** [pp_follower_state v] formats v] *)
 
+val pp_role : Format.formatter -> role -> unit 
+(** [pp_role v] formats v] *)
+
 val pp_configuration : Format.formatter -> configuration -> unit 
 (** [pp_configuration v] formats v] *)
-
-val pp_state_role : Format.formatter -> state_role -> unit 
-(** [pp_state_role v] formats v] *)
-
-val pp_state : Format.formatter -> state -> unit 
-(** [pp_state v] formats v] *)
 
 val pp_timeout_event_time_out_type : Format.formatter -> timeout_event_time_out_type -> unit 
 (** [pp_timeout_event_time_out_type v] formats v] *)

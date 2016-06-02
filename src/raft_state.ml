@@ -2,6 +2,14 @@ open Raft_pb
 
 module Log = Raft_log
 
+type t = {
+  id : int;
+  current_term : int;
+  log : Raft_log.t;
+  commit_index : int;
+  role : Raft_pb.role;
+  configuration : Raft_pb.configuration;
+}
 
 let is_follower {role; _} = 
   match role with 
@@ -88,7 +96,7 @@ let notifications before after =
          *) 
         rev_log_entries 
     in
-    (Committed_data {rev_log_entries = aux [] after.log.recent_entries})::notifications 
+    (Committed_data {rev_log_entries = aux [] after.log.Log.recent_entries})::notifications 
   else 
     notifications
 
@@ -102,7 +110,7 @@ let current_leader {id; role; _} =
  * of the list. 
  *)
 let collect_all_non_compacted_logs state = 
-  Log.Past_interval.fold (fun acc -> function
+  Log.Past_entries.fold (fun acc -> function
     | {rev_log_entries = Compacted _; _} -> acc 
     | log_interval -> log_interval::acc 
   ) [] state.log
@@ -158,7 +166,7 @@ let compaction state =
       |> List.sort_uniq cmp
     in
 
-    let ((c, e,_ ), _) = Log.Past_interval.fold (fun ((c, e, append_next), next_indices) log_interval -> 
+    let ((c, e,_ ), _) = Log.Past_entries.fold (fun ((c, e, append_next), next_indices) log_interval -> 
 
       match next_indices with
       | [] -> 

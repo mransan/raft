@@ -1,8 +1,6 @@
 open Raft_pb
 
-let last_cached_index_rope = function 
-  | Interval {last_index; _} -> last_index 
-  | Append   {last_index; _} -> last_index
+module Rope = Raft_rope 
 
 module Past_interval = struct 
 
@@ -11,25 +9,25 @@ module Past_interval = struct
   let make_expanded entries = 
     Expanded {entries}
 
-  let make ?until ~since log = 
+  let make ?until ~since log_entries = 
     
-    let last_index, log = 
+    let last_index, log_entries = 
       match until with
       | None -> 
         let last_index = 
-          match log with
+          match log_entries with
           | {index;_}::_ -> index
           | _ -> 0
         in
-        (last_index, log) 
+        (last_index, log_entries) 
   
       | Some until -> 
         let rec aux = function
-          | ({index; _ }::tl) as log when index = until -> log  
+          | ({index; _ }::tl) as log_entries when index = until -> log_entries 
           | _::tl -> aux tl 
           | [] -> []
         in
-        (until, aux log) 
+        (until, aux log_entries) 
     in 
   
     let rec aux rev_log_entries = function
@@ -57,60 +55,10 @@ module Past_interval = struct
   
       | hd::tl -> aux (hd::rev_log_entries) tl  
     in
-    aux [] log 
+    aux [] log_entries 
 
-  let fold f e0 {past_entries; _ } = 
-    match past_entries with
-    | None -> e0
-    | Some rope ->
-      let rec aux acc = function
-        | Interval log_interval -> 
-          f acc log_interval
-  
-        | Append {lhs;rhs; _} ->
-          aux (aux acc lhs) rhs 
-      in
-      aux e0 rope
-  
-  let replace ({prev_index; _ } as replacement) ({past_entries; _} as log) =   
-    match past_entries with 
-    | None -> assert(false)
-    | Some rope ->  
-      let rec aux = function
-        | Interval interval -> 
-          assert(interval.prev_index = prev_index);  
-          Interval replacement 
-  
-        | Append ({rhs; lhs; _} as append)  -> 
-          let lhs_last = last_cached_index_rope lhs in 
-          if prev_index >= lhs_last 
-          then Append { append with rhs = aux rhs }
-          else Append { append with lhs = aux lhs }
-      in
-      {log with past_entries = Some (aux rope)}
-  
-  let find ~index {past_entries; _ } = 
-    match past_entries with 
-    | None -> raise Not_found
-    | Some rope ->
-        
-      let rec aux = function
-        |Interval interval -> 
-          if index <= interval.prev_index || 
-             index > interval.last_index  
-          then raise Not_found
-          else interval 
-        | Append {rhs; lhs; _} -> 
-          let lhs_last = last_cached_index_rope lhs in 
-          if index > lhs_last 
-          then aux rhs 
-          else aux lhs  
-      in
-      aux rope 
   (*
-   * Returns the sub (ie subset) local cache starting a the given
-   * [since] index. 
-   *
+   * Given the interval ]x;y] return ]since;y] 
    *)
   let sub since ({prev_index; rev_log_entries; _} as t) = 
     if since = prev_index 
@@ -146,119 +94,80 @@ module Past_interval = struct
    *)
   let contains_next_of i {last_index; prev_index;_ } = 
     prev_index <= i && i < last_index
+  
 end (* Past_interval *)
 
-type t = log
+type t = {
+  recent_entries : log_entry list;
+  log_size : int;
+  past_entries : Raft_pb.log_interval Raft_rope.t;
+  term_tree : term_tree option;
+} 
 
-type interval = Raft_pb.log_interval
+module Past_entries = struct 
 
-type past_entries = Raft_pb.log_interval_rope option
+  let fold f e0 {past_entries; _ } = 
+    Rope.fold f e0 past_entries
+  
+  let replace ({prev_index; _ } as replacement) ({past_entries; _} as log) =   
+    {log with past_entries = Rope.replace prev_index replacement past_entries}
+  
+  let find ~index {past_entries; _ } = 
+    Rope.find ~index past_entries
+  
+  let add new_interval past_entries = 
+    Rope.add new_interval.prev_index new_interval.last_index new_interval past_entries 
+end 
 
-let last_log_index_and_term {log = {recent_entries; _ }; _ } = 
+let last_log_index_and_term {recent_entries; _ } = 
   match recent_entries with
   | {index;term}::_ -> (index, term) 
   | [] -> (0, 0)
 
-let last_log_index state = 
-  fst @@ last_log_index_and_term state
+let last_log_index log = 
+  fst @@ last_log_index_and_term log 
 
 let empty = {
   recent_entries = [];
   past_entries = None;
   log_size = 0; 
+  term_tree  = None;
 }
 
-(* 
- * Return the latest log entry index stored in the given 
- * local cache. 
- *
- *)
-let last_cached_index = function 
-  | None -> 0 
-  | Some (Interval {last_index; _}) -> last_index 
-  | Some (Append   {last_index; _}) -> last_index
+let last_past_entry_index = Rope.last_entry_index_in_rope 
 
-let add new_interval gc = 
+let service ~prev_commit_index ~configuration log = 
 
-  let last_index   = last_cached_index_rope new_interval in 
-  let rope_height = function
-    | Interval _ -> 0 
-    | Append  {height; _} -> height 
-  in 
+  let past_entries = log.past_entries in 
+  let since = last_past_entry_index past_entries in 
 
-  let rec aux = function 
-    | Interval x -> Append {
-      height = 1; 
-      lhs = Interval x; 
-      rhs = new_interval; 
-      last_index;
-    }
-    | (Append {height; rhs; lhs; _ }  as a)-> 
-      let lhs_height = rope_height lhs in 
-      let rhs_height = rope_height rhs in 
-      if lhs_height = rhs_height
-      then (* balanced! *)
-        Append {height = height + 1; lhs = a; rhs = new_interval;last_index}
-      else begin 
-        begin 
-          if lhs_height <= rhs_height
-          then Printf.eprintf "lhs_height(%i) <  rhs_height(%i)\n%!"
-          lhs_height rhs_height;
-        end;
-        assert(lhs_height > rhs_height); 
-        Append {height; lhs; rhs = aux rhs; last_index} 
-      end  
-  in
-  match gc with
-    | None    -> Some (new_interval) 
-    | Some gc -> Some (aux gc) 
-
-let service ~prev_commit_index state = 
-
-  let gc    = state.log.past_entries in 
-  let since = last_cached_index gc in 
-
-  (* We can only cache the logs which are commited
-   *)
-
-  if prev_commit_index - since < state.configuration.log_interval_size
-  then state
+  if prev_commit_index - since < configuration.log_interval_size
+  then log
   else 
-
     (* 
-     * The cache threshold is reached, let's 
-     * append to the cache a new log interval with 
-     * all the logs since the last cache update.
+     * The threshold for transfering recent entries to the past entries
+     * is reached, let's proceed with creating the interval, adding 
+     * it to the past entries while removing those entries
+     * from the recent one. 
      *)
-
-    let new_interval = Interval (Past_interval.make ~until:prev_commit_index ~since state.log.recent_entries) in 
-    let past_entries = add new_interval gc in 
+    let until = prev_commit_index in 
+    let new_interval = Past_interval.make ~until ~since log.recent_entries in 
+    let past_entries = Past_entries.add new_interval past_entries in 
 
     let rec aux = function
       | [] -> [] 
       | ({index; _ } as l) ::tl when index = prev_commit_index -> [l] 
       | log_entry::tl -> log_entry :: (aux tl) 
     in
-    let log = {state.log with 
-      recent_entries = aux state.log.recent_entries; 
+
+    {log with 
+      recent_entries = aux log.recent_entries; 
       past_entries = past_entries;
-    } in 
-    let state = {state with log } in  
-    state 
+    }
 
 let int_compare (x:int) (y:int) = Pervasives.compare x y 
 
-let from_list log_intervals = 
-
-  let log_intervals = List.sort (fun x y -> 
-    int_compare x.prev_index y.prev_index
-  ) log_intervals in 
-  
-  List.fold_left (fun gc log_interval -> 
-    add (Interval log_interval) gc
-  ) None log_intervals 
-
-let add_logs datas state = 
+let add_logs current_term datas log = 
 
   let rec aux term last_log_index recent_entries log_size = function
     | [] -> (recent_entries, log_size)  
@@ -273,19 +182,15 @@ let add_logs datas state =
       aux term last_log_index recent_entries (log_size + 1) tl 
   in 
 
-  let log = 
-    let term = state.current_term in 
-    let last_log_index = last_log_index state in 
-    let log = state.log in 
-    let recent_entries = log.recent_entries in 
-    let log_size = log.log_size in 
+  let term = current_term in 
+  let last_log_index = last_log_index log in 
+  let recent_entries = log.recent_entries in 
+  let log_size = log.log_size in 
 
-    let recent_entries, log_size= 
-      aux term last_log_index recent_entries log_size datas 
-    in 
-    {log with recent_entries; log_size }
+  let recent_entries, log_size= 
+    aux term last_log_index recent_entries log_size datas 
   in 
-  {state with log}
+  {log with recent_entries; log_size }
 
 let find_term_of_index i log_entries = 
   let rec aux = function
@@ -295,9 +200,7 @@ let find_term_of_index i log_entries =
   in
   aux log_entries
 
-let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state = 
-
-  let commit_index = state.commit_index in
+let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries ~commit_index log = 
 
   (* --------------------------------------------------------
    * ? assert(prev_log_index >= (state.commit_index - 1));  ?
@@ -341,7 +244,7 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
            * In such a case, none of the logs should be added, in fact they all have been 
            * previously added before. 
            *)
-          (commit_index, find_term_of_index commit_index state.log.recent_entries , [])
+          (commit_index, find_term_of_index commit_index log.recent_entries , [])
           
         | {index;term; _ }::tl when index < commit_index -> aux tl 
         | {index;term; _ }::tl -> 
@@ -351,7 +254,7 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
       aux rev_log_entries
   in
    
-  assert(prev_log_index >= (state.commit_index - 1));
+  assert(prev_log_index >= (commit_index - 1));
 
   (* This functions merges the request log entries with the
    * current log of the server. The current log is first split by
@@ -365,7 +268,7 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
    * then the entries from the leader will override the one in the server.
    *
    *)
-  let merge_log_entries state log_size recent_entries =
+  let merge_log_entries log log_size recent_entries =
 
     let rec aux log_size recent_entries = function
       | [] -> (log_size, recent_entries)
@@ -374,9 +277,8 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
     in
 
     let (log_size, recent_entries) = aux log_size recent_entries rev_log_entries in 
-    let log = {state.log with recent_entries; log_size} in 
-    let state = {state with log } in 
-    (state, true)
+    let log = {log with recent_entries; log_size} in 
+    (log, true)
   in
   
   let rec aux log_size = function
@@ -385,12 +287,12 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
       then
         (* [case 0] No previous log were ever inserted
          *)
-        merge_log_entries state 0 []
+        merge_log_entries log 0 []
       else
         (* [case 1] The prev_log_index is not found in the state log.
          * This server is lagging behind.
          *)
-        (state, false)
+        (log, false)
 
     | ({index; term; _ }::tl as recent_entries) when index = prev_log_index &&
                                                      term = prev_log_term ->
@@ -399,7 +301,7 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
        *)
       (* TODO should [log_size] be [log_size -1] here. 
        *)
-      merge_log_entries state log_size recent_entries
+      merge_log_entries log log_size recent_entries
 
     | {index; _ }::recent_entries when index = prev_log_index ->
       (* [case 3] The prev_log_index is inconstent with the leader.
@@ -410,14 +312,13 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
       (* TODO should [log_size] be [log_size -1] here. 
        * and should log_size be added to the update of the state
        *)
-      let log       = {state.log with recent_entries} in 
-      let new_state = {state with log} in
-      (new_state, false)
+      let log       = {log with recent_entries} in 
+      (log, false)
 
     |  hd::tl -> aux (log_size - 1) tl
   in
 
-  begin match state.log.recent_entries with
+  begin match log.recent_entries with
   | {index; _}::tl when prev_log_index > index ->
     (*
      * This is the case when a new [Leader] which has more log entries
@@ -428,8 +329,8 @@ let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state =
      *
      * In such a case, we send failure right away.
      *)
-    (state, false)
-  | _ -> aux state.log.log_size state.log.recent_entries
+    (log, false)
+  | _ -> aux log.log_size log.recent_entries
   end
 
 let rev_log_entries_since since log = 
@@ -439,43 +340,53 @@ let rev_log_entries_since since log =
   | []  -> [], 0  
   | {index; _}::_ -> 
 
-    (* Now the data can either be in the global
-     * caches or not. 
+    (* Now the data can either be in the recent or past
+     * entries.
      *
      * If the [since] index is greater than the 
-     * last cached entry then it's not in the global
-     * cache. 
+     * last past past entry index then it's part of the recent
+     * entries.
      *)
     let interval = 
-      if since >= (last_cached_index past_entries)
+      if since >= (last_past_entry_index past_entries)
       then  
         Past_interval.make since recent_entries
       else 
-        Past_interval.sub since @@ Past_interval.find (since + 1) log 
+        Past_interval.sub since @@ Past_entries.find (since + 1) log 
     in
     match interval.rev_log_entries with
     | Expanded {entries} -> entries, interval.prev_term
     | Compacted _        -> [], interval.prev_term
 
-
 module Builder = struct 
 
   type t1 = Past_interval.t list 
 
-  type t2 = Raft_pb.log  
+  type t2 = t 
 
   let make_t1 () = []
 
   let add_interval intervals interval = interval::intervals
+
+  let from_list log_intervals = 
+  
+    let log_intervals = List.sort (fun x y -> 
+      int_compare x.prev_index y.prev_index
+    ) log_intervals in 
+    
+    List.fold_left (fun past_entries log_interval -> 
+      Past_entries.add log_interval past_entries
+    ) None log_intervals
   
   let t2_of_t1 past_entries = {
     past_entries = from_list past_entries; 
     recent_entries =[]; 
     log_size = 0; 
+    term_tree = None;
   } 
 
   let add_log_entry log log_entry = 
-    let from = last_cached_index log.past_entries in 
+    let from = last_past_entry_index log.past_entries in 
     if log_entry.index >= from 
     then {log with 
       recent_entries = log_entry :: log.recent_entries; 

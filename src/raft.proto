@@ -268,12 +268,29 @@ message LogIntervalRope {
   }
 }
 
-message Log {
-  repeated LogEntry        recent_entries = 1;
-  required int32 log_size                 = 2;
-  optional LogIntervalRope past_entries   = 3;
+message TermTree {
+  message Leaf {
+    required int32 term_tree_index = 1;
+    required int32 term_tree_termi = 2; 
+  }
+
+  message Node {
+    required Leaf term_tree_lhs = 1;
+    required Leaf term_tree_rhs = 2;
+  }
+
+  oneof t {
+    Leaf term_tree_leaf = 1;
+    Node term_tree_node = 2;
+  }
 }
 
+// message Log {
+//   repeated LogEntry recent_entries = 1;
+//   required int32 log_size = 2;
+//   optional LogIntervalRope past_entries = 3;
+//   optional TermTree term_tree = 4;
+// }
 
 // STATE
 // ----------------------------------------------------------------------------
@@ -312,19 +329,27 @@ message Log {
 //   The current role of the server. [oneof] guarantees that 
 //   the server can only be in one role at a time.
 //
-message State {
-  required int32 id           = 1;
-  required int32 current_term = 2; 
-  required Log      log       = 3; 
-  required int32 commit_index = 4; 
+// message State {
+//   required int32 id           = 1;
+//   required int32 current_term = 2; 
+//   required Log      log       = 3; 
+//   required int32 commit_index = 4; 
+// 
+//   oneof role {
+//     LeaderState    leader    = 6;
+//     CandidateState candidate = 7;
+//     FollowerState  follower  = 8;
+//   }
+// 
+//   required Configuration configuration = 9;
+// }
 
-  oneof role {
-    LeaderState    leader    = 6;
-    CandidateState candidate = 7;
-    FollowerState  follower  = 8;
-  }
-
-  required Configuration configuration = 9;
+message Role {
+   oneof t {
+     LeaderState    leader    = 6;
+     CandidateState candidate = 7;
+     FollowerState  follower  = 8;
+   }
 }
 
 

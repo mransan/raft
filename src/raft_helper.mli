@@ -12,6 +12,6 @@ end (* Configuration *)
 
 module Timeout_event : sig
 
-  val next : Raft_pb.state -> float -> Raft_pb.timeout_event 
+  val next : Raft_state.t -> float -> Raft_pb.timeout_event 
 
 end (* Timeout_event *)

@@ -149,17 +149,29 @@ and log_interval_rope =
   | Interval of log_interval
   | Append of log_interval_rope_append
 
-type log = {
-  recent_entries : log_entry list;
-  log_size : int;
-  past_entries : log_interval_rope option;
+type term_tree_leaf = {
+  term_tree_index : int;
+  term_tree_termi : int;
 }
 
-and log_mutable = {
-  mutable recent_entries : log_entry list;
-  mutable log_size : int;
-  mutable past_entries : log_interval_rope option;
+and term_tree_leaf_mutable = {
+  mutable term_tree_index : int;
+  mutable term_tree_termi : int;
 }
+
+type term_tree_node = {
+  term_tree_lhs : term_tree_leaf;
+  term_tree_rhs : term_tree_leaf;
+}
+
+and term_tree_node_mutable = {
+  mutable term_tree_lhs : term_tree_leaf;
+  mutable term_tree_rhs : term_tree_leaf;
+}
+
+type term_tree =
+  | Term_tree_leaf of term_tree_leaf
+  | Term_tree_node of term_tree_node
 
 type server_index = {
   server_id : int;
@@ -211,6 +223,11 @@ and follower_state_mutable = {
   mutable election_deadline : float;
 }
 
+type role =
+  | Leader of leader_state
+  | Candidate of candidate_state
+  | Follower of follower_state
+
 type configuration = {
   nb_of_server : int;
   election_timeout : float;
@@ -227,29 +244,6 @@ and configuration_mutable = {
   mutable hearbeat_timeout : float;
   mutable max_nb_logs_per_message : int;
   mutable log_interval_size : int;
-}
-
-type state_role =
-  | Leader of leader_state
-  | Candidate of candidate_state
-  | Follower of follower_state
-
-and state = {
-  id : int;
-  current_term : int;
-  log : log;
-  commit_index : int;
-  role : state_role;
-  configuration : configuration;
-}
-
-and state_mutable = {
-  mutable id : int;
-  mutable current_term : int;
-  mutable log : log;
-  mutable commit_index : int;
-  mutable role : state_role;
-  mutable configuration : configuration;
 }
 
 type timeout_event_time_out_type =
@@ -478,21 +472,33 @@ and default_log_interval_rope_append_mutable () : log_interval_rope_append_mutab
 
 and default_log_interval_rope () : log_interval_rope = Interval (default_log_interval ())
 
-let rec default_log 
-  ?recent_entries:((recent_entries:log_entry list) = [])
-  ?log_size:((log_size:int) = 0)
-  ?past_entries:((past_entries:log_interval_rope option) = None)
-  () : log  = {
-  recent_entries;
-  log_size;
-  past_entries;
+let rec default_term_tree_leaf 
+  ?term_tree_index:((term_tree_index:int) = 0)
+  ?term_tree_termi:((term_tree_termi:int) = 0)
+  () : term_tree_leaf  = {
+  term_tree_index;
+  term_tree_termi;
 }
 
-and default_log_mutable () : log_mutable = {
-  recent_entries = [];
-  log_size = 0;
-  past_entries = None;
+and default_term_tree_leaf_mutable () : term_tree_leaf_mutable = {
+  term_tree_index = 0;
+  term_tree_termi = 0;
 }
+
+let rec default_term_tree_node 
+  ?term_tree_lhs:((term_tree_lhs:term_tree_leaf) = default_term_tree_leaf ())
+  ?term_tree_rhs:((term_tree_rhs:term_tree_leaf) = default_term_tree_leaf ())
+  () : term_tree_node  = {
+  term_tree_lhs;
+  term_tree_rhs;
+}
+
+and default_term_tree_node_mutable () : term_tree_node_mutable = {
+  term_tree_lhs = default_term_tree_leaf ();
+  term_tree_rhs = default_term_tree_leaf ();
+}
+
+let rec default_term_tree () : term_tree = Term_tree_leaf (default_term_tree_leaf ())
 
 let rec default_server_index 
   ?server_id:((server_id:int) = 0)
@@ -561,6 +567,8 @@ and default_follower_state_mutable () : follower_state_mutable = {
   election_deadline = 0.;
 }
 
+let rec default_role () : role = Leader (default_leader_state ())
+
 let rec default_configuration 
   ?nb_of_server:((nb_of_server:int) = 0)
   ?election_timeout:((election_timeout:float) = 0.)
@@ -584,33 +592,6 @@ and default_configuration_mutable () : configuration_mutable = {
   hearbeat_timeout = 0.;
   max_nb_logs_per_message = 0;
   log_interval_size = 0;
-}
-
-let rec default_state_role () : state_role = Leader (default_leader_state ())
-
-and default_state 
-  ?id:((id:int) = 0)
-  ?current_term:((current_term:int) = 0)
-  ?log:((log:log) = default_log ())
-  ?commit_index:((commit_index:int) = 0)
-  ?role:((role:state_role) = Leader (default_leader_state ()))
-  ?configuration:((configuration:configuration) = default_configuration ())
-  () : state  = {
-  id;
-  current_term;
-  log;
-  commit_index;
-  role;
-  configuration;
-}
-
-and default_state_mutable () : state_mutable = {
-  id = 0;
-  current_term = 0;
-  log = default_log ();
-  commit_index = 0;
-  role = Leader (default_leader_state ());
-  configuration = default_configuration ();
 }
 
 let rec default_timeout_event_time_out_type () = (New_leader_election:timeout_event_time_out_type)
@@ -1106,39 +1087,72 @@ and decode_log_interval_rope d =
   in
   loop ()
 
-let rec decode_log d =
-  let v = default_log_mutable () in
+let rec decode_term_tree_leaf d =
+  let v = default_term_tree_leaf_mutable () in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
-      v.recent_entries <- List.rev v.recent_entries;
     )
-    | Some (1, Pbrt.Bytes) -> (
-      v.recent_entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.recent_entries;
+    | Some (1, Pbrt.Varint) -> (
+      v.term_tree_index <- Pbrt.Decoder.int_as_varint d;
       loop ()
     )
     | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log), field(1)", pk))
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(term_tree_leaf), field(1)", pk))
     )
     | Some (2, Pbrt.Varint) -> (
-      v.log_size <- Pbrt.Decoder.int_as_varint d;
+      v.term_tree_termi <- Pbrt.Decoder.int_as_varint d;
       loop ()
     )
     | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log), field(2)", pk))
-    )
-    | Some (3, Pbrt.Bytes) -> (
-      v.past_entries <- Some (decode_log_interval_rope (Pbrt.Decoder.nested d));
-      loop ()
-    )
-    | Some (3, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log), field(3)", pk))
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(term_tree_leaf), field(2)", pk))
     )
     | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
-  let v:log = Obj.magic v in
+  let v:term_tree_leaf = Obj.magic v in
   v
+
+let rec decode_term_tree_node d =
+  let v = default_term_tree_node_mutable () in
+  let rec loop () = 
+    match Pbrt.Decoder.key d with
+    | None -> (
+    )
+    | Some (1, Pbrt.Bytes) -> (
+      v.term_tree_lhs <- decode_term_tree_leaf (Pbrt.Decoder.nested d);
+      loop ()
+    )
+    | Some (1, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(term_tree_node), field(1)", pk))
+    )
+    | Some (2, Pbrt.Bytes) -> (
+      v.term_tree_rhs <- decode_term_tree_leaf (Pbrt.Decoder.nested d);
+      loop ()
+    )
+    | Some (2, pk) -> raise (
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(term_tree_node), field(2)", pk))
+    )
+    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+  in
+  loop ();
+  let v:term_tree_node = Obj.magic v in
+  v
+
+let rec decode_term_tree d = 
+  let rec loop () = 
+    let ret:term_tree = match Pbrt.Decoder.key d with
+      | None -> failwith "None of the known key is found"
+      | Some (1, _) -> Term_tree_leaf (decode_term_tree_leaf (Pbrt.Decoder.nested d))
+      | Some (2, _) -> Term_tree_node (decode_term_tree_node (Pbrt.Decoder.nested d))
+      | Some (n, payload_kind) -> (
+        Pbrt.Decoder.skip d payload_kind; 
+        loop () 
+      )
+    in
+    ret
+  in
+  loop ()
 
 let rec decode_server_index d =
   let v = default_server_index_mutable () in
@@ -1281,6 +1295,22 @@ let rec decode_follower_state d =
   let v:follower_state = Obj.magic v in
   v
 
+let rec decode_role d = 
+  let rec loop () = 
+    let ret:role = match Pbrt.Decoder.key d with
+      | None -> failwith "None of the known key is found"
+      | Some (6, _) -> Leader (decode_leader_state (Pbrt.Decoder.nested d))
+      | Some (7, _) -> Candidate (decode_candidate_state (Pbrt.Decoder.nested d))
+      | Some (8, _) -> Follower (decode_follower_state (Pbrt.Decoder.nested d))
+      | Some (n, payload_kind) -> (
+        Pbrt.Decoder.skip d payload_kind; 
+        loop () 
+      )
+    in
+    ret
+  in
+  loop ()
+
 let rec decode_configuration d =
   let v = default_configuration_mutable () in
   let rec loop () = 
@@ -1333,90 +1363,6 @@ let rec decode_configuration d =
   in
   loop ();
   let v:configuration = Obj.magic v in
-  v
-
-let rec decode_state_role d = 
-  let rec loop () = 
-    let ret:state_role = match Pbrt.Decoder.key d with
-      | None -> failwith "None of the known key is found"
-      | Some (6, _) -> Leader (decode_leader_state (Pbrt.Decoder.nested d))
-      | Some (7, _) -> Candidate (decode_candidate_state (Pbrt.Decoder.nested d))
-      | Some (8, _) -> Follower (decode_follower_state (Pbrt.Decoder.nested d))
-      | Some (n, payload_kind) -> (
-        Pbrt.Decoder.skip d payload_kind; 
-        loop () 
-      )
-    in
-    ret
-  in
-  loop ()
-
-and decode_state d =
-  let v = default_state_mutable () in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-    )
-    | Some (1, Pbrt.Varint) -> (
-      v.id <- Pbrt.Decoder.int_as_varint d;
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(1)", pk))
-    )
-    | Some (2, Pbrt.Varint) -> (
-      v.current_term <- Pbrt.Decoder.int_as_varint d;
-      loop ()
-    )
-    | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(2)", pk))
-    )
-    | Some (3, Pbrt.Bytes) -> (
-      v.log <- decode_log (Pbrt.Decoder.nested d);
-      loop ()
-    )
-    | Some (3, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(3)", pk))
-    )
-    | Some (4, Pbrt.Varint) -> (
-      v.commit_index <- Pbrt.Decoder.int_as_varint d;
-      loop ()
-    )
-    | Some (4, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(4)", pk))
-    )
-    | Some (6, Pbrt.Bytes) -> (
-      v.role <- Leader (decode_leader_state (Pbrt.Decoder.nested d));
-      loop ()
-    )
-    | Some (6, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(6)", pk))
-    )
-    | Some (7, Pbrt.Bytes) -> (
-      v.role <- Candidate (decode_candidate_state (Pbrt.Decoder.nested d));
-      loop ()
-    )
-    | Some (7, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(7)", pk))
-    )
-    | Some (8, Pbrt.Bytes) -> (
-      v.role <- Follower (decode_follower_state (Pbrt.Decoder.nested d));
-      loop ()
-    )
-    | Some (8, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(8)", pk))
-    )
-    | Some (9, Pbrt.Bytes) -> (
-      v.configuration <- decode_configuration (Pbrt.Decoder.nested d);
-      loop ()
-    )
-    | Some (9, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(state), field(9)", pk))
-    )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  let v:state = Obj.magic v in
   v
 
 let rec decode_timeout_event_time_out_type d = 
@@ -1713,22 +1659,30 @@ and encode_log_interval_rope (v:log_interval_rope) encoder =
     Pbrt.Encoder.nested (encode_log_interval_rope_append x) encoder;
   )
 
-let rec encode_log (v:log) encoder = 
-  List.iter (fun x -> 
-    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_log_entry x) encoder;
-  ) v.recent_entries;
+let rec encode_term_tree_leaf (v:term_tree_leaf) encoder = 
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.term_tree_index encoder;
   Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.log_size encoder;
-  (
-    match v.past_entries with 
-    | Some x -> (
-      Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
-      Pbrt.Encoder.nested (encode_log_interval_rope x) encoder;
-    )
-    | None -> ();
-  );
+  Pbrt.Encoder.int_as_varint v.term_tree_termi encoder;
   ()
+
+let rec encode_term_tree_node (v:term_tree_node) encoder = 
+  Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
+  Pbrt.Encoder.nested (encode_term_tree_leaf v.term_tree_lhs) encoder;
+  Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
+  Pbrt.Encoder.nested (encode_term_tree_leaf v.term_tree_rhs) encoder;
+  ()
+
+let rec encode_term_tree (v:term_tree) encoder = 
+  match v with
+  | Term_tree_leaf x -> (
+    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_term_tree_leaf x) encoder;
+  )
+  | Term_tree_node x -> (
+    Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.nested (encode_term_tree_node x) encoder;
+  )
 
 let rec encode_server_index (v:server_index) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
@@ -1784,22 +1738,7 @@ let rec encode_follower_state (v:follower_state) encoder =
   Pbrt.Encoder.float_as_bits64 v.election_deadline encoder;
   ()
 
-let rec encode_configuration (v:configuration) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.nb_of_server encoder;
-  Pbrt.Encoder.key (2, Pbrt.Bits64) encoder; 
-  Pbrt.Encoder.float_as_bits64 v.election_timeout encoder;
-  Pbrt.Encoder.key (3, Pbrt.Bits64) encoder; 
-  Pbrt.Encoder.float_as_bits64 v.election_timeout_range encoder;
-  Pbrt.Encoder.key (4, Pbrt.Bits64) encoder; 
-  Pbrt.Encoder.float_as_bits64 v.hearbeat_timeout encoder;
-  Pbrt.Encoder.key (5, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.max_nb_logs_per_message encoder;
-  Pbrt.Encoder.key (6, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.log_interval_size encoder;
-  ()
-
-let rec encode_state_role (v:state_role) encoder = 
+let rec encode_role (v:role) encoder = 
   match v with
   | Leader x -> (
     Pbrt.Encoder.key (6, Pbrt.Bytes) encoder; 
@@ -1814,32 +1753,19 @@ let rec encode_state_role (v:state_role) encoder =
     Pbrt.Encoder.nested (encode_follower_state x) encoder;
   )
 
-and encode_state (v:state) encoder = 
+let rec encode_configuration (v:configuration) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.id encoder;
-  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.current_term encoder;
-  Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
-  Pbrt.Encoder.nested (encode_log v.log) encoder;
-  Pbrt.Encoder.key (4, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.commit_index encoder;
-  (
-    match v.role with
-    | Leader x -> (
-      Pbrt.Encoder.key (6, Pbrt.Bytes) encoder; 
-      Pbrt.Encoder.nested (encode_leader_state x) encoder;
-    )
-    | Candidate x -> (
-      Pbrt.Encoder.key (7, Pbrt.Bytes) encoder; 
-      Pbrt.Encoder.nested (encode_candidate_state x) encoder;
-    )
-    | Follower x -> (
-      Pbrt.Encoder.key (8, Pbrt.Bytes) encoder; 
-      Pbrt.Encoder.nested (encode_follower_state x) encoder;
-    )
-  );
-  Pbrt.Encoder.key (9, Pbrt.Bytes) encoder; 
-  Pbrt.Encoder.nested (encode_configuration v.configuration) encoder;
+  Pbrt.Encoder.int_as_varint v.nb_of_server encoder;
+  Pbrt.Encoder.key (2, Pbrt.Bits64) encoder; 
+  Pbrt.Encoder.float_as_bits64 v.election_timeout encoder;
+  Pbrt.Encoder.key (3, Pbrt.Bits64) encoder; 
+  Pbrt.Encoder.float_as_bits64 v.election_timeout_range encoder;
+  Pbrt.Encoder.key (4, Pbrt.Bits64) encoder; 
+  Pbrt.Encoder.float_as_bits64 v.hearbeat_timeout encoder;
+  Pbrt.Encoder.key (5, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.max_nb_logs_per_message encoder;
+  Pbrt.Encoder.key (6, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.int_as_varint v.log_interval_size encoder;
   ()
 
 let rec encode_timeout_event_time_out_type (v:timeout_event_time_out_type) encoder =
@@ -2024,15 +1950,28 @@ and pp_log_interval_rope fmt (v:log_interval_rope) =
   | Interval x -> Format.fprintf fmt "@[Interval(%a)@]" pp_log_interval x
   | Append x -> Format.fprintf fmt "@[Append(%a)@]" pp_log_interval_rope_append x
 
-let rec pp_log fmt (v:log) = 
+let rec pp_term_tree_leaf fmt (v:term_tree_leaf) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "recent_entries" (Pbrt.Pp.pp_list pp_log_entry) fmt v.recent_entries;
-    Pbrt.Pp.pp_record_field "log_size" Pbrt.Pp.pp_int fmt v.log_size;
-    Pbrt.Pp.pp_record_field "past_entries" (Pbrt.Pp.pp_option pp_log_interval_rope) fmt v.past_entries;
+    Pbrt.Pp.pp_record_field "term_tree_index" Pbrt.Pp.pp_int fmt v.term_tree_index;
+    Pbrt.Pp.pp_record_field "term_tree_termi" Pbrt.Pp.pp_int fmt v.term_tree_termi;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
+
+let rec pp_term_tree_node fmt (v:term_tree_node) = 
+  let pp_i fmt () =
+    Format.pp_open_vbox fmt 1;
+    Pbrt.Pp.pp_record_field "term_tree_lhs" pp_term_tree_leaf fmt v.term_tree_lhs;
+    Pbrt.Pp.pp_record_field "term_tree_rhs" pp_term_tree_leaf fmt v.term_tree_rhs;
+    Format.pp_close_box fmt ()
+  in
+  Pbrt.Pp.pp_brk pp_i fmt ()
+
+let rec pp_term_tree fmt (v:term_tree) =
+  match v with
+  | Term_tree_leaf x -> Format.fprintf fmt "@[Term_tree_leaf(%a)@]" pp_term_tree_leaf x
+  | Term_tree_node x -> Format.fprintf fmt "@[Term_tree_node(%a)@]" pp_term_tree_node x
 
 let rec pp_server_index fmt (v:server_index) = 
   let pp_i fmt () =
@@ -2075,6 +2014,12 @@ let rec pp_follower_state fmt (v:follower_state) =
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
+let rec pp_role fmt (v:role) =
+  match v with
+  | Leader x -> Format.fprintf fmt "@[Leader(%a)@]" pp_leader_state x
+  | Candidate x -> Format.fprintf fmt "@[Candidate(%a)@]" pp_candidate_state x
+  | Follower x -> Format.fprintf fmt "@[Follower(%a)@]" pp_follower_state x
+
 let rec pp_configuration fmt (v:configuration) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
@@ -2084,25 +2029,6 @@ let rec pp_configuration fmt (v:configuration) =
     Pbrt.Pp.pp_record_field "hearbeat_timeout" Pbrt.Pp.pp_float fmt v.hearbeat_timeout;
     Pbrt.Pp.pp_record_field "max_nb_logs_per_message" Pbrt.Pp.pp_int fmt v.max_nb_logs_per_message;
     Pbrt.Pp.pp_record_field "log_interval_size" Pbrt.Pp.pp_int fmt v.log_interval_size;
-    Format.pp_close_box fmt ()
-  in
-  Pbrt.Pp.pp_brk pp_i fmt ()
-
-let rec pp_state_role fmt (v:state_role) =
-  match v with
-  | Leader x -> Format.fprintf fmt "@[Leader(%a)@]" pp_leader_state x
-  | Candidate x -> Format.fprintf fmt "@[Candidate(%a)@]" pp_candidate_state x
-  | Follower x -> Format.fprintf fmt "@[Follower(%a)@]" pp_follower_state x
-
-and pp_state fmt (v:state) = 
-  let pp_i fmt () =
-    Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "id" Pbrt.Pp.pp_int fmt v.id;
-    Pbrt.Pp.pp_record_field "current_term" Pbrt.Pp.pp_int fmt v.current_term;
-    Pbrt.Pp.pp_record_field "log" pp_log fmt v.log;
-    Pbrt.Pp.pp_record_field "commit_index" Pbrt.Pp.pp_int fmt v.commit_index;
-    Pbrt.Pp.pp_record_field "role" pp_state_role fmt v.role;
-    Pbrt.Pp.pp_record_field "configuration" pp_configuration fmt v.configuration;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

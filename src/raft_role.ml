@@ -1,4 +1,5 @@
 open Raft_pb 
+open Raft_state
 
 module Log= Raft_log
 module State = Raft_state
@@ -69,7 +70,7 @@ module Leader = struct
 
   let become state now = 
 
-    let last_log_index,last_log_term = Log.last_log_index_and_term state in
+    let last_log_index,last_log_term = Log.last_log_index_and_term state.log in
     
     let {nb_of_server; hearbeat_timeout} = state.configuration in 
   
@@ -146,7 +147,7 @@ module Leader = struct
   let decrement_next_index ~log_failure ~receiver_id state leader_state = 
     let {receiver_commit_index} = log_failure in 
 
-    let latest_log_index, latest_log_term = Log.last_log_index_and_term state in 
+    let latest_log_index, latest_log_term = Log.last_log_index_and_term state.log  in 
 
     assert(receiver_commit_index < latest_log_index);  
       (* 

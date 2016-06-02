@@ -35,24 +35,24 @@ module Log_entry_util = struct
 
   let make_append_entries prev_log_index prev_term unsent_entries state =
 
-    let max = state.configuration.max_nb_logs_per_message in
+    let max = state.State.configuration.max_nb_logs_per_message in
 
     let unsent_entries, prev_term = 
       match sub prev_log_index unsent_entries with
       | None | Some ([], _ ) -> 
-        Log.rev_log_entries_since prev_log_index state.log
+        Log.rev_log_entries_since prev_log_index state.State.log
       | Some (unsent_entries, prev_term) -> 
         (unsent_entries, prev_term) 
     in 
     let to_send = keep_first_n unsent_entries max in 
 
     let request = {
-      leader_term = state.current_term;
-      leader_id = state.id;
+      leader_term = state.State.current_term;
+      leader_id = state.State.id;
       prev_log_index;
       prev_log_term = prev_term;
       rev_log_entries = to_send; 
-      leader_commit = state.commit_index;
+      leader_commit = state.State.commit_index;
     } in
     (unsent_entries, prev_term, request)
 
@@ -84,7 +84,7 @@ module Log_entry_util = struct
              *)
           else
             let prev_index = next_index - 1 in
-            let last_log_index = Log.last_log_index state in
+            let last_log_index = Log.last_log_index state.State.log in
             if prev_index = last_log_index
             then false
               (* The receipient has the most recent data so no need
@@ -100,7 +100,7 @@ module Log_entry_util = struct
         let unsent_entries, prev_term, request = make_append_entries (next_index - 1) prev_term unsent_entries state in
         let server_index = 
           let outstanding_request = true in 
-          let heartbeat_deadline = now +. state.configuration.hearbeat_timeout in 
+          let heartbeat_deadline = now +. state.State.configuration.hearbeat_timeout in 
           {server_index with
             unsent_entries; 
             prev_term;
@@ -126,10 +126,10 @@ end (* Log_entry_util *)
 (** {2 Request Vote} *)
 
 let make_request_vote_request state =
-  let index, term  = Log.last_log_index_and_term state in
+  let index, term  = Log.last_log_index_and_term state.State.log in
   {
-    candidate_term = state.current_term;
-    candidate_id = state.id;
+    candidate_term = state.State.current_term;
+    candidate_id = state.State.id;
     candidate_last_log_index = index;
     candidate_last_log_term = term;
   }
@@ -139,10 +139,10 @@ let handle_request_vote_request state request now =
   let {candidate_id; candidate_term; candidate_last_log_index;_} = request in
 
   let make_response state vote_granted =
-    {voter_term = state.current_term; voter_id = state.id ; vote_granted; }
+    {voter_term = state.State.current_term; voter_id = state.State.id ; vote_granted; }
   in
 
-  if candidate_term < state.current_term
+  if candidate_term < state.State.current_term
   then
     (*
      * This request is coming from a candidate lagging behind ...
@@ -157,13 +157,13 @@ let handle_request_vote_request state request now =
        * it must convert to a follower and update to that term.
        *
        *)
-      if candidate_term > state.current_term
+      if candidate_term > state.State.current_term
       then 
         Follower.become ~term:candidate_term ~now state
       else 
         state
     in
-    let last_log_index = Log.last_log_index state in
+    let last_log_index = Log.last_log_index state.State.log in
     if candidate_last_log_index < last_log_index
     then
       (*
@@ -173,7 +173,7 @@ let handle_request_vote_request state request now =
        *)
       (state, make_response state false)
     else
-      let role = state.role in
+      let role = state.State.role in
       match role with
       | Follower {voted_for = None; _} ->
         (*
@@ -184,9 +184,9 @@ let handle_request_vote_request state request now =
          *
          *)
 
-        let {configuration = {election_timeout; _ }; _} = state in
+        let {State.configuration = {election_timeout; _ }; _} = state in
         let state ={state with
-          role = Follower {
+          State.role = Follower {
             voted_for         = Some candidate_id;
             current_leader    = None;
             election_deadline = now +. election_timeout;
@@ -211,7 +211,7 @@ let handle_request_vote_request state request now =
 
 let handle_request_vote_response state response now =
 
-  let {current_term; role; configuration; _ } = state in
+  let {State.current_term; role; configuration; _ } = state in
   let {voter_term; vote_granted} = response in
 
   if voter_term > current_term
@@ -242,7 +242,7 @@ let handle_request_vote_response state response now =
          * to the other servers to both establish its leadership and
          * start synching its log with the others.
          *)
-        begin match state.role with
+        begin match state.State.role with
         | Leader {indices} -> (
           let indices, msgs_to_send = List.fold_left (fun (indices, msgs_to_send) index ->
 
@@ -259,7 +259,7 @@ let handle_request_vote_response state response now =
 
             ) ([], []) indices
           in
-          ({state with role = Leader {indices}}, msgs_to_send)
+          ({state with State.role = Leader {indices}}, msgs_to_send)
         )
         | _ -> assert(false)
         end
@@ -267,7 +267,7 @@ let handle_request_vote_response state response now =
         (* Candidate has a new vote but not yet reached the majority
          *)
         let new_state = {state with
-          role = Candidate (Candidate.increment_vote_count candidate_state);
+          State.role = Candidate (Candidate.increment_vote_count candidate_state);
         } in
         (new_state, [])
 
@@ -282,7 +282,7 @@ let handle_request_vote_response state response now =
        * it has changed role in between the time it sent the
        * [RequestVote] request and this response.
        * This response can therefore safely be ignored and the server
-       * keeps its current state.
+       * keeps its current state.State.
        *)
 
 (** {2 Append Entries} *)
@@ -292,10 +292,10 @@ let handle_append_entries_request state request now =
   let {leader_term; leader_commit; leader_id;} = request in
 
   let make_response state result =
-    {receiver_term = state.current_term; receiver_id = state.id; result;}
+    {receiver_term = state.State.current_term; receiver_id = state.State.id; result;}
   in
 
-  if leader_term < state.current_term
+  if leader_term < state.State.current_term
   then
     (* This request is coming from a leader lagging behind...
      *
@@ -320,11 +320,12 @@ let handle_append_entries_request state request now =
       rev_log_entries; 
       leader_commit} = request in
       
-    let state, success = 
-      Log.merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state 
+    let log, success = 
+      Log.merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries ~commit_index:state.State.commit_index state.State.log  
     in 
+    let state = if success then {state with State.log} else state in 
     let receiver_last_log_index, 
-        receiver_last_log_term = Log.last_log_index_and_term state in  
+        receiver_last_log_term = Log.last_log_index_and_term state.State.log in  
     
     let state =
       (* Update this server commit index based on value sent from
@@ -333,10 +334,13 @@ let handle_append_entries_request state request now =
        * all the log until it commit index so the min value
        * is taken.
        *)
-      if leader_commit > state.commit_index
-      then Log.service state.commit_index {state with
-        commit_index = min leader_commit receiver_last_log_index
-      }
+      if leader_commit > state.State.commit_index
+      then 
+        let log = Log.service ~prev_commit_index:state.State.commit_index ~configuration:state.State.configuration log in 
+        {state with 
+          State.log; 
+          State.commit_index = min leader_commit receiver_last_log_index
+        }
       else state
     in
 
@@ -346,7 +350,7 @@ let handle_append_entries_request state request now =
         make_response state (Success {receiver_last_log_index}) 
       else 
         make_response state (Log_failure {
-          receiver_commit_index = state.commit_index;
+          receiver_commit_index = state.State.commit_index;
         }) 
     in
 
@@ -356,7 +360,7 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
 
   let {receiver_term; receiver_id; result} = response in
 
-  if receiver_term > state.current_term
+  if receiver_term > state.State.current_term
   then
     (* Enforce invariant that if the server is lagging behind
      * it must convert to a follower and update to that term.
@@ -365,7 +369,7 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
     (state, [])
 
   else
-    match state.role with
+    match state.State.role with
     | Follower _
     | Candidate _ -> (state, [])
 
@@ -382,7 +386,7 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
          * let's update our leader state about that receiver
          *)
 
-        let configuration = state.configuration in
+        let configuration = state.State.configuration in
 
         let leader_state, nb_of_replications = Leader.update_receiver_last_log_index
           ~receiver_id
@@ -399,9 +403,14 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
            *
            *)
           if Configuration.is_majority configuration (nb_of_replications + 1) &&
-             receiver_last_log_index > state.commit_index
+             receiver_last_log_index > state.State.commit_index
           then 
-            Log.service state.commit_index {state with commit_index = receiver_last_log_index}
+            let log = Log.service 
+              ~prev_commit_index:state.State.commit_index 
+              ~configuration:state.State.configuration 
+              state.State.log
+            in 
+            {state with State.commit_index = receiver_last_log_index; log }
           else 
             state
         in
@@ -410,7 +419,7 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
           Log_entry_util.compute_append_entries state leader_state now 
         in
 
-        let state = {state with role = Leader leader_state} in
+        let state = {state with State.role = Leader leader_state} in
 
         (state, msgs_to_send)
 
@@ -423,13 +432,13 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
        *)
       let leader_state = Leader.decrement_next_index ~log_failure ~receiver_id state leader_state in
       let leader_state, msgs_to_send = Log_entry_util.compute_append_entries state leader_state now in
-      let state  = {state with role = Leader leader_state} in
+      let state  = State.({state with role = Leader leader_state}) in
       (state,msgs_to_send)
 
     | Term_failure  -> assert(false)
       (*
        * This should have already been detected when comparing the receiver_term with
-       * the [state.current_term].
+       * the [state.State.current_term].
        *)
 
     end (* match result *)
@@ -459,7 +468,7 @@ let handle_message state message now =
 (* Iterates over all the other server ids. (ie the ones different
  * from the state id).
  *)
-let fold_over_servers f e0 {id; configuration = {nb_of_server;_ }; _ } =
+let fold_over_servers f e0 {State.id; configuration = {nb_of_server;_ }; _ } =
   let rec aux acc = function
     | -1 -> acc
     | server_id  ->
@@ -480,24 +489,24 @@ let handle_new_election_timeout state now =
   in
   (state', msgs, State.notifications state state')
 
-let handle_heartbeat_timeout ({role; configuration; _ } as state) now =
-  match state.role with
+let handle_heartbeat_timeout ({State.role; configuration; _ } as state) now =
+  match state.State.role with
   | Leader leader_state ->
     let leader_state, msgs_to_send =
       Log_entry_util.compute_append_entries state leader_state now
     in
-    let state = {state with role = Leader leader_state} in
+    let state = {state with State.role = Leader leader_state} in
     (state, msgs_to_send)
   | _ ->
     (state, [])
 
 type new_log_response =
-  | Appended of state * message_to_send list
+  | Appended of State.t * message_to_send list
   | Forward_to_leader of int
   | Delay
 
 let handle_add_log_entries state datas now =
-  match state.role with
+  match state.State.role with
   | Follower {current_leader = None ; _ }
   | Candidate _ ->
     Delay
@@ -513,8 +522,11 @@ let handle_add_log_entries state datas now =
 
   | Leader _ -> 
 
-    let state = Log.add_logs datas state in 
-    begin match state.role with
+    let state = State.({ state with 
+      log = Log.add_logs state.State.current_term datas state.State.log
+    }) in 
+    (* TODO fix double patter match *)
+    begin match state.State.role with
     | Follower  _ | Candidate _ -> assert(false)
       (* We don't expect the [Leader.add_log] functions to
        * change the role.
@@ -522,10 +534,10 @@ let handle_add_log_entries state datas now =
 
     | Leader ({indices} as leader_state) ->
       let leader_state, msgs_to_send = Log_entry_util.compute_append_entries state leader_state now in
-      let state = {state with role = Leader leader_state } in
+      let state = State.({state with role = Leader leader_state }) in
       Appended (state, msgs_to_send)
 
-    end (* match state.role *)
+    end (* match state.State.role *)
 
 let next_timeout_event = Timeout_event.next
 

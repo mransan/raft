@@ -26,7 +26,7 @@ module Timeout_event = struct
     }
 
   let next state now = 
-    match state.role with
+    match state.State.role with
     | Follower {election_deadline; _} ->
       existing_election_wait election_deadline  now  
     | Leader leader_state -> 
