@@ -1,4 +1,3 @@
-
 open Raft_pb
 
 module State         = Raft_state
@@ -354,7 +353,7 @@ let handle_append_entries_request state request now =
         else
           (* All the conditions are now ok for the logs to be merged. 
            *)
-          match Log.remove_log_since prev_log_index prev_log_term state.State.log with
+          match Log.remove_log_since ~prev_log_index ~prev_log_term state.State.log with
           | exception Not_found ->
             (state, make_response state (Log_failure {receiver_last_log_index}))
             (* This is the case where there is a mismatch between the [Leader] 
@@ -363,7 +362,7 @@ let handle_append_entries_request state request now =
              *)
 
           | log -> 
-            let log = Log.append_log_entries rev_log_entries log in 
+            let log = Log.add_log_entries ~rev_log_entries log in 
             let receiver_last_log_index = Log.last_log_index log in 
 
             let state =
@@ -544,24 +543,13 @@ let handle_add_log_entries state datas now =
      * new log entries.
      *)
 
-  | Leader _ -> 
+  | Leader ({indices} as leader_state) ->
 
-    let state = State.({ state with 
-      log = Log.add_logs state.State.current_term datas state.State.log
-    }) in 
-    (* TODO fix double patter match *)
-    begin match state.State.role with
-    | Follower  _ | Candidate _ -> assert(false)
-      (* We don't expect the [Leader.add_log] functions to
-       * change the role.
-       *)
-
-    | Leader ({indices} as leader_state) ->
-      let leader_state, msgs_to_send = Log_entry_util.compute_append_entries state leader_state now in
-      let state = State.({state with role = Leader leader_state }) in
-      Appended (state, msgs_to_send)
-
-    end (* match state.State.role *)
+    let state = {state with 
+      State.log = Log.add_log_datas state.State.current_term datas state.State.log
+    } in 
+    let leader_state, msgs_to_send = Log_entry_util.compute_append_entries state leader_state now in
+    let state = State.({state with role = Leader leader_state }) in
+    Appended (state, msgs_to_send)
 
 let next_timeout_event = Timeout_event.next
-

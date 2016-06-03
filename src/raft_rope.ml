@@ -27,9 +27,9 @@ let fold f e0 = function
     (aux e0 tree) 
 
 let last_entry_index_in_rope = function 
-  | None -> 0 
-  | Some Interval {leaf_last; _} -> leaf_last
-  | Some Append {append_last; _} -> append_last
+  | None -> None 
+  | Some Interval {leaf_last; _} -> Some leaf_last
+  | Some Append {append_last; _} -> Some append_last
 
 let last_entry_index_in_tree = function 
   | Interval {leaf_last; _} -> leaf_last
@@ -51,21 +51,20 @@ let replace prev data = function
     in
     Some (aux tree)
 
-let add leaf_prev leaf_last leaf_data t = 
+let rope_height = function
+  | Interval _ -> 0 
+  | Append  {append_height; _} -> append_height 
 
-  let rope_height = function
-    | Interval _ -> 0 
-    | Append  {append_height; _} -> append_height 
-  in 
+let add ~prev ~last ~data t = 
 
-  let new_leaf = Interval {leaf_data;leaf_prev; leaf_last}  in 
+  let new_leaf = Interval {leaf_data=data;leaf_prev=prev; leaf_last=last}  in 
 
   let rec aux = function 
     | Interval x -> Append {
       append_height = 1; 
       append_lhs = Interval x; 
       append_rhs = new_leaf; 
-      append_last = leaf_last;
+      append_last = last;
     }
     | (Append {append_height; append_rhs; append_lhs; _ }  as a)-> 
       let lhs_height = rope_height append_lhs in 
@@ -76,7 +75,7 @@ let add leaf_prev leaf_last leaf_data t =
           append_height = append_height + 1; 
           append_lhs = a; 
           append_rhs = new_leaf;
-          append_last = leaf_last}
+          append_last = last}
       else begin 
         begin 
           if lhs_height <= rhs_height
@@ -84,12 +83,16 @@ let add leaf_prev leaf_last leaf_data t =
           lhs_height rhs_height;
         end;
         assert(lhs_height > rhs_height); 
-        Append {append_height; append_lhs ; append_rhs = aux append_rhs ; append_last= leaf_last} 
+        Append {append_height; append_lhs ; append_rhs = aux append_rhs ; append_last= last} 
       end  
   in
   match t with
   | None -> Some new_leaf 
-  | Some tree -> Some (aux tree) 
+  | Some tree -> 
+    let current_last = last_entry_index_in_tree tree in 
+    assert(last > current_last); 
+    assert(prev >= current_last); 
+    Some (aux tree) 
   
 let find ~index t =  
 

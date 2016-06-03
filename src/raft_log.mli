@@ -1,16 +1,4 @@
-(** Caching logic for the log entries *)
-
-
-module Past_interval : sig 
-
-  type t = Raft_pb.log_interval  
-  
-  val contains_next_of : int -> t -> bool
-  (** [contains_next_of since interval] return true if [interval] contains 
-      the [log_entry] which index is next of [since]. 
-    *)
-end 
-
+(** All Log related logic *)
 
 type term_tree 
 
@@ -23,34 +11,12 @@ type t = {
   term_tree : term_tree;
 } 
 
-module Past_entries : sig
-
-  val fold : ('a -> Past_interval.t -> 'a) -> 'a -> t -> 'a 
-  (** [fold f e0 past_entries] iterates over all the local cache starting in
-      ascending order. The first local cache would therefore be the one containing
-      the earliest entries. 
-    *)
-
-  val replace : Past_interval.t ->  t -> t
-  (** [replace interval past_entries] replaces the matching [interval] 
-      in [past_entries]. 
-  
-      This is particularly (and uniquely useful when compacting a [interval]
-      in the global cache.
-  
-      raises [Failure] if [interval] cannot be matched.
-    *)
-
-  val find : index:int -> t -> Past_interval.t
-  (** [find ~index past_entries] finds the interval \]prev_index;last_index\] which contains
-      [index]. 
-  
-      raises [Not_found] in case no [log_interval] contains [index].
-    *) 
-end 
+(** {2 Creators} *)
 
 val empty : t 
 (** [empty] is an empty log *)
+
+(** {2 Accessors} *)
 
 val last_log_index_and_term : t -> (int * int) 
 (** [last_log_index_and_term state] return the [(index, term)] of the last log
@@ -61,8 +27,24 @@ val last_log_index: t ->  int
 (** [last_log_index state] return the index of the last log entry. 
   *)
 
-val add_logs : int -> (bytes * string) list -> t -> t 
-(** [add_logs current_term datas state] adds [datas] to the log of the [state]. 
+val rev_log_entries_since : int -> t -> Raft_pb.log_entry list
+(** [rev_log_entries_since index log] returns the log entries in 
+    reverse order (ie the earliest log is at the front) from (but excluding)
+    [since] and until the latest log entry in [log]. 
+  
+    In other word the returned data is :
+    ]since ; last_log_index log] 
+ *)
+
+val term_of_index : int -> t -> int 
+(** [term_of_index index log ] returns the term associated with [index], 
+    if [index] is not part of the log then [Not_found] is raised.
+  *) 
+
+(** {2 Modifiers} *)
+
+val add_log_datas : int -> (bytes * string) list -> t -> t 
+(** [add_log_datas current_term datas state] adds [datas] to the log of the [state]. 
     
     Note that the logs are in chronological order 
     
@@ -72,6 +54,21 @@ val add_logs : int -> (bytes * string) list -> t -> t
     Any subsequent logical actions like creating Append Entries request is 
     left to the caller. 
   *) 
+
+val add_log_entries : rev_log_entries:Raft_pb.log_entry list -> t -> t 
+(** [add_log_entries rev_log_entries log] appends [rev_log_entries] to the 
+    [log]. The assumption is that the entries are in reverse order so 
+    the last log_entry in [rev_log_entries] will be the first log_entry in [log]
+    after this function executes. 
+  *)
+
+val remove_log_since : prev_log_index:int -> prev_log_term:int -> t -> t 
+(** [remove_log_since ~prev_log_index ~prev_log_term log] removes all the entries
+    which are after the log_entry defined by [prev_log_index] and [prev_log_term]. 
+
+    If [log] does not contain any log_entry defined by [prev_log_index] and [prev_log_term]
+    then [Not_found] is raised.
+  *)
 
 val service : prev_commit_index:int -> configuration:Raft_pb.configuration -> t -> t
 (** [service ~prev_commit_index state]
@@ -86,13 +83,39 @@ val service : prev_commit_index:int -> configuration:Raft_pb.configuration -> t 
     [state] log. 
   *)
 
-val rev_log_entries_since : int -> t -> Raft_pb.log_entry list
+module Past_interval : sig 
 
-val term_of_index : int -> t -> int 
+  val contains_next_of : int -> Raft_pb.log_interval -> bool
+  (** [contains_next_of since interval] return true if [interval] contains 
+      the [log_entry] which index is next of [since]. 
+    *)
+end 
 
-val append_log_entries : Raft_pb.log_entry list -> t -> t 
+module Past_entries : sig
 
-val remove_log_since : int -> int -> t -> t 
+  val fold : ('a -> Raft_pb.log_interval -> 'a) -> 'a -> t -> 'a 
+  (** [fold f e0 past_entries] iterates over all the local cache starting in
+      ascending order. The first local cache would therefore be the one containing
+      the earliest entries. 
+    *)
+
+  val replace : Raft_pb.log_interval ->  t -> t
+  (** [replace interval past_entries] replaces the matching [interval] 
+      in [past_entries]. 
+  
+      This is particularly (and uniquely useful when compacting a [interval]
+      in the global cache.
+  
+      raises [Failure] if [interval] cannot be matched.
+    *)
+
+  val find : index:int -> t -> Raft_pb.log_interval 
+  (** [find ~index past_entries] finds the interval \]prev_index;last_index\] which contains
+      [index]. 
+  
+      raises [Not_found] in case no [log_interval] contains [index].
+    *) 
+end 
 
 (** Log Builder utilities to re-create a log value from disk records. 
     
@@ -116,7 +139,7 @@ module Builder : sig
 
   val make_t1 : unit -> t1 
 
-  val add_interval : t1 -> Past_interval.t -> t1 
+  val add_interval : t1 -> Raft_pb.log_interval -> t1 
   
   val t2_of_t1 : t1 -> t2 
 

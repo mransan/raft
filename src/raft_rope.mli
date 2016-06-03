@@ -61,12 +61,9 @@ val find : index:int -> 'a t -> 'a
     raises [Not_found] if no interval could be found. 
  *) 
 
-val last_entry_index_in_rope : 'a t -> int 
+val last_entry_index_in_rope : 'a t -> int option 
 (** [last_entry_index_in_rope rope] reports the upper bound 
     value of the last interval
-
-    If there are no interval then 0 is returned (TODO this 
-    needs to change)
  *)
 
 val last_interval : 'a t -> 'a leaf option
@@ -85,7 +82,7 @@ val replace : int -> 'a -> 'a t -> 'a t
     found. 
   *)
 
-val add : int -> int -> 'a -> 'a t -> 'a t 
+val add : prev:int -> last:int -> data:'a -> 'a t -> 'a t 
 (** [add prev last data rope] adds an interval at the end of [rope]. 
     
     TODO verification must be done. 
