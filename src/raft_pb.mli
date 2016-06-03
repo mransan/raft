@@ -36,7 +36,7 @@ type append_entries_response_success_data = {
 }
 
 type append_entries_response_log_failure_data = {
-  receiver_commit_index : int;
+  receiver_last_log_index : int;
 }
 
 type append_entries_response_result =
@@ -81,7 +81,7 @@ type server_index = {
   match_index : int;
   heartbeat_deadline : float;
   outstanding_request : bool;
-  local_cache : log_interval;
+  unsent_entries : log_entry list;
 }
 
 type leader_state = {
@@ -99,6 +99,11 @@ type follower_state = {
   election_deadline : float;
 }
 
+type role =
+  | Leader of leader_state
+  | Candidate of candidate_state
+  | Follower of follower_state
+
 type configuration = {
   nb_of_server : int;
   election_timeout : float;
@@ -106,33 +111,6 @@ type configuration = {
   hearbeat_timeout : float;
   max_nb_logs_per_message : int;
   log_interval_size : int;
-}
-
-type log_interval_rope =
-  | Interval of log_interval
-  | Append of log_interval_rope_append
-
-and log_interval_rope_append = {
-  height : int;
-  lhs : log_interval_rope;
-  rhs : log_interval_rope;
-  last_index : int;
-}
-
-type state_role =
-  | Leader of leader_state
-  | Candidate of candidate_state
-  | Follower of follower_state
-
-and state = {
-  id : int;
-  current_term : int;
-  log : log_entry list;
-  log_size : int;
-  commit_index : int;
-  role : state_role;
-  configuration : configuration;
-  global_cache : log_interval_rope option;
 }
 
 type timeout_event_time_out_type =
@@ -209,7 +187,7 @@ val default_append_entries_response_success_data :
 (** [default_append_entries_response_success_data ()] is the default value for type [append_entries_response_success_data] *)
 
 val default_append_entries_response_log_failure_data : 
-  ?receiver_commit_index:int ->
+  ?receiver_last_log_index:int ->
   unit ->
   append_entries_response_log_failure_data
 (** [default_append_entries_response_log_failure_data ()] is the default value for type [append_entries_response_log_failure_data] *)
@@ -258,7 +236,7 @@ val default_server_index :
   ?match_index:int ->
   ?heartbeat_deadline:float ->
   ?outstanding_request:bool ->
-  ?local_cache:log_interval ->
+  ?unsent_entries:log_entry list ->
   unit ->
   server_index
 (** [default_server_index ()] is the default value for type [server_index] *)
@@ -284,6 +262,9 @@ val default_follower_state :
   follower_state
 (** [default_follower_state ()] is the default value for type [follower_state] *)
 
+val default_role : unit -> role
+(** [default_role ()] is the default value for type [role] *)
+
 val default_configuration : 
   ?nb_of_server:int ->
   ?election_timeout:float ->
@@ -294,34 +275,6 @@ val default_configuration :
   unit ->
   configuration
 (** [default_configuration ()] is the default value for type [configuration] *)
-
-val default_log_interval_rope : unit -> log_interval_rope
-(** [default_log_interval_rope ()] is the default value for type [log_interval_rope] *)
-
-val default_log_interval_rope_append : 
-  ?height:int ->
-  ?lhs:log_interval_rope ->
-  ?rhs:log_interval_rope ->
-  ?last_index:int ->
-  unit ->
-  log_interval_rope_append
-(** [default_log_interval_rope_append ()] is the default value for type [log_interval_rope_append] *)
-
-val default_state_role : unit -> state_role
-(** [default_state_role ()] is the default value for type [state_role] *)
-
-val default_state : 
-  ?id:int ->
-  ?current_term:int ->
-  ?log:log_entry list ->
-  ?log_size:int ->
-  ?commit_index:int ->
-  ?role:state_role ->
-  ?configuration:configuration ->
-  ?global_cache:log_interval_rope option ->
-  unit ->
-  state
-(** [default_state ()] is the default value for type [state] *)
 
 val default_timeout_event_time_out_type : unit -> timeout_event_time_out_type
 (** [default_timeout_event_time_out_type ()] is the default value for type [timeout_event_time_out_type] *)
@@ -409,20 +362,11 @@ val decode_candidate_state : Pbrt.Decoder.t -> candidate_state
 val decode_follower_state : Pbrt.Decoder.t -> follower_state
 (** [decode_follower_state decoder] decodes a [follower_state] value from [decoder] *)
 
+val decode_role : Pbrt.Decoder.t -> role
+(** [decode_role decoder] decodes a [role] value from [decoder] *)
+
 val decode_configuration : Pbrt.Decoder.t -> configuration
 (** [decode_configuration decoder] decodes a [configuration] value from [decoder] *)
-
-val decode_log_interval_rope : Pbrt.Decoder.t -> log_interval_rope
-(** [decode_log_interval_rope decoder] decodes a [log_interval_rope] value from [decoder] *)
-
-val decode_log_interval_rope_append : Pbrt.Decoder.t -> log_interval_rope_append
-(** [decode_log_interval_rope_append decoder] decodes a [log_interval_rope_append] value from [decoder] *)
-
-val decode_state_role : Pbrt.Decoder.t -> state_role
-(** [decode_state_role decoder] decodes a [state_role] value from [decoder] *)
-
-val decode_state : Pbrt.Decoder.t -> state
-(** [decode_state decoder] decodes a [state] value from [decoder] *)
 
 val decode_timeout_event_time_out_type : Pbrt.Decoder.t -> timeout_event_time_out_type
 (** [decode_timeout_event_time_out_type decoder] decodes a [timeout_event_time_out_type] value from [decoder] *)
@@ -496,20 +440,11 @@ val encode_candidate_state : candidate_state -> Pbrt.Encoder.t -> unit
 val encode_follower_state : follower_state -> Pbrt.Encoder.t -> unit
 (** [encode_follower_state v encoder] encodes [v] with the given [encoder] *)
 
+val encode_role : role -> Pbrt.Encoder.t -> unit
+(** [encode_role v encoder] encodes [v] with the given [encoder] *)
+
 val encode_configuration : configuration -> Pbrt.Encoder.t -> unit
 (** [encode_configuration v encoder] encodes [v] with the given [encoder] *)
-
-val encode_log_interval_rope : log_interval_rope -> Pbrt.Encoder.t -> unit
-(** [encode_log_interval_rope v encoder] encodes [v] with the given [encoder] *)
-
-val encode_log_interval_rope_append : log_interval_rope_append -> Pbrt.Encoder.t -> unit
-(** [encode_log_interval_rope_append v encoder] encodes [v] with the given [encoder] *)
-
-val encode_state_role : state_role -> Pbrt.Encoder.t -> unit
-(** [encode_state_role v encoder] encodes [v] with the given [encoder] *)
-
-val encode_state : state -> Pbrt.Encoder.t -> unit
-(** [encode_state v encoder] encodes [v] with the given [encoder] *)
 
 val encode_timeout_event_time_out_type : timeout_event_time_out_type -> Pbrt.Encoder.t -> unit
 (** [encode_timeout_event_time_out_type v encoder] encodes [v] with the given [encoder] *)
@@ -533,85 +468,76 @@ val encode_compaction_report : compaction_report -> Pbrt.Encoder.t -> unit
 (** {2 Formatters} *)
 
 val pp_request_vote_request : Format.formatter -> request_vote_request -> unit 
-(** [pp_request_vote_request v] formats [v] *)
+(** [pp_request_vote_request v] formats v] *)
 
 val pp_request_vote_response : Format.formatter -> request_vote_response -> unit 
-(** [pp_request_vote_response v] formats [v] *)
+(** [pp_request_vote_response v] formats v] *)
 
 val pp_log_entry : Format.formatter -> log_entry -> unit 
-(** [pp_log_entry v] formats [v] *)
+(** [pp_log_entry v] formats v] *)
 
 val pp_append_entries_request : Format.formatter -> append_entries_request -> unit 
-(** [pp_append_entries_request v] formats [v] *)
+(** [pp_append_entries_request v] formats v] *)
 
 val pp_append_entries_response_success_data : Format.formatter -> append_entries_response_success_data -> unit 
-(** [pp_append_entries_response_success_data v] formats [v] *)
+(** [pp_append_entries_response_success_data v] formats v] *)
 
 val pp_append_entries_response_log_failure_data : Format.formatter -> append_entries_response_log_failure_data -> unit 
-(** [pp_append_entries_response_log_failure_data v] formats [v] *)
+(** [pp_append_entries_response_log_failure_data v] formats v] *)
 
 val pp_append_entries_response_result : Format.formatter -> append_entries_response_result -> unit 
-(** [pp_append_entries_response_result v] formats [v] *)
+(** [pp_append_entries_response_result v] formats v] *)
 
 val pp_append_entries_response : Format.formatter -> append_entries_response -> unit 
-(** [pp_append_entries_response v] formats [v] *)
+(** [pp_append_entries_response v] formats v] *)
 
 val pp_message : Format.formatter -> message -> unit 
-(** [pp_message v] formats [v] *)
+(** [pp_message v] formats v] *)
 
 val pp_log_interval_compacted : Format.formatter -> log_interval_compacted -> unit 
-(** [pp_log_interval_compacted v] formats [v] *)
+(** [pp_log_interval_compacted v] formats v] *)
 
 val pp_log_interval_expanded : Format.formatter -> log_interval_expanded -> unit 
-(** [pp_log_interval_expanded v] formats [v] *)
+(** [pp_log_interval_expanded v] formats v] *)
 
 val pp_log_interval_rev_log_entries : Format.formatter -> log_interval_rev_log_entries -> unit 
-(** [pp_log_interval_rev_log_entries v] formats [v] *)
+(** [pp_log_interval_rev_log_entries v] formats v] *)
 
 val pp_log_interval : Format.formatter -> log_interval -> unit 
-(** [pp_log_interval v] formats [v] *)
+(** [pp_log_interval v] formats v] *)
 
 val pp_server_index : Format.formatter -> server_index -> unit 
-(** [pp_server_index v] formats [v] *)
+(** [pp_server_index v] formats v] *)
 
 val pp_leader_state : Format.formatter -> leader_state -> unit 
-(** [pp_leader_state v] formats [v] *)
+(** [pp_leader_state v] formats v] *)
 
 val pp_candidate_state : Format.formatter -> candidate_state -> unit 
-(** [pp_candidate_state v] formats [v] *)
+(** [pp_candidate_state v] formats v] *)
 
 val pp_follower_state : Format.formatter -> follower_state -> unit 
-(** [pp_follower_state v] formats [v] *)
+(** [pp_follower_state v] formats v] *)
+
+val pp_role : Format.formatter -> role -> unit 
+(** [pp_role v] formats v] *)
 
 val pp_configuration : Format.formatter -> configuration -> unit 
-(** [pp_configuration v] formats [v] *)
-
-val pp_log_interval_rope : Format.formatter -> log_interval_rope -> unit 
-(** [pp_log_interval_rope v] formats [v] *)
-
-val pp_log_interval_rope_append : Format.formatter -> log_interval_rope_append -> unit 
-(** [pp_log_interval_rope_append v] formats [v] *)
-
-val pp_state_role : Format.formatter -> state_role -> unit 
-(** [pp_state_role v] formats [v] *)
-
-val pp_state : Format.formatter -> state -> unit 
-(** [pp_state v] formats [v] *)
+(** [pp_configuration v] formats v] *)
 
 val pp_timeout_event_time_out_type : Format.formatter -> timeout_event_time_out_type -> unit 
-(** [pp_timeout_event_time_out_type v] formats [v] *)
+(** [pp_timeout_event_time_out_type v] formats v] *)
 
 val pp_timeout_event : Format.formatter -> timeout_event -> unit 
-(** [pp_timeout_event v] formats [v] *)
+(** [pp_timeout_event v] formats v] *)
 
 val pp_notification_commited_data : Format.formatter -> notification_commited_data -> unit 
-(** [pp_notification_commited_data v] formats [v] *)
+(** [pp_notification_commited_data v] formats v] *)
 
 val pp_notification_new_leader : Format.formatter -> notification_new_leader -> unit 
-(** [pp_notification_new_leader v] formats [v] *)
+(** [pp_notification_new_leader v] formats v] *)
 
 val pp_notification : Format.formatter -> notification -> unit 
-(** [pp_notification v] formats [v] *)
+(** [pp_notification v] formats v] *)
 
 val pp_compaction_report : Format.formatter -> compaction_report -> unit 
-(** [pp_compaction_report v] formats [v] *)
+(** [pp_compaction_report v] formats v] *)

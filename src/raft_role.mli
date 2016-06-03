@@ -3,20 +3,16 @@
 module Follower : sig 
 
   val create : 
-    ?current_leader:int -> 
-    ?current_term:int -> 
-    ?voted_for:int -> 
-    ?log:Raft_pb.log_entry list ->
     configuration:Raft_pb.configuration -> 
     now:float -> 
     id:int -> 
     unit -> 
-    Raft_pb.state 
+    Raft_state.t 
   (** [create ~current_leader ~current_term ~voted_for ~log ~configuration ~id ()] creates an initial 
       follower state. 
     *)
 
-  val become : ?current_leader:int -> term:int -> now:float -> Raft_pb.state -> Raft_pb.state
+  val become : ?current_leader:int -> term:int -> now:float -> Raft_state.t -> Raft_state.t
   (** [become ~current_leader state term] return the new follower state. 
       
       {ul
@@ -29,7 +25,7 @@ end (* Follower *)
 
 module Candidate : sig
 
-  val become : now:float ->  Raft_pb.state -> Raft_pb.state
+  val become : now:float ->  Raft_state.t -> Raft_state.t
   (** [become state now] returns the new state with Candidate role. [current_term] is 
       incremented and [vote_count] initialized to 1. (ie we assume the candidate
       votes for itself.
@@ -50,7 +46,7 @@ end (* Candidate *)
 
 module Leader : sig
 
-  val become : Raft_pb.state -> float -> Raft_pb.state 
+  val become : Raft_state.t -> float -> Raft_state.t 
   (** [become state] returns the new state with a Leader role. 
        
         While only candidate with a majority are allowed by the protocol to 
@@ -87,7 +83,7 @@ module Leader : sig
   val decrement_next_index : 
     log_failure:Raft_pb.append_entries_response_log_failure_data -> 
     receiver_id:int -> 
-    Raft_pb.state -> 
+    Raft_state.t -> 
     Raft_pb.leader_state -> 
     Raft_pb.leader_state
   

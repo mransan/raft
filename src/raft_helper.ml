@@ -1,8 +1,8 @@
 open Raft_pb
 
-module Rev_log_cache = Raft_revlogcache
-module State         = Raft_state
-module Leader        = Raft_role.Leader
+module Log    = Raft_log
+module State  = Raft_state
+module Leader = Raft_role.Leader
 
 module Configuration = struct
 
@@ -26,7 +26,7 @@ module Timeout_event = struct
     }
 
   let next state now = 
-    match state.role with
+    match state.State.role with
     | Follower {election_deadline; _} ->
       existing_election_wait election_deadline  now  
     | Leader leader_state -> 

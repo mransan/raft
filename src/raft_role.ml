@@ -1,30 +1,25 @@
 open Raft_pb 
+open Raft_state
 
-module Rev_log_cache = Raft_revlogcache
+module Log= Raft_log
 module State = Raft_state
 
 module Follower = struct 
 
-  let create ?current_leader 
-             ?current_term:(current_term = 0) 
-             ?voted_for 
-             ?log:(log = []) 
-             ~configuration ~now ~id () = 
+  let create ~configuration ~now ~id () = 
     let {election_timeout = t ; election_timeout_range = r; _ } = configuration in 
     let timeout = t +. (Random.float r -. (r /. 2.)) in
     {
       id; 
-      current_term; 
-      log;
-      log_size = List.length log;
+      current_term = 0; 
+      log = Log.empty;
       commit_index = 0; 
       role = Follower {
-        voted_for; 
-        current_leader; 
+        voted_for = None; 
+        current_leader = None;
         election_deadline = now +.  timeout 
       };  
       configuration; 
-      global_cache = None; 
     }
 
   let become ?current_leader ~term ~now state = 
@@ -75,7 +70,7 @@ module Leader = struct
 
   let become state now = 
 
-    let last_log_index = State.last_log_index state in
+    let last_log_index = Log.last_log_index state.log in
     
     let {nb_of_server; hearbeat_timeout} = state.configuration in 
   
@@ -87,8 +82,8 @@ module Leader = struct
           aux indices (i -1)
         else 
           let next_index = last_log_index + 1 in 
-          let match_index = 0 in 
-          let local_cache = Rev_log_cache.make ~since:last_log_index state.log in
+          let match_index = 0  in 
+          let unsent_entries = [] in 
             (* The cache is expected to be empty... which is fine since it will
              * get filled at when a new log entry will be
              * added. 
@@ -98,7 +93,7 @@ module Leader = struct
             server_id = i; 
             next_index; 
             match_index; 
-            local_cache; 
+            unsent_entries; 
             outstanding_request = false;
             heartbeat_deadline = now +. hearbeat_timeout;
               (* 
@@ -149,24 +144,30 @@ module Leader = struct
     (leader_state, nb_of_replications) 
 
   let decrement_next_index ~log_failure ~receiver_id state leader_state = 
-    let {receiver_commit_index} = log_failure in 
+    let {receiver_last_log_index} = log_failure in 
 
-    let latest_log_index, latest_log_term = match state.log with
-      | [] -> (0, 0) 
-      | {index; term; data = _} :: _ -> (index, term)
-    in
+    let latest_log_index, latest_log_term = Log.last_log_index_and_term state.log  in 
 
-    assert(receiver_commit_index < latest_log_index);  
+    assert(receiver_last_log_index <= latest_log_index);  
       (* 
-       * This is an invariant. When receiving the [Append_entries]
-       * request, in case of [Log_failure] the server is responsible
-       * to find the earlier log entry to synchronize with the [Leader]. 
+       * This is an invariant. The server cannot have replicated more logs
+       * than the Leader.
        * 
+       * However due to message re-ordering it is possible to receive a [LogFailure] 
+       * with the receiver_last_log_index equal to the latest_log_index. 
+       *
+       * Consider the following scenario
+       * - [Leader] Append_entry prev_index = x rev_log_entries [x+1]
+       * - [Server] receives the request and correctly replicate x + 1 
+       * - !! RESPONSE IS LOST !!
+       * - [Leader] Append_entry prev_index = x rev_log_entries [x+1]
+       * - [Server] return a failure since it has replicated x + 1 and cannot 
+       *   remove that log entry since it is coming from the current term leader.
        *)
     update_index ~receiver_id ~f:(fun index -> 
       {index with 
-       next_index = receiver_commit_index + 1; 
-       match_index = receiver_commit_index}
+       next_index = receiver_last_log_index + 1; 
+       match_index = receiver_last_log_index}
     )  leader_state
 
   let record_response_received ~receiver_id leader_state = 

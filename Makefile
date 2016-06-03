@@ -23,7 +23,7 @@ LIB_FILES+=raft_helper
 LIB_FILES+=raft_logic
 LIB_FILES+=raft_state
 LIB_FILES+=raft_role
-LIB_FILES+=raft_revlogcache
+LIB_FILES+=raft_log
 
 LIB_BUILD     =_build/src/
 LIB_INSTALL   = META 

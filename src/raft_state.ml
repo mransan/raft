@@ -1,14 +1,15 @@
 open Raft_pb
 
-module Rev_log_cache = Raft_revlogcache
+module Log = Raft_log
 
-let last_log_index_and_term {log; _ } = 
-  match log with
-  | {index;term}::_ -> (index, term) 
-  | [] -> (0, 0)
-
-let last_log_index state = 
-  fst @@ last_log_index_and_term state
+type t = {
+  id : int;
+  current_term : int;
+  log : Raft_log.t;
+  commit_index : int;
+  role : Raft_pb.role;
+  configuration : Raft_pb.configuration;
+}
 
 let is_follower {role; _} = 
   match role with 
@@ -25,168 +26,6 @@ let is_leader {role; _ } =
   | Leader _ -> true 
   | _ -> false 
 
-let add_logs datas state = 
-
-  let rec aux term last_log_index log log_size = function
-    | [] -> (log, log_size)  
-    | (data, id)::tl -> 
-      let last_log_index = last_log_index + 1 in 
-      let log = {
-        index = last_log_index;
-        term;
-        data;
-        id;
-      } :: log in 
-      aux term last_log_index log (log_size + 1) tl 
-  in 
-
-  let log, log_size = 
-    let term = state.current_term in 
-    let last_log_index = last_log_index state in 
-    let log = state.log in 
-    let log_size = state.log_size in 
-
-    aux term last_log_index log log_size datas 
-  in 
-  {state with log; log_size;}
-
-let find_term_of_index i log = 
-  let rec aux = function
-    | [] -> raise Not_found 
-    | {index; term;_} :: _ when index = i -> term 
-    | _::tl -> aux tl  
-  in
-  aux log 
-
-let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state = 
-
-  let commit_index = state.commit_index in
-
-  (* --------------------------------------------------------
-   * ? assert(prev_log_index >= (state.commit_index - 1));  ?
-   * --------------------------------------------------------
-   *
-   * We cannot make the assertion above since it is possible 
-   * that an [Append_entries] request would be sent twice (either 
-   * mistake from [Leader] or the network will duplicate). 
-   *
-   * In such a case the first is likely to increase the commit index
-   * of the [Follower] to a value greated than the [prev_log_index]. So 
-   * on the second request it will fail
-   * 
-   * Ti    commit_index = x , prev_log_index x + 10 
-   * Ti+1  request with leader_commit = x + 20 , and 100 logs added  
-   * Ti+2  commit_index = x + 20, prev_log_index x + 110 
-   * Ti+3  duplicate of Ti+1 request 
-   * >>    We can see now that commit_index > prev_log_index 
-   *
-   * However the RAFT protocol guarantees that no commited entries will 
-   * later be invalidated/removed. (See Safety guarantee). 
-   * Therefore we can remove those duplicated entries from [rev_log_entries] 
-   * which are prior (and included) the latest commited entry. 
-   *)
-  
-  let prev_log_index, prev_log_term, rev_log_entries = 
-    if prev_log_index >= commit_index
-    then prev_log_index, prev_log_term, rev_log_entries
-    else 
-      (* prev_log_index is less than commit_index, we must therefore
-       * trim the log entries which are previous to the commit_index. 
-       *)
-      let rec aux = function 
-        | [] -> 
-          (* This case is possible if 2 [Append_entries] request arrives out of 
-           * order. 
-           * In this case the second request will contained [log_entry]s which have all
-           * been replicated. In those cases it's likely that the [log_entry] corresponding
-           * to this server commit_index might not be in the request [rev_log_entries]. 
-           *
-           * In such a case, none of the logs should be added, in fact they all have been 
-           * previously added before. 
-           *)
-          (commit_index, find_term_of_index commit_index state.log, [])
-          
-        | {index;term; _ }::tl when index < commit_index -> aux tl 
-        | {index;term; _ }::tl -> 
-          assert(index = commit_index); 
-          (index, term, tl) 
-      in
-      aux rev_log_entries
-  in
-   
-  assert(prev_log_index >= (state.commit_index - 1));
-
-  (* This functions merges the request log entries with the
-   * current log of the server. The current log is first split by
-   * the caller into:
-   *
-   * - [log] all the logs prior to (and including) [prev_log_index].
-   * - [log_size] nb of log entries in [log]
-   *
-   * This function will then merge the 2 list of logs by adding all the
-   * common logs first, then if either one is empty or an entry differs
-   * then the entries from the leader will override the one in the server.
-   *
-   *)
-  let merge_log_entries state log_size log =
-
-    let rec aux log_size log = function
-      | [] -> (log_size, log)
-      | hd::tl -> 
-        aux (log_size + 1) (hd::log) tl 
-    in
-
-    let (log_size, log) = aux log_size log rev_log_entries in 
-    let state = {state with log ; log_size;} in
-    (state, true)
-  in
-  
-  let rec aux log_size = function
-    | [] ->
-      if prev_log_index = 0
-      then
-        (* [case 0] No previous log were ever inserted
-         *)
-        merge_log_entries state 0 []
-      else
-        (* [case 1] The prev_log_index is not found in the state log.
-         * This server is lagging behind.
-         *)
-        (state, false)
-
-    | ({index; term; _ }::tl as log) when index = prev_log_index &&
-                                           term = prev_log_term ->
-      (* [case 2] The prev_log_index matches the leader, all is good,
-       * let's append all the new logs.
-       *)
-      merge_log_entries state log_size log
-
-    | {index; _ }::log when index = prev_log_index ->
-      (* [case 3] The prev_log_index is inconstent with the leader.
-       * This conflict is resolved by discarding it along with all
-       * following log entries.
-       * As far as the leader is concerned it's like [case 1] now.
-       *)
-      let new_state = {state with log} in
-      (new_state, false)
-
-    |  hd::tl -> aux (log_size - 1) tl
-  in
-
-  begin match state.log with
-  | {index; _}::tl when prev_log_index > index ->
-    (*
-     * This is the case when a new [Leader] which has more log entries
-     * than this server sends a first [Append_entries_request]. It initializes
-     * its belief of thie server [last_log_index] to its own [last_log_index].
-     *
-     * However this server does not have as many log entries.
-     *
-     * In such a case, we send failure right away.
-     *)
-    (state, false)
-  | _ -> aux state.log_size state.log
-  end
 
 let notifications before after = 
   
@@ -230,39 +69,36 @@ let notifications before after =
       notifications
   in
 
-  let notifications = 
-    if acommit_index > bcommit_index
-    then 
-      let rec aux rev_log_entries = function 
-        | ({index;_ } as log_entry) ::tl -> 
-            if index > acommit_index 
-            then aux rev_log_entries tl 
-            else 
-              if index = bcommit_index
-              then rev_log_entries
-              else aux (log_entry :: rev_log_entries) tl 
-        | [] ->  
-          assert(bcommit_index = 0); 
-          (* If commit_index is different than 0 then this means 
-           * that we could not identify all the [log_entry] which 
-           * have been commited between [before] and [after]. 
-           *
-           * One of the reason could be that the [log_entry]s are not
-           * in the [log] but rather in the [global_cache]. 
-           * This should be prevented by the fact that [Rev_log_cache.update_global_cache]
-           * only move the [log_entry] to the cache wihch are prior to the 
-           * previous commit index (ie the one of [before]. 
-           * 
-           * The other is a plain bug, all entries between 2 commit_index should be 
-           * in the log.
-           *) 
-          rev_log_entries 
-      in
-      (Committed_data {rev_log_entries = aux [] after.log})::notifications 
-    else 
-      notifications
-  in 
-  notifications
+  if acommit_index > bcommit_index
+  then 
+    let rec aux rev_log_entries = function 
+      | ({index;_ } as log_entry) ::tl -> 
+          if index > acommit_index 
+          then aux rev_log_entries tl 
+          else 
+            if index = bcommit_index
+            then rev_log_entries
+            else aux (log_entry :: rev_log_entries) tl 
+      | [] ->  
+        assert(bcommit_index = 0); 
+        (* If commit_index is different than 0 then this means 
+         * that we could not identify all the [log_entry] which 
+         * have been commited between [before] and [after]. 
+         *
+         * One of the reason could be that the [log_entry]s are not
+         * in the [log] but rather in the [global_cache]. 
+         * This should be prevented by the fact that [Rev_log_cache.update_global_cache]
+         * only move the [log_entry] to the cache wihch are prior to the 
+         * previous commit index (ie the one of [before]. 
+         * 
+         * The other is a plain bug, all entries between 2 commit_index should be 
+         * in the log.
+         *) 
+        rev_log_entries 
+    in
+    (Committed_data {rev_log_entries = aux [] after.log.Log.recent_entries})::notifications 
+  else 
+    notifications
 
 let current_leader {id; role; _} = 
     match role with
@@ -274,10 +110,10 @@ let current_leader {id; role; _} =
  * of the list. 
  *)
 let collect_all_non_compacted_logs state = 
-  Rev_log_cache.fold (fun acc -> function
+  Log.Past_entries.fold (fun acc -> function
     | {rev_log_entries = Compacted _; _} -> acc 
     | log_interval -> log_interval::acc 
-  ) [] state.global_cache 
+  ) [] state.log
 
 let compaction state = 
 
@@ -330,7 +166,7 @@ let compaction state =
       |> List.sort_uniq cmp
     in
 
-    let ((c, e,_ ), _) = Rev_log_cache.fold (fun ((c, e, append_next), next_indices) log_interval -> 
+    let ((c, e,_ ), _) = Log.Past_entries.fold (fun ((c, e, append_next), next_indices) log_interval -> 
 
       match next_indices with
       | [] -> 
@@ -339,7 +175,7 @@ let compaction state =
         else ((log_interval::c, e, false), next_indices)
 
       | next_index::tl ->
-        if Rev_log_cache.contains_next_of next_index log_interval
+        if Log.Past_interval.contains_next_of next_index log_interval
         then ((c, log_interval::e, true), tl)
         else 
           begin 
@@ -348,7 +184,7 @@ let compaction state =
             then ((c, log_interval::e, false), next_indices)
             else ((log_interval::c, e, false), next_indices)
           end 
-    ) (([], [], false), next_indices) state.global_cache in 
+    ) (([], [], false), next_indices) state.log in 
 
     let is_compacted : log_interval -> bool = function | {rev_log_entries = Compacted _ ; _ } -> true | _ -> false in 
     let is_expanded  : log_interval -> bool = function | {rev_log_entries = Expanded  _ ; _ } -> true | _ -> false in 
