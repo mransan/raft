@@ -12,8 +12,8 @@ and 'a append = {
 }
 
 and 'a tree = 
-  | Leaf    of 'a leaf
-  | Append  of 'a append 
+  | Interval of 'a leaf
+  | Append of 'a append 
 
 and 'a t = 'a tree option 
   
@@ -21,27 +21,27 @@ let fold f e0 = function
   | None -> e0
   | Some tree ->
     let rec aux acc = function
-      | Leaf {leaf_data; _ }     -> f acc leaf_data
+      | Interval {leaf_data; _ }     -> f acc leaf_data
       | Append {append_lhs;append_rhs; _} -> aux (aux acc append_lhs) append_rhs
     in
     (aux e0 tree) 
 
 let last_entry_index_in_rope = function 
   | None -> 0 
-  | Some Leaf   {leaf_last; _} -> leaf_last
+  | Some Interval {leaf_last; _} -> leaf_last
   | Some Append {append_last; _} -> append_last
 
 let last_entry_index_in_tree = function 
-  | Leaf   {leaf_last; _} -> leaf_last
+  | Interval {leaf_last; _} -> leaf_last
   | Append {append_last; _} -> append_last
 
 let replace prev data = function 
   | None -> assert(false)
   | Some tree ->  
     let rec aux = function
-      | Leaf leaf -> 
+      | Interval leaf -> 
         assert(leaf.leaf_prev = prev );  
-        Leaf {leaf with leaf_data = data}
+        Interval {leaf with leaf_data = data}
 
       | Append ({append_rhs; append_lhs; _} as append)  -> 
         let lhs_last = last_entry_index_in_tree append_lhs in 
@@ -54,16 +54,16 @@ let replace prev data = function
 let add leaf_prev leaf_last leaf_data t = 
 
   let rope_height = function
-    | Leaf _ -> 0 
+    | Interval _ -> 0 
     | Append  {append_height; _} -> append_height 
   in 
 
-  let new_leaf = Leaf {leaf_data;leaf_prev; leaf_last}  in 
+  let new_leaf = Interval {leaf_data;leaf_prev; leaf_last}  in 
 
   let rec aux = function 
-    | Leaf x -> Append {
+    | Interval x -> Append {
       append_height = 1; 
-      append_lhs = Leaf x; 
+      append_lhs = Interval x; 
       append_rhs = new_leaf; 
       append_last = leaf_last;
     }
@@ -98,7 +98,7 @@ let find ~index t =
   | Some tree ->
       
     let rec aux = function
-      |Leaf leaf-> 
+      |Interval leaf-> 
         if index <= leaf.leaf_prev || 
            index > leaf.leaf_last
         then raise Not_found
@@ -111,11 +111,11 @@ let find ~index t =
     in
     aux tree
 
-let rec last_leaf = function
+let rec last_interval = function
   | None -> None 
   | Some tree -> 
     let rec aux = function
-      | Leaf leaf -> Some leaf 
+      | Interval leaf -> Some leaf 
       | Append {append_rhs; _} -> aux  append_rhs
     in
     aux tree
@@ -124,10 +124,10 @@ let remove_backward_while f = function
   | None -> None 
   | Some tree -> 
     let rec aux = function
-      | Leaf leaf -> 
+      | Interval leaf -> 
         if f leaf
         then None
-        else Some (Leaf leaf)
+        else Some (Interval leaf)
       | Append ({append_lhs; append_rhs; _ } as a) ->
         match aux append_rhs with
         | None -> aux append_lhs 
@@ -139,7 +139,7 @@ let rec pp f fmt = function
   | None -> Format.fprintf fmt "Empty"
   | Some tree ->  
     let rec pp_sub fmt = function
-      | Leaf {leaf_prev;leaf_last; leaf_data} -> 
+      | Interval {leaf_prev;leaf_last; leaf_data} -> 
         Format.fprintf fmt "]prev:%i; last:%i] = data:%a," leaf_prev leaf_last f leaf_data
       | Append {append_rhs; append_lhs; _ } ->
         Format.fprintf fmt "%a %a" pp_sub append_lhs pp_sub append_rhs 
