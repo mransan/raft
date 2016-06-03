@@ -144,21 +144,30 @@ module Leader = struct
     (leader_state, nb_of_replications) 
 
   let decrement_next_index ~log_failure ~receiver_id state leader_state = 
-    let {receiver_commit_index} = log_failure in 
+    let {receiver_last_log_index} = log_failure in 
 
     let latest_log_index, latest_log_term = Log.last_log_index_and_term state.log  in 
 
-    assert(receiver_commit_index < latest_log_index);  
+    assert(receiver_last_log_index <= latest_log_index);  
       (* 
-       * This is an invariant. When receiving the [Append_entries]
-       * request, in case of [Log_failure] the server is responsible
-       * to find the earlier log entry to synchronize with the [Leader]. 
+       * This is an invariant. The server cannot have replicated more logs
+       * than the Leader.
        * 
+       * However due to message re-ordering it is possible to receive a [LogFailure] 
+       * with the receiver_last_log_index equal to the latest_log_index. 
+       *
+       * Consider the following scenario
+       * - [Leader] Append_entry prev_index = x rev_log_entries [x+1]
+       * - [Server] receives the request and correctly replicate x + 1 
+       * - !! RESPONSE IS LOST !!
+       * - [Leader] Append_entry prev_index = x rev_log_entries [x+1]
+       * - [Server] return a failure since it has replicated x + 1 and cannot 
+       *   remove that log entry since it is coming from the current term leader.
        *)
     update_index ~receiver_id ~f:(fun index -> 
       {index with 
-       next_index = receiver_commit_index + 1; 
-       match_index = receiver_commit_index}
+       next_index = receiver_last_log_index + 1; 
+       match_index = receiver_last_log_index}
     )  leader_state
 
   let record_response_received ~receiver_id leader_state = 

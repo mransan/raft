@@ -177,7 +177,7 @@ message AppendEntriesResponse {
     } 
 
     message LogFailureData {
-      required int32 receiver_commit_index = 1; 
+      required int32 receiver_last_log_index = 1; 
     }
     
     message NoData {
@@ -252,80 +252,9 @@ message LogInterval {
   }
 }
 
-// Rope data structure to keep track efficiently
-// of the log entries in reverse order. 
-// 
-message LogIntervalRope {
-  message Append {
-    required int32           height = 1; 
-    required LogIntervalRope lhs    = 2; 
-    required LogIntervalRope rhs    = 3;
-    required int32    last_index    = 4;
-  }
-  oneof t {
-    LogInterval interval = 1;
-    Append      append   = 2;
-  }
-}
-
-// message Log {
-//   repeated LogEntry recent_entries = 1;
-//   required int32 log_size = 2;
-//   optional LogIntervalRope past_entries = 3;
-//   optional TermTree term_tree = 4;
-// }
-
 // STATE
 // ----------------------------------------------------------------------------
 // 
-// In this section we will define the [State] of the servers. The [State] is 
-// composed into 2 parts
-//
-// - Common data
-//   This data is common to all the servers no matter what role they have.
-//
-// - Role based data
-//   Data specific to a particular role
-
-// State structure
-//
-// [id] 
-//   Id the logical id of the server. Its range is `[0; nb_of_server[`. 
-//     
-// [current_term]
-//   TODO.
-// 
-// [log] & [log_size]
-//   Data to be replicated by the RAFT consensus.
-//   [log_size] is simply an optimization, since [log] is represented
-//   as an OCaml list, computing the length is a linear operation.
-//
-// [commit_index]
-//   It's the latest log index which has been successfully replicated 
-//   on a majority of servers. 
-// 
-// [configuration] 
-//   Cluster configuration (number of servers and various timeout 
-//   values). 
-// 
-// [role] 
-//   The current role of the server. [oneof] guarantees that 
-//   the server can only be in one role at a time.
-//
-// message State {
-//   required int32 id           = 1;
-//   required int32 current_term = 2; 
-//   required Log      log       = 3; 
-//   required int32 commit_index = 4; 
-// 
-//   oneof role {
-//     LeaderState    leader    = 6;
-//     CandidateState candidate = 7;
-//     FollowerState  follower  = 8;
-//   }
-// 
-//   required Configuration configuration = 9;
-// }
 
 message Role {
    oneof t {

@@ -277,153 +277,52 @@ let find_term_of_index i log_entries =
   in
   aux log_entries
 
-let merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries ~commit_index log = 
+let remove_log_since prev_log_index prev_log_term log = 
 
-  (* --------------------------------------------------------
-   * ? assert(prev_log_index >= (state.commit_index - 1));  ?
-   * --------------------------------------------------------
-   *
-   * We cannot make the assertion above since it is possible 
-   * that an [Append_entries] request would be sent twice (either 
-   * mistake from [Leader] or the network will duplicate). 
-   *
-   * In such a case the first is likely to increase the commit index
-   * of the [Follower] to a value greated than the [prev_log_index]. So 
-   * on the second request it will fail
-   * 
-   * Ti    commit_index = x , prev_log_index x + 10 
-   * Ti+1  request with leader_commit = x + 20 , and 100 logs added  
-   * Ti+2  commit_index = x + 20, prev_log_index x + 110 
-   * Ti+3  duplicate of Ti+1 request 
-   * >>    We can see now that commit_index > prev_log_index 
-   *
-   * However the RAFT protocol guarantees that no commited entries will 
-   * later be invalidated/removed. (See Safety guarantee). 
-   * Therefore we can remove those duplicated entries from [rev_log_entries] 
-   * which are prior (and included) the latest commited entry. 
-   *)
-  
-  let prev_log_index, prev_log_term, rev_log_entries = 
-    if prev_log_index >= commit_index
-    then prev_log_index, prev_log_term, rev_log_entries
-    else 
-      (* prev_log_index is less than commit_index, we must therefore
-       * trim the log entries which are previous to the commit_index. 
-       *)
-      let rec aux = function 
-        | [] -> 
-          (* This case is possible if 2 [Append_entries] request arrives out of 
-           * order. 
-           * In this case the second request will contained [log_entry]s which have all
-           * been replicated. In those cases it's likely that the [log_entry] corresponding
-           * to this server commit_index might not be in the request [rev_log_entries]. 
-           *
-           * In such a case, none of the logs should be added, in fact they all have been 
-           * previously added before. 
-           *)
-          (commit_index, find_term_of_index commit_index log.recent_entries , [])
-          
-        | {index;term; _ }::tl when index < commit_index -> aux tl 
-        | {index;term; _ }::tl -> 
-          assert(index = commit_index); 
-          (index, term, tl) 
-      in
-      aux rev_log_entries
-  in
-   
-  assert(prev_log_index >= (commit_index - 1));
-
-  (* This functions merges the request log entries with the
-   * current log of the server. The current log is first split by
-   * the caller into:
-   *
-   * - [log] all the logs prior to (and including) [prev_log_index].
-   * - [log_size] nb of log entries in [log]
-   *
-   * This function will then merge the 2 list of logs by adding all the
-   * common logs first, then if either one is empty or an entry differs
-   * then the entries from the leader will override the one in the server.
-   *
-   *)
-  let merge_log_entries log log_size recent_entries =
-
-    (* Before merging we need to make sure the term
-     * tree is correctly updated to reflce the recent_entries since
-     * those might have been affected by 
-     * the [aux] function below.
-     *)
-    let term_tree = match recent_entries with
-      | []      -> Term_tree.empty
-      | hd :: _ -> Term_tree.new_last log.term_tree hd 
-    in
-
-    let rec aux log_size term_tree recent_entries = function
-      | [] -> (log_size, term_tree, recent_entries)
-      | hd::tl -> 
-        let term_tree = Term_tree.new_log term_tree hd in  
-        aux (log_size + 1) term_tree (hd::recent_entries) tl 
-    in
-
-    let (log_size, term_tree, recent_entries) = aux log_size term_tree recent_entries rev_log_entries in 
-    let log = {log with 
-      recent_entries; 
-      log_size; 
-      term_tree; 
-    } in 
-    (log, true)
-  in
-  
   let rec aux log_size = function
     | [] ->
       if prev_log_index = 0
-      then
-        (* [case 0] No previous log were ever inserted
-         *)
-        merge_log_entries log 0 []
-      else
-        (* [case 1] The prev_log_index is not found in the state log.
-         * This server is lagging behind.
-         *)
-        (log, false)
+      then ([], 0) 
+      else raise Not_found
 
     | ({index; term; _ }::tl as recent_entries) when index = prev_log_index &&
                                                      term = prev_log_term ->
-      (* [case 2] The prev_log_index matches the leader, all is good,
-       * let's append all the new logs.
-       *)
-      (* TODO should [log_size] be [log_size -1] here. 
-       *)
-      merge_log_entries log log_size recent_entries
+      (recent_entries, log_size) 
 
     | {index; _ }::recent_entries when index = prev_log_index ->
-      (* [case 3] The prev_log_index is inconstent with the leader.
-       * This conflict is resolved by discarding it along with all
-       * following log entries.
-       * As far as the leader is concerned it's like [case 1] now.
-       *)
-      (* TODO should [log_size] be [log_size -1] here. 
-       * and should log_size be added to the update of the state
-       *)
-      let log       = {log with recent_entries} in 
-      (log, false)
+      raise Not_found
 
     |  hd::tl -> aux (log_size - 1) tl
   in
 
-  begin match log.recent_entries with
+  match log.recent_entries with
   | {index; _}::tl when prev_log_index > index ->
-    (*
-     * This is the case when a new [Leader] which has more log entries
-     * than this server sends a first [Append_entries_request]. It initializes
-     * its belief of thie server [last_log_index] to its own [last_log_index].
-     *
-     * However this server does not have as many log entries.
-     *
-     * In such a case, we send failure right away.
-     *)
-    (log, false)
-  | _ -> aux log.log_size log.recent_entries
-  end
+    raise Not_found
+  | _ -> 
+    let recent_entries, log_size = aux log.log_size log.recent_entries in
+    let term_tree = match recent_entries with
+      | [] -> Term_tree.empty
+      | hd::_ -> Term_tree.new_last log.term_tree hd
+    in 
+    {log with recent_entries; log_size; term_tree; } 
+    
+
+let append_log_entries rev_log_entries log = 
+  
+  let rec aux log_size term_tree recent_entries = function
+    | [] -> (log_size, term_tree, recent_entries)
+    | hd::tl -> 
+      let term_tree = Term_tree.new_log term_tree hd in  
+      aux (log_size + 1) term_tree (hd::recent_entries) tl 
+  in
+
+  let (
+    log_size, 
+    term_tree, 
+    recent_entries
+  ) = aux log.log_size log.term_tree log.recent_entries rev_log_entries in 
+ 
+  {log with recent_entries; log_size; term_tree; } 
 
 let rev_log_entries_since since log = 
   let {recent_entries ; past_entries;} = log in 

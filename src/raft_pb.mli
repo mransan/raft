@@ -36,7 +36,7 @@ type append_entries_response_success_data = {
 }
 
 type append_entries_response_log_failure_data = {
-  receiver_commit_index : int;
+  receiver_last_log_index : int;
 }
 
 type append_entries_response_result =
@@ -74,17 +74,6 @@ and log_interval = {
   last_index : int;
   rev_log_entries : log_interval_rev_log_entries;
 }
-
-type log_interval_rope_append = {
-  height : int;
-  lhs : log_interval_rope;
-  rhs : log_interval_rope;
-  last_index : int;
-}
-
-and log_interval_rope =
-  | Interval of log_interval
-  | Append of log_interval_rope_append
 
 type server_index = {
   server_id : int;
@@ -198,7 +187,7 @@ val default_append_entries_response_success_data :
 (** [default_append_entries_response_success_data ()] is the default value for type [append_entries_response_success_data] *)
 
 val default_append_entries_response_log_failure_data : 
-  ?receiver_commit_index:int ->
+  ?receiver_last_log_index:int ->
   unit ->
   append_entries_response_log_failure_data
 (** [default_append_entries_response_log_failure_data ()] is the default value for type [append_entries_response_log_failure_data] *)
@@ -240,18 +229,6 @@ val default_log_interval :
   unit ->
   log_interval
 (** [default_log_interval ()] is the default value for type [log_interval] *)
-
-val default_log_interval_rope_append : 
-  ?height:int ->
-  ?lhs:log_interval_rope ->
-  ?rhs:log_interval_rope ->
-  ?last_index:int ->
-  unit ->
-  log_interval_rope_append
-(** [default_log_interval_rope_append ()] is the default value for type [log_interval_rope_append] *)
-
-val default_log_interval_rope : unit -> log_interval_rope
-(** [default_log_interval_rope ()] is the default value for type [log_interval_rope] *)
 
 val default_server_index : 
   ?server_id:int ->
@@ -373,12 +350,6 @@ val decode_log_interval_rev_log_entries : Pbrt.Decoder.t -> log_interval_rev_log
 val decode_log_interval : Pbrt.Decoder.t -> log_interval
 (** [decode_log_interval decoder] decodes a [log_interval] value from [decoder] *)
 
-val decode_log_interval_rope_append : Pbrt.Decoder.t -> log_interval_rope_append
-(** [decode_log_interval_rope_append decoder] decodes a [log_interval_rope_append] value from [decoder] *)
-
-val decode_log_interval_rope : Pbrt.Decoder.t -> log_interval_rope
-(** [decode_log_interval_rope decoder] decodes a [log_interval_rope] value from [decoder] *)
-
 val decode_server_index : Pbrt.Decoder.t -> server_index
 (** [decode_server_index decoder] decodes a [server_index] value from [decoder] *)
 
@@ -457,12 +428,6 @@ val encode_log_interval_rev_log_entries : log_interval_rev_log_entries -> Pbrt.E
 val encode_log_interval : log_interval -> Pbrt.Encoder.t -> unit
 (** [encode_log_interval v encoder] encodes [v] with the given [encoder] *)
 
-val encode_log_interval_rope_append : log_interval_rope_append -> Pbrt.Encoder.t -> unit
-(** [encode_log_interval_rope_append v encoder] encodes [v] with the given [encoder] *)
-
-val encode_log_interval_rope : log_interval_rope -> Pbrt.Encoder.t -> unit
-(** [encode_log_interval_rope v encoder] encodes [v] with the given [encoder] *)
-
 val encode_server_index : server_index -> Pbrt.Encoder.t -> unit
 (** [encode_server_index v encoder] encodes [v] with the given [encoder] *)
 
@@ -540,12 +505,6 @@ val pp_log_interval_rev_log_entries : Format.formatter -> log_interval_rev_log_e
 
 val pp_log_interval : Format.formatter -> log_interval -> unit 
 (** [pp_log_interval v] formats v] *)
-
-val pp_log_interval_rope_append : Format.formatter -> log_interval_rope_append -> unit 
-(** [pp_log_interval_rope_append v] formats v] *)
-
-val pp_log_interval_rope : Format.formatter -> log_interval_rope -> unit 
-(** [pp_log_interval_rope v] formats v] *)
 
 val pp_server_index : Format.formatter -> server_index -> unit 
 (** [pp_server_index v] formats v] *)

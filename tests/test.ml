@@ -1191,7 +1191,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server1, _, notifications =
+  let server1, r, notifications =
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -1457,7 +1457,7 @@ let ()  =
     assert(r.receiver_id = 2);
     assert(r.receiver_term = 3);
     assert(r.result = Log_failure {
-      receiver_commit_index = 2;
+      receiver_last_log_index = 2;
     });
       (*
        * server2 did not replicate the 3rd [log_entry] that server1

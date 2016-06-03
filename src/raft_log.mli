@@ -73,32 +73,6 @@ val add_logs : int -> (bytes * string) list -> t -> t
     left to the caller. 
   *) 
 
-val merge_logs : 
-  prev_log_index:int -> 
-  prev_log_term:int -> 
-  rev_log_entries: Raft_pb.log_entry list-> 
-  commit_index:int -> 
-  t -> 
-  (t * bool)
-(** [merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries state] merges 
-    the [rev_log_entries] into the [state] log starting at [prev_log_index]. 
-   
-    We assume that both the previous log entry information (index and term) along
-    with the [rev_log_entries] are the thruth about the log state. (This function
-    is typically used when receiving an [Append_entries] request from a [Leader]) 
-   
-    As a concequence if the previous log entry could not be fond in 
-    the [state.log] then the state log is truncated with all entries after 
-    that one removed. [false] is returned in such a case. 
-   
-    If [state.log] contains additional log entries past the previous log entries
-    those will be removed and replaced with the [rev_log_entries]. Since the merge
-    is still successfull [true] is returned.
-   
-    The most likely scenario is that the [state.log] last entry is matching the 
-    previous log entry and [rev_log_entries] is simply appended.
-  *)
-
 val service : prev_commit_index:int -> configuration:Raft_pb.configuration -> t -> t
 (** [service ~prev_commit_index state]
     If a large enough number of [log_entry]s have been added to the [state]
@@ -115,6 +89,10 @@ val service : prev_commit_index:int -> configuration:Raft_pb.configuration -> t 
 val rev_log_entries_since : int -> t -> Raft_pb.log_entry list
 
 val term_of_index : int -> t -> int 
+
+val append_log_entries : Raft_pb.log_entry list -> t -> t 
+
+val remove_log_since : int -> int -> t -> t 
 
 (** Log Builder utilities to re-create a log value from disk records. 
     

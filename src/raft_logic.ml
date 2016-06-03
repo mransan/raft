@@ -314,42 +314,71 @@ let handle_append_entries_request state request now =
       prev_log_term; 
       rev_log_entries; 
       leader_commit} = request in
-      
-    let log, success = 
-      Log.merge_logs ~prev_log_index ~prev_log_term ~rev_log_entries ~commit_index:state.State.commit_index state.State.log  
-    in 
-    let state = if success then {state with State.log} else state in 
-    let receiver_last_log_index, 
-        receiver_last_log_term = Log.last_log_index_and_term state.State.log in  
-    
-    let state =
-      (* Update this server commit index based on value sent from
-       * the leader.
-       * Note that it is not guaranteed that the leader has sent
-       * all the log until it commit index so the min value
-       * is taken.
+
+    let (
+      receiver_last_log_index, 
+      receiver_last_log_term
+    ) = Log.last_log_index_and_term state.State.log in 
+
+    let commit_index = state.State.commit_index in 
+
+    if prev_log_index < commit_index
+    then 
+      (* The only reason that can happen is if the messages 
+       * are delivered out of order. (Which is completely possible).
+       *
+       * Servers should never remove a commited log.
        *)
-      if leader_commit > state.State.commit_index
+      (state, make_response state (Log_failure {receiver_last_log_index}))
+    else
+      if leader_term    = receiver_last_log_term && 
+         prev_log_index < receiver_last_log_index
       then 
-        let log = Log.service ~prev_commit_index:state.State.commit_index ~configuration:state.State.configuration log in 
-        {state with 
-          State.log; 
-          State.commit_index = min leader_commit receiver_last_log_index
-        }
-      else state
-    in
+        (* This case is also possible when messages are out of order. 
+         *
+         * It's also important that no log entry is removed from the log 
+         * if they come from the current leader. The current leader might 
+         * have sent a commit message back to a client believing that the log 
+         * entry is replicated on this server. If we remove the log entry 
+         * we violate the assumption.
+         *)
+        (state, make_response state (Log_failure {receiver_last_log_index}))
+      else
+        if prev_log_index > receiver_last_log_index
+        then 
+          (* This is likely the case after a new election, the leader has 
+           * more log entries in its log and assumes that this server has 
+           * the same number. 
+           *)
+          (state, make_response state (Log_failure {receiver_last_log_index})) 
+        else
+          (* All the conditions are now ok for the logs to be merged. 
+           *)
+          match Log.remove_log_since prev_log_index prev_log_term state.State.log with
+          | exception Not_found ->
+            (state, make_response state (Log_failure {receiver_last_log_index}))
+            (* This is the case where there is a mismatch between the [Leader] 
+             * and this server and the log entry identified with (prev_log_index, prev_log_term)
+             * could not be found. 
+             *)
 
-    let response = 
-      if success
-      then 
-        make_response state (Success {receiver_last_log_index}) 
-      else 
-        make_response state (Log_failure {
-          receiver_commit_index = state.State.commit_index;
-        }) 
-    in
+          | log -> 
+            let log = Log.append_log_entries rev_log_entries log in 
+            let receiver_last_log_index = Log.last_log_index log in 
 
-    (state, response)
+            let state =
+              if leader_commit > state.State.commit_index
+              then 
+                let log = Log.service 
+                  ~prev_commit_index:commit_index 
+                  ~configuration:state.State.configuration 
+                  log 
+                in 
+                let commit_index = min leader_commit receiver_last_log_index in 
+                {state with State.log; commit_index}
+              else {state with State.log}
+            in
+            (state, make_response state (Success {receiver_last_log_index})) 
 
 let handle_append_entries_response state ({receiver_term; _ } as response) now =
 
