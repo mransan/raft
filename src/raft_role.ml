@@ -27,10 +27,17 @@ module Follower = struct
     let election_deadline  = now +. t +. (Random.float r -. (r /. 2.)) in
 
     let role = match state.role with
-      | Follower follower_state -> Follower {follower_state with
-        current_leader; 
-        election_deadline;
-      }
+      | Follower follower_state -> 
+        let voted_for = 
+          if term = state.current_term 
+          then follower_state.voted_for 
+          else None 
+        in 
+        Follower {
+          current_leader; 
+          election_deadline;
+          voted_for;
+        }
       | Candidate _ when state.current_term = term -> 
         Follower {
           voted_for = Some state.id;
