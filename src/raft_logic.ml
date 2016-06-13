@@ -280,6 +280,18 @@ let handle_request_vote_response state response now =
        *)
 
 (** {2 Append Entries} *)
+let update_state leader_commit receiver_last_log_index log state = 
+  if leader_commit > state.State.commit_index
+  then 
+    let log = Log.service 
+      ~prev_commit_index:state.State.commit_index 
+      ~configuration:state.State.configuration 
+      log 
+    in 
+    let commit_index = min leader_commit receiver_last_log_index in 
+    {state with State.log; commit_index}
+  else 
+    {state with State.log}
 
 let handle_append_entries_request state request now =
 
@@ -321,6 +333,7 @@ let handle_append_entries_request state request now =
 
     let commit_index = state.State.commit_index in 
 
+
     if prev_log_index < commit_index
     then 
       (* The only reason that can happen is if the messages 
@@ -328,55 +341,74 @@ let handle_append_entries_request state request now =
        *
        * Servers should never remove a commited log.
        *)
-      (state, make_response state (Log_failure {receiver_last_log_index}))
+      (state, make_response state (Success {receiver_last_log_index}))
     else
-      if leader_term    = receiver_last_log_term && 
-         prev_log_index < receiver_last_log_index
+      if leader_term = receiver_last_log_term 
       then 
-        (* This case is also possible when messages are out of order. 
-         *
-         * It's also important that no log entry is removed from the log 
-         * if they come from the current leader. The current leader might 
-         * have sent a commit message back to a client believing that the log 
-         * entry is replicated on this server. If we remove the log entry 
-         * we violate the assumption.
-         *)
-        (state, make_response state (Log_failure {receiver_last_log_index}))
+        match compare prev_log_index receiver_last_log_index with
+        | 0 -> 
+          (* Leader info about the receiver last log index is matching 
+           * perfectly, we can append the logs. 
+           *)
+          let log = Log.add_log_entries ~rev_log_entries state.State.log in 
+          let receiver_last_log_index = Log.last_log_index log in 
+          let state = update_state leader_commit receiver_last_log_index log state in
+          (state, make_response state (Success {receiver_last_log_index})) 
+
+        | x when x > 0 -> 
+          (* This should really never happen since:
+           * - No logs belonging to the Leader term can be removed 
+           * - The leader is supposed to keep track of the latest log from 
+           *   the receiver. 
+           *) 
+          (state, make_response state (Log_failure {receiver_last_log_index})) 
+
+        | _ (* x when x < 0 *) ->  
+          (* 
+           * This case is possible when messages are received out of order  by 
+           * the Follower
+           *
+           * Note that even if the prev_log_index is earlier, it's important that 
+           * no log entry is removed from the log if they come from the current leader. 
+           *
+           * The current leader might have sent a commit message back to a 
+           * client believing that the log entry is replicated on this server. 
+           * If we remove the log entry we violate the assumption.
+           *
+           *)
+          (state, make_response state (Success {receiver_last_log_index}))
+          
       else
         if prev_log_index > receiver_last_log_index
         then 
-          (* This is likely the case after a new election, the leader has 
+          (* 
+           * This is likely the case after a new election, the Leader has 
            * more log entries in its log and assumes that this server has 
            * the same number. 
            *)
           (state, make_response state (Log_failure {receiver_last_log_index})) 
         else
-          (* All the conditions are now ok for the logs to be merged. 
+          (* 
+           * Because it is a new Leader, this followe can safely remove all the logs 
+           * from previous terms which were not commited. 
            *)
           match Log.remove_log_since ~prev_log_index ~prev_log_term state.State.log with
           | exception Not_found ->
-            (state, make_response state (Log_failure {receiver_last_log_index}))
-            (* This is the case where there is a mismatch between the [Leader] 
+            (state, make_response state (Log_failure {receiver_last_log_index = commit_index}))
+            (* 
+             * This is the case where there is a mismatch between the [Leader] 
              * and this server and the log entry identified with (prev_log_index, prev_log_term)
              * could not be found. 
+             *
+             * In such a case, the safest log entry to synchronize upon is the commit_index 
+             * of the follower. 
+             *
              *)
 
           | log -> 
             let log = Log.add_log_entries ~rev_log_entries log in 
             let receiver_last_log_index = Log.last_log_index log in 
-
-            let state =
-              if leader_commit > state.State.commit_index
-              then 
-                let log = Log.service 
-                  ~prev_commit_index:commit_index 
-                  ~configuration:state.State.configuration 
-                  log 
-                in 
-                let commit_index = min leader_commit receiver_last_log_index in 
-                {state with State.log; commit_index}
-              else {state with State.log}
-            in
+            let state = update_state leader_commit receiver_last_log_index log state in 
             (state, make_response state (Success {receiver_last_log_index})) 
 
 let handle_append_entries_response state ({receiver_term; _ } as response) now =

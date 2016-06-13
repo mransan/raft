@@ -127,8 +127,21 @@ module Leader = struct
 
   let update_receiver_last_log_index ~receiver_id ~log_index leader_state = 
 
-    let leader_state = update_index ~receiver_id ~f:(fun index ->
-      {index with next_index = log_index + 1; match_index = log_index}
+    let leader_state = update_index ~receiver_id ~f:(fun ({next_index; match_index; _} as index) ->
+      let upd_next_index = log_index + 1 in 
+      let upd_match_index = log_index in 
+      if upd_match_index > match_index && upd_next_index > next_index
+      then 
+        {index with next_index = log_index + 1; match_index = log_index}
+      else
+        (*
+         * It is possible to receive out of order responses from the other 
+         * raft servers. 
+         *
+         * In such a case we don't want to decrement the next index of the server
+         * since the server is expected to never remove previously saved log entries. 
+         *) 
+        index
     ) leader_state
     in  
 

@@ -33,7 +33,7 @@ val rev_log_entries_since : int -> t -> Raft_pb.log_entry list
     [since] and until the latest log entry in [log]. 
   
     In other word the returned data is :
-    ]since ; last_log_index log] 
+    \]since ; last_log_index log\] 
  *)
 
 val term_of_index : int -> t -> int 
