@@ -85,7 +85,7 @@ val service : prev_commit_index:int -> configuration:Raft_pb.configuration -> t 
 
 module Past_interval : sig 
 
-  val contains_next_of : int -> Raft_pb.log_interval -> bool
+  val contains : int -> Raft_pb.log_interval -> bool
   (** [contains_next_of since interval] return true if [interval] contains 
       the [log_entry] which index is next of [since]. 
     *)

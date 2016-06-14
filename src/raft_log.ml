@@ -211,8 +211,8 @@ module Past_interval = struct
    * Returns true if the local cache contains at least one 
    * next logs after [i]
    *)
-  let contains_next_of i {last_index; prev_index;_ } = 
-    prev_index <= i && i < last_index
+  let contains i {last_index; prev_index;_ } = 
+    prev_index < i && i <= last_index
   
 end (* Past_interval *)
 
