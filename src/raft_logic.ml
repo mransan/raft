@@ -490,10 +490,26 @@ let handle_append_entries_response state ({receiver_term; _ } as response) now =
       let state  = State.({state with role = Leader leader_state}) in
       (state,msgs_to_send)
 
-    | Term_failure  -> assert(false)
+    | Term_failure  -> 
+      (state, []) 
       (*
-       * This should have already been detected when comparing the receiver_term with
-       * the [state.State.current_term].
+       * The receiver could have detected that this server term was not the latest one and 
+       * sent the [Term_failure] response. 
+       * However while this recipient server was handling the request, the sender (ie this server) 
+       * might had received other messages which triggered a new (and increased) term number. 
+       *
+       * Hence it is possible that current_term >= recipient_term and also receiving the [Term_failure]./ 
+       *
+       * Here is a concrete sequence which would lead to this condition:
+       * 
+       * 1.  Leader (ie this server) send an [Append_entries_request]
+       * 2.a Receiver detects that the leader term is less than its current one 
+       * 2.b Leader receives a valid [Append_entries_request] from a new leader 
+       *     and increments its current_term to match that new leader current term. 
+       * 3   The sender (ie ex leader) receives the [Append_entries_response] from 
+       *     the receiver with the [Term_failure]. 
+       *
+       * (Note 2.a and 2.b occurs concurently)
        *)
 
     end (* match result *)

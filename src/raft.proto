@@ -5,7 +5,7 @@ package raft;
 // OVERVIEW 
 // ----------------------------------------------------------------------------
 //
-// The Raft protocol defines: 
+// The RAFT protocol defines: 
 // * 4 messages 
 // * 1 server state with 3 mutually exclusive roles. 
 // * 2 Timeout events 
@@ -15,14 +15,24 @@ package raft;
 // as we will see later are specific to roles.
  
 // MESSAGES
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// 
+//  Below is a typical 3 server RAFT setup. 
+//  C{1..3}{a|b} are clients application which triggers log insertion 
+//  S{1..3}      are RAFT servers. 
+// 
 //
-// Messages define the data exchanged between the servers participating
-// in the RAFT protocol. The messages described below don't include 
-// the protocol between a client application and the RAFT servers. Those
-// messages would be specific to a concrete implementation.
+//                           C1a  C1b
+//                             \/
+//                             S1
+//                            /  \ 
+//                     C2a- S2----S3 - C3a
 //
-// The 4 Raft messages are divided into 2 request/response pairs. 
+// The messages below define the data exchanged between the servers participating
+// in the RAFT protocol; they do not include the message between the clients 
+// and the RAFT servers. 
+//
+// The 4 RAFT messages are divided into 2 request/response pairs. 
 //
 // - Request Vote
 //   The [Request Vote] messages are used for leader election. The RAFT 
@@ -32,18 +42,18 @@ package raft;
 // - Append Entries
 //   The [Append Entries] messages are used for replication of the 
 //   data between the [Leader] and the [Follower] servers. 
-//   Additionally empty [AppendEntriesRequet]s are used for 
+//   Additionally empty [AppendEntriesRequest]s are used for 
 //   heartbeat notifications.
 
 // The [Message] type groups together the 4 messages that makes 
 // up the RAFT protocol. 
 message Message {
-    oneof t {
-        RequestVoteRequest    request_vote_request    = 1;
-        RequestVoteResponse   request_vote_response   = 2;
-        AppendEntriesRequest  append_entries_request  = 3;
-        AppendEntriesResponse append_entries_response = 4;
-    }
+  oneof t {
+    RequestVoteRequest    request_vote_request    = 1;
+    RequestVoteResponse   request_vote_response   = 2;
+    AppendEntriesRequest  append_entries_request  = 3;
+    AppendEntriesResponse append_entries_response = 4;
+  }
 }
 
 // [RequestVoteRequest] is sent by a [Candidate] server 
@@ -61,10 +71,10 @@ message Message {
 // candidate is up to date. 
 // 
 message RequestVoteRequest {
-    required int32 candidate_term           = 1;
-    required int32 candidate_id             = 2;
-    required int32 candidate_last_log_index = 3; 
-    required int32 candidate_last_log_term  = 4;
+  required int32 candidate_term           = 1;
+  required int32 candidate_id             = 2;
+  required int32 candidate_last_log_index = 3; 
+  required int32 candidate_last_log_term  = 4;
 }
 
 // [RequestVoteResponse] is the message expected to be sent by a server 
@@ -74,9 +84,9 @@ message RequestVoteRequest {
 // its vote for the requested election.
 //
 message RequestVoteResponse {
-    required int32 voter_id     = 1; 
-    required int32 voter_term   = 2; 
-    required bool  vote_granted = 3; 
+  required int32 voter_id     = 1; 
+  required int32 voter_term   = 2; 
+  required bool  vote_granted = 3; 
 }
 
 // [AppendEntriesRequest] is sent by a [Leader] server to 
@@ -123,12 +133,12 @@ message RequestVoteResponse {
 // assume that any data up to that index will be persisted forever.
 //
 message AppendEntriesRequest {
-    required int32 leader_term         = 1; 
-    required int32 leader_id           = 2; 
-    required int32 prev_log_index      = 3; 
-    required int32 prev_log_term       = 4; 
-    repeated LogEntry rev_log_entries  = 5;
-    required int32 leader_commit       = 6; 
+  required int32 leader_term         = 1; 
+  required int32 leader_id           = 2; 
+  required int32 prev_log_index      = 3; 
+  required int32 prev_log_term       = 4; 
+  repeated LogEntry rev_log_entries  = 5;
+  required int32 leader_commit       = 6; 
 }
 
 // [AppendEntriesResponse] is the message sent by a server in response to
@@ -157,31 +167,30 @@ message AppendEntriesRequest {
 //   is incorrect. 
 // 
 message AppendEntriesResponse {
-    required int32 receiver_id      = 1; 
-    required int32 receiver_term    = 2; 
-    
-    oneof result {
-      SuccessData success         = 4; 
-      LogFailureData log_failure  = 5; 
-        // This failure happens in the case the [prev_log_index] and 
-        // [prev_log_term] in the [AppendEntriesRequet] are not 
-        // matching the receiver log. 
+  required int32 receiver_id      = 1; 
+  required int32 receiver_term    = 2; 
+  
+  oneof result {
+    SuccessData success         = 4; 
+    LogFailureData log_failure  = 5; 
+      // This failure happens in the case the [prev_log_index] and 
+      // [prev_log_term] in the [AppendEntriesRequet] are not 
+      // matching the receiver log. 
 
-      NoData term_failure         = 6; 
-        // This failure can happen because the sender [current_term]
-        // is outdated compared to the receiver.
-    }
+    NoData term_failure         = 6; 
+      // This failure can happen because the sender [current_term]
+      // is outdated compared to the receiver.
+  }
 
-    message SuccessData {
-      required int32 receiver_last_log_index = 1; 
-    } 
+  message SuccessData {
+    required int32 receiver_last_log_index = 1; 
+  } 
 
-    message LogFailureData {
-      required int32 receiver_last_log_index = 1; 
-    }
-    
-    message NoData {
-    }
+  message LogFailureData {
+    required int32 receiver_last_log_index = 1; 
+  }
+  
+  message NoData { }
 
 } // AppendEntriesResponse
 
@@ -337,8 +346,6 @@ message FollowerState {
   optional int32 current_leader     = 2;
   required double election_deadline = 3;
 }
-
-
 
 // [ServerIndex]
 //

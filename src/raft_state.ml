@@ -175,7 +175,7 @@ let compaction state =
         else ((log_interval::c, e, false), next_indices)
 
       | next_index::tl ->
-        if Log.Past_interval.contains_next_of next_index log_interval
+        if Log.Past_interval.contains next_index log_interval
         then ((c, log_interval::e, true), tl)
         else 
           begin 
