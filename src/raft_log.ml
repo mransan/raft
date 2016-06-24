@@ -10,11 +10,11 @@ module Term_tree = struct
   }
 
   let empty = {
-    previous_terms = None;
+    previous_terms = Rope.empty;
     last_log_entry = { index = 0; term = 0; id = ""; data = Bytes.create 0}; 
   }
 
-  let last_previous_term_index previous_terms = 
+  let last_index_of_previous_terms previous_terms = 
     match Rope.last_entry_index_in_rope previous_terms with
     | None -> 0 
     | Some x -> x 
@@ -49,7 +49,7 @@ module Term_tree = struct
       {t with last_log_entry = log_entry} 
 
     | i when i > 0 -> 
-      let prev =  last_previous_term_index previous_terms in 
+      let prev =  last_index_of_previous_terms previous_terms in 
       let last =  last_index in  
       let data =  last_term in 
       { 
@@ -105,7 +105,7 @@ module Term_tree = struct
          *)
         raise Not_found 
       else 
-        if index > last_previous_term_index previous_terms 
+        if index > last_index_of_previous_terms previous_terms 
         then term 
         else Rope.find ~index previous_terms 
 
@@ -114,12 +114,11 @@ module Term_tree = struct
      Format.fprintf fmt "{previous_terms: %a; last_log_entry: %a}" 
        pp_previous_terms previous_terms pp_log_entry last_log_entry  
 
-end 
+end  (* Term_tree *)
 
 type term_tree = Term_tree.t 
 
 let pp_term_tree = Term_tree.pp 
-
 
 module Past_interval = struct 
 
@@ -142,7 +141,7 @@ module Past_interval = struct
   
       | Some until -> 
         let rec aux = function
-          | ({index; _ }::tl) as log_entries when index = until -> log_entries 
+          | ({index; _ }::_) as log_entries when index = until -> log_entries 
           | _::tl -> aux tl 
           | [] -> []
         in
@@ -164,7 +163,7 @@ module Past_interval = struct
           failwith "[Raft_logic] Internal2 error invalid log index"
         end
   
-      | {index; term; _ }::tl when index = since -> 
+      | {index; term; _ }::_ when index = since -> 
         {
           prev_index = index; 
           prev_term = term; 
@@ -229,7 +228,7 @@ module Past_entries = struct
     Rope.fold f e0 past_entries
   
   let replace ({prev_index; _ } as replacement) ({past_entries; _} as log) =   
-    {log with past_entries = Rope.replace prev_index replacement past_entries}
+    {log with past_entries = Rope.replace ~prev:prev_index ~data:replacement past_entries}
   
   let find ~index {past_entries; _ } = 
     Rope.find ~index past_entries
@@ -247,7 +246,7 @@ let empty = {
 
 let last_log_index_and_term {recent_entries; _ } = 
   match recent_entries with
-  | {index;term}::_ -> (index, term) 
+  | {index;term; _}::_ -> (index, term) 
   | [] -> (0, 0)
 
 let last_log_index log = 
@@ -259,11 +258,11 @@ let last_past_entry_index x =
   | Some x -> x 
 
 let rev_log_entries_since since log = 
-  let {recent_entries ; past_entries;} = log in 
+  let {recent_entries ; past_entries; _} = log in 
 
   match recent_entries with
   | []  -> []
-  | {index; _}::_ -> 
+  | _::_ -> 
 
     (* Now the data can either be in the recent or past
      * entries.
@@ -275,9 +274,9 @@ let rev_log_entries_since since log =
     let interval = 
       if since >= (last_past_entry_index past_entries)
       then  
-        Past_interval.make since recent_entries
+        Past_interval.make ~since recent_entries
       else 
-        Past_interval.sub since @@ Past_entries.find (since + 1) log 
+        Past_interval.sub since @@ Past_entries.find ~index:(since + 1) log 
     in
     match interval.rev_log_entries with
     | Expanded {entries} -> entries
@@ -317,19 +316,15 @@ let add_log_datas current_term datas log =
 let add_log_entries ~rev_log_entries log = 
   
   let rec aux log_size term_tree recent_entries = function
-    | [] -> (log_size, term_tree, recent_entries)
+    | [] -> 
+      {log with {log_size; term_tree; recent_entries}
+
     | hd::tl -> 
       let term_tree = Term_tree.handle_new_log_entry term_tree hd in  
       aux (log_size + 1) term_tree (hd::recent_entries) tl 
   in
 
-  let (
-    log_size, 
-    term_tree, 
-    recent_entries
-  ) = aux log.log_size log.term_tree log.recent_entries rev_log_entries in 
- 
-  {log with recent_entries; log_size; term_tree; } 
+  aux log.log_size log.term_tree log.recent_entries rev_log_entries 
 
 let remove_log_since ~prev_log_index ~prev_log_term log = 
 
@@ -339,26 +334,27 @@ let remove_log_since ~prev_log_index ~prev_log_term log =
       then ([], 0) 
       else raise Not_found
 
-    | ({index; term; _ }::tl as recent_entries) when index = prev_log_index &&
+    | ({index; term; _ }::_ as recent_entries) when index = prev_log_index &&
                                                      term = prev_log_term ->
       (recent_entries, log_size) 
 
-    | {index; _ }::recent_entries when index = prev_log_index ->
+    | {index; _ }::_ when index = prev_log_index ->
       raise Not_found
 
-    |  hd::tl -> aux (log_size - 1) tl
+    |  _::tl -> aux (log_size - 1) tl
   in
 
   match log.recent_entries with
-  | {index; _}::tl when prev_log_index > index ->
+  | {index; _}::_ when prev_log_index > index ->
     raise Not_found
+
   | _ -> 
     let recent_entries, log_size = aux log.log_size log.recent_entries in
     let term_tree = match recent_entries with
       | [] -> Term_tree.empty
       | hd::_ -> Term_tree.handle_log_removal log.term_tree hd
     in 
-    {log with recent_entries; log_size; term_tree; } 
+    {log with recent_entries; log_size; term_tree} 
 
 let service ~prev_commit_index ~configuration log = 
 
@@ -380,7 +376,7 @@ let service ~prev_commit_index ~configuration log =
 
     let rec aux = function
       | [] -> [] 
-      | ({index; _ } as l) ::tl when index = prev_commit_index -> [l] 
+      | ({index; _ } as l)::_ when index = prev_commit_index -> [l] 
       | log_entry::tl -> log_entry :: (aux tl) 
     in
 

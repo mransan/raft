@@ -298,7 +298,7 @@ message Role {
 //   heartbeat message be sent.
 //  
 message LeaderState {
-  repeated ServerIndex indices = 1;  
+  repeated FollowerInfo followers = 1;  
 }
 
 // [CandidateState]
@@ -347,7 +347,7 @@ message FollowerState {
   required double election_deadline = 3;
 }
 
-// [ServerIndex]
+// [FollowerInfo]
 //
 // The [Leader] must keep track of various information
 // about each [Follower] that it replicates the data to. 
@@ -364,7 +364,7 @@ message FollowerState {
 // that server. It is [true] in between the time the [Append Entries] 
 // request was sent and the [Append Entries] response was received. 
 //
-message ServerIndex {
+message FollowerInfo {
   required int32 server_id           = 1; 
   required int32 next_index          = 2; 
   required int32 match_index         = 3; 

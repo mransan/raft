@@ -1,5 +1,4 @@
 open Raft_pb 
-open Raft_state
 
 module Log= Raft_log
 module State = Raft_state
@@ -10,8 +9,8 @@ module Follower = struct
     let {election_timeout = t ; election_timeout_range = r; _ } = configuration in 
     let timeout = t +. (Random.float r -. (r /. 2.)) in
     {
+      State.current_term = 0; 
       id; 
-      current_term = 0; 
       log = Log.empty;
       commit_index = 0; 
       role = Follower {
@@ -23,13 +22,13 @@ module Follower = struct
     }
 
   let become ?current_leader ~term ~now state = 
-    let {configuration = {election_timeout = t; election_timeout_range = r; _}; _} = state in 
+    let {State.configuration = {election_timeout = t; election_timeout_range = r; _}; _} = state in 
     let election_deadline  = now +. t +. (Random.float r -. (r /. 2.)) in
 
-    let role = match state.role with
+    let role = match state.State.role with
       | Follower follower_state -> 
         let voted_for = 
-          if term = state.current_term 
+          if term = state.State.current_term 
           then follower_state.voted_for 
           else None 
         in 
@@ -38,9 +37,9 @@ module Follower = struct
           election_deadline;
           voted_for;
         }
-      | Candidate _ when state.current_term = term -> 
+      | Candidate _ when state.State.current_term = term -> 
         Follower {
-          voted_for = Some state.id;
+          voted_for = Some state.State.id;
           current_leader; 
           election_deadline; 
         }
@@ -50,22 +49,22 @@ module Follower = struct
         election_deadline;
       }
     in 
-    { state with current_term = term; role } 
+    { state with State.current_term = term; role } 
 
 end 
 
 module Candidate = struct 
 
   let become ~now state = 
-    let {election_timeout = t; election_timeout_range = r; _ } = state.configuration in 
+    let {election_timeout = t; election_timeout_range = r; _ } = state.State.configuration in 
     let timeout = t +. (Random.float r -. (r /. 2.)) in
     let candidate_state = {
       vote_count = 1; 
       election_deadline = now +. timeout;
     } in 
     {state with 
-     role = Candidate candidate_state; 
-     current_term = state.current_term + 1; 
+     State.role = Candidate candidate_state; 
+     State.current_term = state.State.current_term + 1; 
     } 
 
   let increment_vote_count ({vote_count; _ } as candidate_state) = 
@@ -77,16 +76,16 @@ module Leader = struct
 
   let become state now = 
 
-    let last_log_index = Log.last_log_index state.log in
+    let last_log_index = Log.last_log_index state.State.log in
     
-    let {nb_of_server; hearbeat_timeout} = state.configuration in 
+    let {nb_of_server; hearbeat_timeout; _} = state.State.configuration in 
   
-    let rec aux indices = function
-      | (-1) -> indices
+    let rec aux followers = function
+      | (-1) -> followers
       |  i   -> 
-        if i = state.id
+        if i = state.State.id
         then 
-          aux indices (i -1)
+          aux followers (i -1)
         else 
           let next_index = last_log_index + 1 in 
           let match_index = 0  in 
@@ -96,7 +95,7 @@ module Leader = struct
              * added. 
              *)
 
-          let index:server_index = {
+          let follower:follower_info = {
             server_id = i; 
             next_index; 
             match_index; 
@@ -111,11 +110,11 @@ module Leader = struct
                *
                *)
           } in 
-          aux (index::indices) (i - 1)
+          aux (follower::followers) (i - 1)
     in 
-    let indices = aux [] (nb_of_server - 1) in 
+    let followers = aux [] (nb_of_server - 1) in 
     
-    {state with role = Leader {indices}}
+    {state with State.role = Leader {followers}}
 
 
   (*
@@ -124,13 +123,13 @@ module Leader = struct
    *)  
   let update_index ~receiver_id ~f leader_state = 
 
-    let indices = List.map (fun index -> 
-      if index.server_id = receiver_id
-      then (f index)
-      else index
-    ) leader_state.indices in
+    let followers = List.map (fun follower -> 
+      if follower.server_id = receiver_id
+      then (f follower)
+      else follower
+    ) leader_state.followers in
 
-    {indices}
+    {followers}
 
   let update_receiver_last_log_index ~receiver_id ~log_index leader_state = 
 
@@ -159,14 +158,14 @@ module Leader = struct
       if match_index >= log_index 
       then n + 1 
       else n
-    ) 0 leader_state.indices in 
+    ) 0 leader_state.followers in 
     
     (leader_state, nb_of_replications) 
 
   let decrement_next_index ~log_failure ~receiver_id state leader_state = 
-    let {receiver_last_log_index} = log_failure in 
+    let {receiver_last_log_index; _ }= log_failure in 
 
-    let latest_log_index, latest_log_term = Log.last_log_index_and_term state.log  in 
+    let latest_log_index = Log.last_log_index state.State.log  in 
 
     assert(receiver_last_log_index <= latest_log_index);  
       (* 
@@ -199,13 +198,13 @@ module Leader = struct
       ) 
       leader_state
     
-  let min_heartbeat_timout ~now {indices} = 
+  let min_heartbeat_timout ~now {followers} = 
 
     let min_heartbeat_deadline = List.fold_left (fun min_deadline {heartbeat_deadline; _ } -> 
         if heartbeat_deadline < min_deadline
         then heartbeat_deadline
         else min_deadline
-      ) max_float indices
+      ) max_float followers
     in 
     min_heartbeat_deadline -. now 
 
