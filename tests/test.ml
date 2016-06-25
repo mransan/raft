@@ -1,3 +1,5 @@
+[@@@ocaml.warning "-45"]
+
 open Raft_pb
 open Raft_state
 open Raft_log
@@ -203,8 +205,8 @@ let ()  =
      *)
 
   begin match server0.role with
-  | Leader {indices; _ } -> (
-    assert(2 = List.length indices);
+  | Leader {followers} -> (
+    assert(2 = List.length followers);
       (*
        * The leader maintain various state for each of the
        * other servers.
@@ -217,7 +219,7 @@ let ()  =
         assert(server_index.heartbeat_deadline = now +. default_configuration.hearbeat_timeout);
         assert(server_index.outstanding_request = false);
 
-      ) indices;
+      ) followers;
   )
   | _ -> assert(false)
   end;
@@ -786,7 +788,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server0, msgs, notifications=
+  let server0, _, notifications=
     let msg = msg_for_server msgs 0  in
     Raft_logic.handle_message server0 msg now
   in
@@ -945,7 +947,7 @@ let ()  =
 
   let now = now +. 0.001 in
 
-  let server0, msgs, notifications=
+  let server0, _, notifications=
     let msg = msg_for_server msgs 0  in
     Raft_logic.handle_message server0 msg now
   in
@@ -1064,7 +1066,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server2, server2_response, notications =
+  let server2, server2_response, _ =
     let msg = msg_for_server msgs 2 in
     Raft_logic.handle_message server2 msg now
   in
@@ -1191,7 +1193,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server1, r, notifications =
+  let server1, _ , notifications =
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -1935,7 +1937,7 @@ let ()  =
     | Delay | Forward_to_leader _ -> assert(false)
   in
 
-  let server1, server2, msgs, now =
+  let server1, server2, _, now =
     request_response ~from:server1 ~to_:server2 ~now data20_msgs
   in
   assert(20 = server1.commit_index);
@@ -2018,7 +2020,7 @@ let ()  =
     | Delay | Forward_to_leader _ -> assert(false)
   in
 
-  let server1, server2, msgs, now =
+  let server1, server2, _, _ =
     request_response ~from:server1 ~to_:server2 ~now data21_msgs
   in
 

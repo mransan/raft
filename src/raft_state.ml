@@ -26,7 +26,6 @@ let is_leader {role; _ } =
   | Leader _ -> true 
   | _ -> false 
 
-
 let notifications before after = 
   
   let { commit_index = bcommit_index; role = brole; _ } = before in 
@@ -57,14 +56,14 @@ let notifications before after =
       (* There is a new leader *) 
 
     | Follower {current_leader = Some _; _}, Candidate _
-    | Follower {current_leader = Some _; _}, Follower  {current_leader = None; }
-    | Leader  _                            , Follower  {current_leader = None; } ->
+    | Follower {current_leader = Some _; _}, Follower  {current_leader = None; _}
+    | Leader  _                            , Follower  {current_leader = None; _} ->
       (No_leader::notifications)
 
     | Leader _                             , Leader _ 
     | Candidate _                          , Candidate _ 
-    | Candidate _                          , Follower {current_leader = None} 
-    | Follower {current_leader = None; _}  , Follower {current_leader = None; }
+    | Candidate _                          , Follower {current_leader = None;_} 
+    | Follower {current_leader = None; _}  , Follower {current_leader = None;_}
     | Follower {current_leader = None; _}  , Candidate _ ->
       notifications
   in
@@ -72,7 +71,7 @@ let notifications before after =
   if acommit_index > bcommit_index
   then 
     let rec aux rev_log_entries = function 
-      | ({index;_ } as log_entry) ::tl -> 
+      | ({index;_ } as log_entry)::tl -> 
           if index > acommit_index 
           then aux rev_log_entries tl 
           else 
@@ -143,7 +142,7 @@ let compaction state =
         {to_be_expanded = []; to_be_compacted = []}
     end
 
-  | Leader {indices} -> 
+  | Leader {followers} -> 
     (* For each server next_index we should keep expanded 2 log intervals:
      * a) The one that the next index belongs to 
      * b) The next one after a)
@@ -161,7 +160,7 @@ let compaction state =
 
     let next_indices = 
       let cmp (x:int) (y:int) = compare x y in 
-      indices
+      followers
       |> List.map (fun {next_index; _ } -> next_index)
       |> List.sort_uniq cmp
     in

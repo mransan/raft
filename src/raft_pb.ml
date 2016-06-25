@@ -1,4 +1,4 @@
-[@@@ocaml.warning "-30"]
+[@@@ocaml.warning "-27-30-39"]
 
 type request_vote_request = {
   candidate_term : int;
@@ -131,7 +131,7 @@ and log_interval_mutable = {
   mutable rev_log_entries : log_interval_rev_log_entries;
 }
 
-type server_index = {
+type follower_info = {
   server_id : int;
   next_index : int;
   match_index : int;
@@ -140,7 +140,7 @@ type server_index = {
   unsent_entries : log_entry list;
 }
 
-and server_index_mutable = {
+and follower_info_mutable = {
   mutable server_id : int;
   mutable next_index : int;
   mutable match_index : int;
@@ -150,11 +150,11 @@ and server_index_mutable = {
 }
 
 type leader_state = {
-  indices : server_index list;
+  followers : follower_info list;
 }
 
 and leader_state_mutable = {
-  mutable indices : server_index list;
+  mutable followers : follower_info list;
 }
 
 type candidate_state = {
@@ -407,14 +407,14 @@ and default_log_interval_mutable () : log_interval_mutable = {
   rev_log_entries = Compacted (default_log_interval_compacted ());
 }
 
-let rec default_server_index 
+let rec default_follower_info 
   ?server_id:((server_id:int) = 0)
   ?next_index:((next_index:int) = 0)
   ?match_index:((match_index:int) = 0)
   ?heartbeat_deadline:((heartbeat_deadline:float) = 0.)
   ?outstanding_request:((outstanding_request:bool) = false)
   ?unsent_entries:((unsent_entries:log_entry list) = [])
-  () : server_index  = {
+  () : follower_info  = {
   server_id;
   next_index;
   match_index;
@@ -423,7 +423,7 @@ let rec default_server_index
   unsent_entries;
 }
 
-and default_server_index_mutable () : server_index_mutable = {
+and default_follower_info_mutable () : follower_info_mutable = {
   server_id = 0;
   next_index = 0;
   match_index = 0;
@@ -433,13 +433,13 @@ and default_server_index_mutable () : server_index_mutable = {
 }
 
 let rec default_leader_state 
-  ?indices:((indices:server_index list) = [])
+  ?followers:((followers:follower_info list) = [])
   () : leader_state  = {
-  indices;
+  followers;
 }
 
 and default_leader_state_mutable () : leader_state_mutable = {
-  indices = [];
+  followers = [];
 }
 
 let rec default_candidate_state 
@@ -582,7 +582,7 @@ let rec decode_request_vote_request d =
     | Some (4, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(request_vote_request), field(4)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:request_vote_request = Obj.magic v in
@@ -615,7 +615,7 @@ let rec decode_request_vote_response d =
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(request_vote_response), field(3)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:request_vote_response = Obj.magic v in
@@ -655,7 +655,7 @@ let rec decode_log_entry d =
     | Some (4, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_entry), field(4)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:log_entry = Obj.magic v in
@@ -710,7 +710,7 @@ let rec decode_append_entries_request d =
     | Some (6, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_request), field(6)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:append_entries_request = Obj.magic v in
@@ -729,7 +729,7 @@ let rec decode_append_entries_response_success_data d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_response_success_data), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:append_entries_response_success_data = Obj.magic v in
@@ -748,7 +748,7 @@ let rec decode_append_entries_response_log_failure_data d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_response_log_failure_data), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:append_entries_response_log_failure_data = Obj.magic v in
@@ -812,7 +812,7 @@ and decode_append_entries_response d =
     | Some (6, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_response), field(6)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:append_entries_response = Obj.magic v in
@@ -848,7 +848,7 @@ let rec decode_log_interval_compacted d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_compacted), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:log_interval_compacted = Obj.magic v in
@@ -868,7 +868,7 @@ let rec decode_log_interval_expanded d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_expanded), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:log_interval_expanded = Obj.magic v in
@@ -930,14 +930,14 @@ and decode_log_interval d =
     | Some (5, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval), field(5)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:log_interval = Obj.magic v in
   v
 
-let rec decode_server_index d =
-  let v = default_server_index_mutable () in
+let rec decode_follower_info d =
+  let v = default_follower_info_mutable () in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
@@ -948,47 +948,47 @@ let rec decode_server_index d =
       loop ()
     )
     | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(1)", pk))
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(1)", pk))
     )
     | Some (2, Pbrt.Varint) -> (
       v.next_index <- Pbrt.Decoder.int_as_varint d;
       loop ()
     )
     | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(2)", pk))
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(2)", pk))
     )
     | Some (3, Pbrt.Varint) -> (
       v.match_index <- Pbrt.Decoder.int_as_varint d;
       loop ()
     )
     | Some (3, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(3)", pk))
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(3)", pk))
     )
     | Some (5, Pbrt.Bits32) -> (
       v.heartbeat_deadline <- Pbrt.Decoder.float_as_bits32 d;
       loop ()
     )
     | Some (5, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(5)", pk))
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(5)", pk))
     )
     | Some (6, Pbrt.Varint) -> (
       v.outstanding_request <- Pbrt.Decoder.bool d;
       loop ()
     )
     | Some (6, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(6)", pk))
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(6)", pk))
     )
     | Some (4, Pbrt.Bytes) -> (
       v.unsent_entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.unsent_entries;
       loop ()
     )
     | Some (4, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(server_index), field(4)", pk))
+      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(4)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
-  let v:server_index = Obj.magic v in
+  let v:follower_info = Obj.magic v in
   v
 
 let rec decode_leader_state d =
@@ -996,16 +996,16 @@ let rec decode_leader_state d =
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
-      v.indices <- List.rev v.indices;
+      v.followers <- List.rev v.followers;
     )
     | Some (1, Pbrt.Bytes) -> (
-      v.indices <- (decode_server_index (Pbrt.Decoder.nested d)) :: v.indices;
+      v.followers <- (decode_follower_info (Pbrt.Decoder.nested d)) :: v.followers;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(leader_state), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:leader_state = Obj.magic v in
@@ -1031,7 +1031,7 @@ let rec decode_candidate_state d =
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(candidate_state), field(2)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:candidate_state = Obj.magic v in
@@ -1064,7 +1064,7 @@ let rec decode_follower_state d =
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_state), field(3)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:follower_state = Obj.magic v in
@@ -1134,7 +1134,7 @@ let rec decode_configuration d =
     | Some (6, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(6)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:configuration = Obj.magic v in
@@ -1166,7 +1166,7 @@ let rec decode_timeout_event d =
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(timeout_event), field(2)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:timeout_event = Obj.magic v in
@@ -1186,7 +1186,7 @@ let rec decode_notification_commited_data d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(notification_commited_data), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:notification_commited_data = Obj.magic v in
@@ -1205,7 +1205,7 @@ let rec decode_notification_new_leader d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(notification_new_leader), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:notification_new_leader = Obj.magic v in
@@ -1249,7 +1249,7 @@ let rec decode_compaction_report d =
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(compaction_report), field(2)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:compaction_report = Obj.magic v in
@@ -1412,7 +1412,7 @@ and encode_log_interval (v:log_interval) encoder =
   );
   ()
 
-let rec encode_server_index (v:server_index) encoder = 
+let rec encode_follower_info (v:follower_info) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.server_id encoder;
   Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
@@ -1432,8 +1432,8 @@ let rec encode_server_index (v:server_index) encoder =
 let rec encode_leader_state (v:leader_state) encoder = 
   List.iter (fun x -> 
     Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_server_index x) encoder;
-  ) v.indices;
+    Pbrt.Encoder.nested (encode_follower_info x) encoder;
+  ) v.followers;
   ()
 
 let rec encode_candidate_state (v:candidate_state) encoder = 
@@ -1660,7 +1660,7 @@ and pp_log_interval fmt (v:log_interval) =
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
-let rec pp_server_index fmt (v:server_index) = 
+let rec pp_follower_info fmt (v:follower_info) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "server_id" Pbrt.Pp.pp_int fmt v.server_id;
@@ -1676,7 +1676,7 @@ let rec pp_server_index fmt (v:server_index) =
 let rec pp_leader_state fmt (v:leader_state) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "indices" (Pbrt.Pp.pp_list pp_server_index) fmt v.indices;
+    Pbrt.Pp.pp_record_field "followers" (Pbrt.Pp.pp_list pp_follower_info) fmt v.followers;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

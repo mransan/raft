@@ -75,7 +75,7 @@ and log_interval = {
   rev_log_entries : log_interval_rev_log_entries;
 }
 
-type server_index = {
+type follower_info = {
   server_id : int;
   next_index : int;
   match_index : int;
@@ -85,7 +85,7 @@ type server_index = {
 }
 
 type leader_state = {
-  indices : server_index list;
+  followers : follower_info list;
 }
 
 type candidate_state = {
@@ -230,7 +230,7 @@ val default_log_interval :
   log_interval
 (** [default_log_interval ()] is the default value for type [log_interval] *)
 
-val default_server_index : 
+val default_follower_info : 
   ?server_id:int ->
   ?next_index:int ->
   ?match_index:int ->
@@ -238,11 +238,11 @@ val default_server_index :
   ?outstanding_request:bool ->
   ?unsent_entries:log_entry list ->
   unit ->
-  server_index
-(** [default_server_index ()] is the default value for type [server_index] *)
+  follower_info
+(** [default_follower_info ()] is the default value for type [follower_info] *)
 
 val default_leader_state : 
-  ?indices:server_index list ->
+  ?followers:follower_info list ->
   unit ->
   leader_state
 (** [default_leader_state ()] is the default value for type [leader_state] *)
@@ -350,8 +350,8 @@ val decode_log_interval_rev_log_entries : Pbrt.Decoder.t -> log_interval_rev_log
 val decode_log_interval : Pbrt.Decoder.t -> log_interval
 (** [decode_log_interval decoder] decodes a [log_interval] value from [decoder] *)
 
-val decode_server_index : Pbrt.Decoder.t -> server_index
-(** [decode_server_index decoder] decodes a [server_index] value from [decoder] *)
+val decode_follower_info : Pbrt.Decoder.t -> follower_info
+(** [decode_follower_info decoder] decodes a [follower_info] value from [decoder] *)
 
 val decode_leader_state : Pbrt.Decoder.t -> leader_state
 (** [decode_leader_state decoder] decodes a [leader_state] value from [decoder] *)
@@ -428,8 +428,8 @@ val encode_log_interval_rev_log_entries : log_interval_rev_log_entries -> Pbrt.E
 val encode_log_interval : log_interval -> Pbrt.Encoder.t -> unit
 (** [encode_log_interval v encoder] encodes [v] with the given [encoder] *)
 
-val encode_server_index : server_index -> Pbrt.Encoder.t -> unit
-(** [encode_server_index v encoder] encodes [v] with the given [encoder] *)
+val encode_follower_info : follower_info -> Pbrt.Encoder.t -> unit
+(** [encode_follower_info v encoder] encodes [v] with the given [encoder] *)
 
 val encode_leader_state : leader_state -> Pbrt.Encoder.t -> unit
 (** [encode_leader_state v encoder] encodes [v] with the given [encoder] *)
@@ -506,8 +506,8 @@ val pp_log_interval_rev_log_entries : Format.formatter -> log_interval_rev_log_e
 val pp_log_interval : Format.formatter -> log_interval -> unit 
 (** [pp_log_interval v] formats v *)
 
-val pp_server_index : Format.formatter -> server_index -> unit 
-(** [pp_server_index v] formats v *)
+val pp_follower_info : Format.formatter -> follower_info -> unit 
+(** [pp_follower_info v] formats v *)
 
 val pp_leader_state : Format.formatter -> leader_state -> unit 
 (** [pp_leader_state v] formats v *)

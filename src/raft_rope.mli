@@ -1,7 +1,7 @@
 (** Rope data structure for int intervals 
    
     The rope data structure stores interval of data where 
-    interval boundaries are monotically increasing integer. 
+    interval boundaries are monotically increasing and non overlapping.
 
     For instance one could store the soccer world champions
     in such a data structure:
@@ -47,6 +47,11 @@ and 'a tree =
 
 and 'a t = 'a tree option 
 
+(** {2 Creators} *)
+
+val empty : 'a t 
+(** [empty] returns the empty rope *)
+
 (** {2 Accessors} *)
 
 val fold : ('b -> 'a -> 'b) -> 'b -> 'a t -> 'b 
@@ -66,15 +71,9 @@ val last_entry_index_in_rope : 'a t -> int option
     value of the last interval
  *)
 
-val last_interval : 'a t -> 'a leaf option
-(** [last_leaf rope] returns the last interval in [rope]. 
-    
-    return [None] if no interval is in [rope].
-  *)
-
 (** {2 Mutators} *)
 
-val replace : int -> 'a -> 'a t -> 'a t
+val replace : prev:int -> data:'a -> 'a t -> 'a t
 (** [replace prev_index data rope] replace the data associated with 
     the interval identified by [prev_index] with [data]. 
 

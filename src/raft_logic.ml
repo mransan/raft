@@ -29,7 +29,7 @@ module Log_entry_util = struct
 
   let rec sub since = function
     | []             -> []
-    | {index; term; _}::tl -> 
+    | {index; _}::tl -> 
       if index = since then tl else sub since tl  
 
   let make_append_entries prev_log_index unsent_entries state =
@@ -53,68 +53,67 @@ module Log_entry_util = struct
     } in
     (unsent_entries, request)
 
-  let compute_append_entries state {indices} now =
+  let compute_append_entries state {followers} now =
 
-    let indices, msgs_to_send = List.fold_left (fun (indices, msgs_to_send) server_index ->
-      let {
-        server_id;
-        heartbeat_deadline;
-        outstanding_request;
-        next_index;
-        unsent_entries; _ } = server_index in
+    let rec aux followers msgs_to_send = function 
+      | [] -> ({followers}, msgs_to_send) 
 
-      let shoud_send_request =
-        if now >= heartbeat_deadline
-        then true
-          (* The heartbeat deadline is past due, the [Leader] must
-           * sent an [Append_entries] request.
-           *)
-        else
-          if outstanding_request
-          then false
-            (* In case of outstanding request there is no point
-             * in sending request to that server.
-             * Even if the outstanding request was lost and it would
-             * be good to send a new request, this would happen
-             * at the next heartbeat.
+      | follower::tl -> 
+        let {
+          server_id;
+          heartbeat_deadline;
+          outstanding_request;
+          next_index;
+          unsent_entries; _ 
+        } = follower in
+
+        let shoud_send_request =
+          if now >= heartbeat_deadline
+          then true
+            (* The heartbeat deadline is past due, the [Leader] must
+             * sent an [Append_entries] request.
              *)
           else
-            let prev_index = next_index - 1 in
-            let last_log_index = Log.last_log_index state.State.log in
-            if prev_index = last_log_index
+            if outstanding_request
             then false
-              (* The receipient has the most recent data so no need
-               * to send a request.
+              (* In case of outstanding request there is no point
+               * in sending request to that server.
+               * Even if the outstanding request was lost and it would
+               * be good to send a new request, this would happen
+               * at the next heartbeat.
                *)
-            else true
-              (* The recipient has missing data.
-               *)
-      in
+            else
+              let prev_index = next_index - 1 in
+              let last_log_index = Log.last_log_index state.State.log in
+              if prev_index = last_log_index
+              then false
+                (* The receipient has the most recent data so no need
+                 * to send a request.
+                 *)
+              else true
+                (* The recipient has missing data.
+                 *)
+        in
 
-      if shoud_send_request
-      then
-        let unsent_entries, request = make_append_entries (next_index - 1) unsent_entries state in
-        let server_index = 
-          let outstanding_request = true in 
-          let heartbeat_deadline = now +. state.State.configuration.hearbeat_timeout in 
-          {server_index with
-            unsent_entries; 
-            outstanding_request; 
-            heartbeat_deadline; 
-          } 
-        in 
-        let indices      = server_index::indices in
-        let msgs_to_send = (Append_entries_request request, server_id)::msgs_to_send in
-        (indices, msgs_to_send)
-
-      else
-        (server_index::indices, msgs_to_send)
-
-    ) ([], []) indices in
-
-    let leader_state = {indices} in
-
-    (leader_state, msgs_to_send)
+        if shoud_send_request
+        then
+          let unsent_entries, request = make_append_entries (next_index - 1) unsent_entries state in
+          let follower = 
+            let outstanding_request = true in 
+            let heartbeat_deadline = now +. state.State.configuration.hearbeat_timeout in 
+            {follower with
+              unsent_entries; 
+              outstanding_request; 
+              heartbeat_deadline; 
+            } 
+          in 
+          let followers = follower::followers in
+          let msgs_to_send = (Append_entries_request request, server_id)::msgs_to_send in
+          aux followers msgs_to_send tl
+        else
+          aux (follower::followers) msgs_to_send tl 
+    in
+    aux [] [] followers 
 
 end (* Log_entry_util *)
 
@@ -189,7 +188,7 @@ let handle_request_vote_request state request now =
         } in
         (state, make_response state true)
 
-      | Follower {voted_for = Some id} when id = candidate_id ->
+      | Follower {voted_for = Some id; _ } when id = candidate_id ->
         (*
          * This server has already voted for that candidate ... reminding him
          *
@@ -207,7 +206,7 @@ let handle_request_vote_request state request now =
 let handle_request_vote_response state response now =
 
   let {State.current_term; role; configuration; _ } = state in
-  let {voter_term; vote_granted} = response in
+  let {voter_term; vote_granted; _ } = response in
 
   if voter_term > current_term
   then
@@ -221,7 +220,7 @@ let handle_request_vote_response state response now =
 
   else
     match role, vote_granted  with
-    | Candidate ({vote_count; election_deadline} as candidate_state) , true ->
+    | Candidate ({vote_count; _ } as candidate_state) , true ->
       let has_majority = vote_count >= (configuration.nb_of_server / 2) in
       if  has_majority
       then
@@ -238,23 +237,23 @@ let handle_request_vote_response state response now =
          * start synching its log with the others.
          *)
         begin match state.State.role with
-        | Leader {indices} -> (
-          let indices, msgs_to_send = List.fold_left (fun (indices, msgs_to_send) index ->
+        | Leader {followers} ->
+          let rec aux followers msgs_to_send = function
+            | [] -> 
+              ({state with State.role = Leader {followers}}, msgs_to_send)
 
+            | follower :: tl ->
               let {
                 server_id; 
                 next_index; 
-                unsent_entries; 
-              } = index in 
+                unsent_entries;_  
+              } = follower in 
               let prev_log_index = next_index - 1 in
               let unsent_entries, req  = Log_entry_util.make_append_entries prev_log_index unsent_entries state in
               let msg_to_send = (Append_entries_request req, server_id) in
-              ({index with unsent_entries;}::indices, msg_to_send::msgs_to_send)
-
-            ) ([], []) indices
+              aux ({follower with unsent_entries;}::followers) (msg_to_send::msgs_to_send) tl 
           in
-          ({state with State.role = Leader {indices}}, msgs_to_send)
-        )
+          aux [] [] followers 
         | _ -> assert(false)
         end
       else
@@ -295,7 +294,7 @@ let update_state leader_commit receiver_last_log_index log state =
 
 let handle_append_entries_request state request now =
 
-  let {leader_term; leader_commit; leader_id;} = request in
+  let {leader_term; leader_id; _} = request in
 
   let make_response state result =
     {receiver_term = state.State.current_term; receiver_id = state.State.id; result;}
@@ -324,7 +323,7 @@ let handle_append_entries_request state request now =
       prev_log_index; 
       prev_log_term; 
       rev_log_entries; 
-      leader_commit} = request in
+      leader_commit; _ } = request in
 
     let (
       receiver_last_log_index, 
@@ -411,7 +410,7 @@ let handle_append_entries_request state request now =
             let state = update_state leader_commit receiver_last_log_index log state in 
             (state, make_response state (Success {receiver_last_log_index})) 
 
-let handle_append_entries_response state ({receiver_term; _ } as response) now =
+let handle_append_entries_response state response now =
 
   let {receiver_term; receiver_id; result} = response in
 
@@ -560,7 +559,7 @@ let handle_new_election_timeout state now =
   in
   (state', msgs, State.notifications state state')
 
-let handle_heartbeat_timeout ({State.role; configuration; _ } as state) now =
+let handle_heartbeat_timeout state now =
   match state.State.role with
   | Leader leader_state ->
     let leader_state, msgs_to_send =
@@ -591,7 +590,7 @@ let handle_add_log_entries state datas now =
      * new log entries.
      *)
 
-  | Leader ({indices} as leader_state) ->
+  | Leader leader_state ->
 
     let state = {state with 
       State.log = Log.add_log_datas state.State.current_term datas state.State.log
