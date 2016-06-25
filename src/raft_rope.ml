@@ -124,7 +124,7 @@ let add ~prev ~last ~data t =
     assert(last > current_last); 
     assert(prev >= current_last); 
       (* Here we don't enfore that the intervals are continuous but only
-       * monotically increasing
+       * monotically increasing and non overlapping
        *)
     Some (aux tree) 
   

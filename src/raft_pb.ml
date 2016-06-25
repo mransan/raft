@@ -1,4 +1,4 @@
-[@@@ocaml.warning "-30-39-42-27"]
+[@@@ocaml.warning "-27-30-39"]
 
 type request_vote_request = {
   candidate_term : int;
@@ -582,7 +582,7 @@ let rec decode_request_vote_request d =
     | Some (4, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(request_vote_request), field(4)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:request_vote_request = Obj.magic v in
@@ -615,7 +615,7 @@ let rec decode_request_vote_response d =
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(request_vote_response), field(3)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:request_vote_response = Obj.magic v in
@@ -655,7 +655,7 @@ let rec decode_log_entry d =
     | Some (4, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_entry), field(4)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:log_entry = Obj.magic v in
@@ -710,7 +710,7 @@ let rec decode_append_entries_request d =
     | Some (6, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_request), field(6)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:append_entries_request = Obj.magic v in
@@ -729,7 +729,7 @@ let rec decode_append_entries_response_success_data d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_response_success_data), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:append_entries_response_success_data = Obj.magic v in
@@ -748,7 +748,7 @@ let rec decode_append_entries_response_log_failure_data d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_response_log_failure_data), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:append_entries_response_log_failure_data = Obj.magic v in
@@ -812,7 +812,7 @@ and decode_append_entries_response d =
     | Some (6, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_response), field(6)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:append_entries_response = Obj.magic v in
@@ -848,7 +848,7 @@ let rec decode_log_interval_compacted d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_compacted), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:log_interval_compacted = Obj.magic v in
@@ -868,7 +868,7 @@ let rec decode_log_interval_expanded d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval_expanded), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:log_interval_expanded = Obj.magic v in
@@ -930,7 +930,7 @@ and decode_log_interval d =
     | Some (5, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval), field(5)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:log_interval = Obj.magic v in
@@ -985,7 +985,7 @@ let rec decode_follower_info d =
     | Some (4, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(4)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:follower_info = Obj.magic v in
@@ -1005,7 +1005,7 @@ let rec decode_leader_state d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(leader_state), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:leader_state = Obj.magic v in
@@ -1031,7 +1031,7 @@ let rec decode_candidate_state d =
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(candidate_state), field(2)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:candidate_state = Obj.magic v in
@@ -1064,7 +1064,7 @@ let rec decode_follower_state d =
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_state), field(3)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:follower_state = Obj.magic v in
@@ -1134,7 +1134,7 @@ let rec decode_configuration d =
     | Some (6, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(6)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:configuration = Obj.magic v in
@@ -1166,7 +1166,7 @@ let rec decode_timeout_event d =
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(timeout_event), field(2)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:timeout_event = Obj.magic v in
@@ -1186,7 +1186,7 @@ let rec decode_notification_commited_data d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(notification_commited_data), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:notification_commited_data = Obj.magic v in
@@ -1205,7 +1205,7 @@ let rec decode_notification_new_leader d =
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(notification_new_leader), field(1)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:notification_new_leader = Obj.magic v in
@@ -1249,7 +1249,7 @@ let rec decode_compaction_report d =
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(compaction_report), field(2)", pk))
     )
-    | Some (n, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
+    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
   let v:compaction_report = Obj.magic v in

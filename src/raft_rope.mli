@@ -1,7 +1,7 @@
 (** Rope data structure for int intervals 
    
     The rope data structure stores interval of data where 
-    interval boundaries are monotically increasing integer. 
+    interval boundaries are monotically increasing and non overlapping.
 
     For instance one could store the soccer world champions
     in such a data structure:

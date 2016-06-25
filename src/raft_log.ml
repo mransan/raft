@@ -317,7 +317,7 @@ let add_log_entries ~rev_log_entries log =
   
   let rec aux log_size term_tree recent_entries = function
     | [] -> 
-      {log with {log_size; term_tree; recent_entries}
+      {log with log_size; term_tree; recent_entries}
 
     | hd::tl -> 
       let term_tree = Term_tree.handle_new_log_entry term_tree hd in  
