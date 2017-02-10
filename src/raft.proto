@@ -407,17 +407,17 @@ message FollowerInfo {
 //   Throttling of the number of message to be sent per
 //   [AppendEntriesRequest].
 // 
-message Configuration {
-  required int32  nb_of_server           = 1;
-  required double election_timeout       = 2;  
-  required double election_timeout_range = 3;
-    // The election timeout follows a uniform distribution 
-    // centered on [election_timeout] and of range
-    // [election_timeout_range]. 
-  required double hearbeat_timeout       = 4; 
-  required int32 max_nb_logs_per_message = 5;
-  required int32 log_interval_size       = 6;
-}
+// message Configuration {
+//   required int32  nb_of_server           = 1;
+//   required double election_timeout       = 2;  
+//   required double election_timeout_range = 3;
+//     // The election timeout follows a uniform distribution 
+//     // centered on [election_timeout] and of range
+//     // [election_timeout_range]. 
+//   required double hearbeat_timeout       = 4; 
+//   required int32 max_nb_logs_per_message = 5;
+//   required int32 log_interval_size       = 6;
+// }
 
 // TIMEOUT EVENTS
 // ----------------------------------------------------------------------------

@@ -133,6 +133,7 @@ type compaction_report = {
   to_be_expanded : log_interval list;
 }
 
+
 (** {2 Default values} *)
 
 val default_request_vote_request : 
@@ -257,17 +258,6 @@ val default_follower_state :
 val default_role : unit -> role
 (** [default_role ()] is the default value for type [role] *)
 
-val default_configuration : 
-  ?nb_of_server:int ->
-  ?election_timeout:float ->
-  ?election_timeout_range:float ->
-  ?hearbeat_timeout:float ->
-  ?max_nb_logs_per_message:int ->
-  ?log_interval_size:int ->
-  unit ->
-  configuration
-(** [default_configuration ()] is the default value for type [configuration] *)
-
 val default_compaction_report : 
   ?to_be_compacted:log_interval list ->
   ?to_be_expanded:log_interval list ->
@@ -332,9 +322,6 @@ val decode_follower_state : Pbrt.Decoder.t -> follower_state
 val decode_role : Pbrt.Decoder.t -> role
 (** [decode_role decoder] decodes a [role] value from [decoder] *)
 
-val decode_configuration : Pbrt.Decoder.t -> configuration
-(** [decode_configuration decoder] decodes a [configuration] value from [decoder] *)
-
 val decode_compaction_report : Pbrt.Decoder.t -> compaction_report
 (** [decode_compaction_report decoder] decodes a [compaction_report] value from [decoder] *)
 
@@ -395,9 +382,6 @@ val encode_follower_state : follower_state -> Pbrt.Encoder.t -> unit
 val encode_role : role -> Pbrt.Encoder.t -> unit
 (** [encode_role v encoder] encodes [v] with the given [encoder] *)
 
-val encode_configuration : configuration -> Pbrt.Encoder.t -> unit
-(** [encode_configuration v encoder] encodes [v] with the given [encoder] *)
-
 val encode_compaction_report : compaction_report -> Pbrt.Encoder.t -> unit
 (** [encode_compaction_report v encoder] encodes [v] with the given [encoder] *)
 
@@ -457,9 +441,6 @@ val pp_follower_state : Format.formatter -> follower_state -> unit
 
 val pp_role : Format.formatter -> role -> unit 
 (** [pp_role v] formats v *)
-
-val pp_configuration : Format.formatter -> configuration -> unit 
-(** [pp_configuration v] formats v *)
 
 val pp_compaction_report : Format.formatter -> compaction_report -> unit 
 (** [pp_compaction_report v] formats v *)

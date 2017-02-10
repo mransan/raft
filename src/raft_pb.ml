@@ -193,15 +193,6 @@ type configuration = {
   log_interval_size : int;
 }
 
-and configuration_mutable = {
-  mutable nb_of_server : int;
-  mutable election_timeout : float;
-  mutable election_timeout_range : float;
-  mutable hearbeat_timeout : float;
-  mutable max_nb_logs_per_message : int;
-  mutable log_interval_size : int;
-}
-
 type timeout_type =
   | New_leader_election 
   | Heartbeat 
@@ -451,31 +442,6 @@ and default_follower_state_mutable () : follower_state_mutable = {
 }
 
 let rec default_role () : role = Leader (default_leader_state ())
-
-let rec default_configuration 
-  ?nb_of_server:((nb_of_server:int) = 0)
-  ?election_timeout:((election_timeout:float) = 0.)
-  ?election_timeout_range:((election_timeout_range:float) = 0.)
-  ?hearbeat_timeout:((hearbeat_timeout:float) = 0.)
-  ?max_nb_logs_per_message:((max_nb_logs_per_message:int) = 0)
-  ?log_interval_size:((log_interval_size:int) = 0)
-  () : configuration  = {
-  nb_of_server;
-  election_timeout;
-  election_timeout_range;
-  hearbeat_timeout;
-  max_nb_logs_per_message;
-  log_interval_size;
-}
-
-and default_configuration_mutable () : configuration_mutable = {
-  nb_of_server = 0;
-  election_timeout = 0.;
-  election_timeout_range = 0.;
-  hearbeat_timeout = 0.;
-  max_nb_logs_per_message = 0;
-  log_interval_size = 0;
-}
 
 let rec default_compaction_report 
   ?to_be_compacted:((to_be_compacted:log_interval list) = [])
@@ -1092,72 +1058,6 @@ let rec decode_role d =
   in
   loop ()
 
-let rec decode_configuration d =
-  let v = default_configuration_mutable () in
-  let log_interval_size_is_set = ref false in
-  let max_nb_logs_per_message_is_set = ref false in
-  let hearbeat_timeout_is_set = ref false in
-  let election_timeout_range_is_set = ref false in
-  let election_timeout_is_set = ref false in
-  let nb_of_server_is_set = ref false in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-    )
-    | Some (1, Pbrt.Varint) -> (
-      v.nb_of_server <- Pbrt.Decoder.int_as_varint d; nb_of_server_is_set := true;
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(1)", pk))
-    )
-    | Some (2, Pbrt.Bits64) -> (
-      v.election_timeout <- Pbrt.Decoder.float_as_bits64 d; election_timeout_is_set := true;
-      loop ()
-    )
-    | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(2)", pk))
-    )
-    | Some (3, Pbrt.Bits64) -> (
-      v.election_timeout_range <- Pbrt.Decoder.float_as_bits64 d; election_timeout_range_is_set := true;
-      loop ()
-    )
-    | Some (3, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(3)", pk))
-    )
-    | Some (4, Pbrt.Bits64) -> (
-      v.hearbeat_timeout <- Pbrt.Decoder.float_as_bits64 d; hearbeat_timeout_is_set := true;
-      loop ()
-    )
-    | Some (4, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(4)", pk))
-    )
-    | Some (5, Pbrt.Varint) -> (
-      v.max_nb_logs_per_message <- Pbrt.Decoder.int_as_varint d; max_nb_logs_per_message_is_set := true;
-      loop ()
-    )
-    | Some (5, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(5)", pk))
-    )
-    | Some (6, Pbrt.Varint) -> (
-      v.log_interval_size <- Pbrt.Decoder.int_as_varint d; log_interval_size_is_set := true;
-      loop ()
-    )
-    | Some (6, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(6)", pk))
-    )
-    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  begin if not !log_interval_size_is_set then raise Protobuf.Decoder.(Failure (Missing_field "log_interval_size")) end;
-  begin if not !max_nb_logs_per_message_is_set then raise Protobuf.Decoder.(Failure (Missing_field "max_nb_logs_per_message")) end;
-  begin if not !hearbeat_timeout_is_set then raise Protobuf.Decoder.(Failure (Missing_field "hearbeat_timeout")) end;
-  begin if not !election_timeout_range_is_set then raise Protobuf.Decoder.(Failure (Missing_field "election_timeout_range")) end;
-  begin if not !election_timeout_is_set then raise Protobuf.Decoder.(Failure (Missing_field "election_timeout")) end;
-  begin if not !nb_of_server_is_set then raise Protobuf.Decoder.(Failure (Missing_field "nb_of_server")) end;
-  let v:configuration = Obj.magic v in
-  v
-
 let rec decode_compaction_report d =
   let v = default_compaction_report_mutable () in
   let rec loop () = 
@@ -1410,21 +1310,6 @@ let rec encode_role (v:role) encoder =
     Pbrt.Encoder.nested (encode_follower_state x) encoder;
   )
 
-let rec encode_configuration (v:configuration) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.nb_of_server encoder;
-  Pbrt.Encoder.key (2, Pbrt.Bits64) encoder; 
-  Pbrt.Encoder.float_as_bits64 v.election_timeout encoder;
-  Pbrt.Encoder.key (3, Pbrt.Bits64) encoder; 
-  Pbrt.Encoder.float_as_bits64 v.election_timeout_range encoder;
-  Pbrt.Encoder.key (4, Pbrt.Bits64) encoder; 
-  Pbrt.Encoder.float_as_bits64 v.hearbeat_timeout encoder;
-  Pbrt.Encoder.key (5, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.max_nb_logs_per_message encoder;
-  Pbrt.Encoder.key (6, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.log_interval_size encoder;
-  ()
-
 let rec encode_compaction_report (v:compaction_report) encoder = 
   List.iter (fun x -> 
     Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
@@ -1597,19 +1482,6 @@ let rec pp_role fmt (v:role) =
   | Leader x -> Format.fprintf fmt "@[Leader(%a)@]" pp_leader_state x
   | Candidate x -> Format.fprintf fmt "@[Candidate(%a)@]" pp_candidate_state x
   | Follower x -> Format.fprintf fmt "@[Follower(%a)@]" pp_follower_state x
-
-let rec pp_configuration fmt (v:configuration) = 
-  let pp_i fmt () =
-    Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "nb_of_server" Pbrt.Pp.pp_int fmt v.nb_of_server;
-    Pbrt.Pp.pp_record_field "election_timeout" Pbrt.Pp.pp_float fmt v.election_timeout;
-    Pbrt.Pp.pp_record_field "election_timeout_range" Pbrt.Pp.pp_float fmt v.election_timeout_range;
-    Pbrt.Pp.pp_record_field "hearbeat_timeout" Pbrt.Pp.pp_float fmt v.hearbeat_timeout;
-    Pbrt.Pp.pp_record_field "max_nb_logs_per_message" Pbrt.Pp.pp_int fmt v.max_nb_logs_per_message;
-    Pbrt.Pp.pp_record_field "log_interval_size" Pbrt.Pp.pp_int fmt v.log_interval_size;
-    Format.pp_close_box fmt ()
-  in
-  Pbrt.Pp.pp_brk pp_i fmt ()
 
 let rec pp_compaction_report fmt (v:compaction_report) = 
   let pp_i fmt () =
