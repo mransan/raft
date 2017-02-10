@@ -199,41 +199,6 @@ val default_append_entries_response :
 val default_message : unit -> message
 (** [default_message ()] is the default value for type [message] *)
 
-val default_follower_info : 
-  ?server_id:int ->
-  ?next_index:int ->
-  ?match_index:int ->
-  ?heartbeat_deadline:float ->
-  ?outstanding_request:bool ->
-  ?unsent_entries:log_entry list ->
-  unit ->
-  follower_info
-(** [default_follower_info ()] is the default value for type [follower_info] *)
-
-val default_leader_state : 
-  ?followers:follower_info list ->
-  unit ->
-  leader_state
-(** [default_leader_state ()] is the default value for type [leader_state] *)
-
-val default_candidate_state : 
-  ?vote_count:int ->
-  ?election_deadline:float ->
-  unit ->
-  candidate_state
-(** [default_candidate_state ()] is the default value for type [candidate_state] *)
-
-val default_follower_state : 
-  ?voted_for:int option ->
-  ?current_leader:int option ->
-  ?election_deadline:float ->
-  unit ->
-  follower_state
-(** [default_follower_state ()] is the default value for type [follower_state] *)
-
-val default_role : unit -> role
-(** [default_role ()] is the default value for type [role] *)
-
 
 (** {2 Protobuf Decoding} *)
 
@@ -263,21 +228,6 @@ val decode_append_entries_response : Pbrt.Decoder.t -> append_entries_response
 
 val decode_message : Pbrt.Decoder.t -> message
 (** [decode_message decoder] decodes a [message] value from [decoder] *)
-
-val decode_follower_info : Pbrt.Decoder.t -> follower_info
-(** [decode_follower_info decoder] decodes a [follower_info] value from [decoder] *)
-
-val decode_leader_state : Pbrt.Decoder.t -> leader_state
-(** [decode_leader_state decoder] decodes a [leader_state] value from [decoder] *)
-
-val decode_candidate_state : Pbrt.Decoder.t -> candidate_state
-(** [decode_candidate_state decoder] decodes a [candidate_state] value from [decoder] *)
-
-val decode_follower_state : Pbrt.Decoder.t -> follower_state
-(** [decode_follower_state decoder] decodes a [follower_state] value from [decoder] *)
-
-val decode_role : Pbrt.Decoder.t -> role
-(** [decode_role decoder] decodes a [role] value from [decoder] *)
 
 
 (** {2 Protobuf Toding} *)
@@ -309,21 +259,6 @@ val encode_append_entries_response : append_entries_response -> Pbrt.Encoder.t -
 val encode_message : message -> Pbrt.Encoder.t -> unit
 (** [encode_message v encoder] encodes [v] with the given [encoder] *)
 
-val encode_follower_info : follower_info -> Pbrt.Encoder.t -> unit
-(** [encode_follower_info v encoder] encodes [v] with the given [encoder] *)
-
-val encode_leader_state : leader_state -> Pbrt.Encoder.t -> unit
-(** [encode_leader_state v encoder] encodes [v] with the given [encoder] *)
-
-val encode_candidate_state : candidate_state -> Pbrt.Encoder.t -> unit
-(** [encode_candidate_state v encoder] encodes [v] with the given [encoder] *)
-
-val encode_follower_state : follower_state -> Pbrt.Encoder.t -> unit
-(** [encode_follower_state v encoder] encodes [v] with the given [encoder] *)
-
-val encode_role : role -> Pbrt.Encoder.t -> unit
-(** [encode_role v encoder] encodes [v] with the given [encoder] *)
-
 
 (** {2 Formatters} *)
 
@@ -353,18 +288,3 @@ val pp_append_entries_response : Format.formatter -> append_entries_response -> 
 
 val pp_message : Format.formatter -> message -> unit 
 (** [pp_message v] formats v *)
-
-val pp_follower_info : Format.formatter -> follower_info -> unit 
-(** [pp_follower_info v] formats v *)
-
-val pp_leader_state : Format.formatter -> leader_state -> unit 
-(** [pp_leader_state v] formats v *)
-
-val pp_candidate_state : Format.formatter -> candidate_state -> unit 
-(** [pp_candidate_state v] formats v *)
-
-val pp_follower_state : Format.formatter -> follower_state -> unit 
-(** [pp_follower_state v] formats v *)
-
-val pp_role : Format.formatter -> role -> unit 
-(** [pp_role v] formats v *)

@@ -125,21 +125,8 @@ type follower_info = {
   unsent_entries : log_entry list;
 }
 
-and follower_info_mutable = {
-  mutable server_id : int;
-  mutable next_index : int;
-  mutable match_index : int;
-  mutable heartbeat_deadline : float;
-  mutable outstanding_request : bool;
-  mutable unsent_entries : log_entry list;
-}
-
 type leader_state = {
   followers : follower_info list;
-}
-
-and leader_state_mutable = {
-  mutable followers : follower_info list;
 }
 
 type candidate_state = {
@@ -147,21 +134,10 @@ type candidate_state = {
   election_deadline : float;
 }
 
-and candidate_state_mutable = {
-  mutable vote_count : int;
-  mutable election_deadline : float;
-}
-
 type follower_state = {
   voted_for : int option;
   current_leader : int option;
   election_deadline : float;
-}
-
-and follower_state_mutable = {
-  mutable voted_for : int option;
-  mutable current_leader : int option;
-  mutable election_deadline : float;
 }
 
 type role =
@@ -315,72 +291,6 @@ and default_append_entries_response_mutable () : append_entries_response_mutable
 }
 
 let rec default_message () : message = Request_vote_request (default_request_vote_request ())
-
-let rec default_follower_info 
-  ?server_id:((server_id:int) = 0)
-  ?next_index:((next_index:int) = 0)
-  ?match_index:((match_index:int) = 0)
-  ?heartbeat_deadline:((heartbeat_deadline:float) = 0.)
-  ?outstanding_request:((outstanding_request:bool) = false)
-  ?unsent_entries:((unsent_entries:log_entry list) = [])
-  () : follower_info  = {
-  server_id;
-  next_index;
-  match_index;
-  heartbeat_deadline;
-  outstanding_request;
-  unsent_entries;
-}
-
-and default_follower_info_mutable () : follower_info_mutable = {
-  server_id = 0;
-  next_index = 0;
-  match_index = 0;
-  heartbeat_deadline = 0.;
-  outstanding_request = false;
-  unsent_entries = [];
-}
-
-let rec default_leader_state 
-  ?followers:((followers:follower_info list) = [])
-  () : leader_state  = {
-  followers;
-}
-
-and default_leader_state_mutable () : leader_state_mutable = {
-  followers = [];
-}
-
-let rec default_candidate_state 
-  ?vote_count:((vote_count:int) = 0)
-  ?election_deadline:((election_deadline:float) = 0.)
-  () : candidate_state  = {
-  vote_count;
-  election_deadline;
-}
-
-and default_candidate_state_mutable () : candidate_state_mutable = {
-  vote_count = 0;
-  election_deadline = 0.;
-}
-
-let rec default_follower_state 
-  ?voted_for:((voted_for:int option) = None)
-  ?current_leader:((current_leader:int option) = None)
-  ?election_deadline:((election_deadline:float) = 0.)
-  () : follower_state  = {
-  voted_for;
-  current_leader;
-  election_deadline;
-}
-
-and default_follower_state_mutable () : follower_state_mutable = {
-  voted_for = None;
-  current_leader = None;
-  election_deadline = 0.;
-}
-
-let rec default_role () : role = Leader (default_leader_state ())
 
 let rec decode_request_vote_request d =
   let v = default_request_vote_request_mutable () in
@@ -709,172 +619,6 @@ let rec decode_message d =
   in
   loop ()
 
-let rec decode_follower_info d =
-  let v = default_follower_info_mutable () in
-  let outstanding_request_is_set = ref false in
-  let heartbeat_deadline_is_set = ref false in
-  let match_index_is_set = ref false in
-  let next_index_is_set = ref false in
-  let server_id_is_set = ref false in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-      v.unsent_entries <- List.rev v.unsent_entries;
-    )
-    | Some (1, Pbrt.Varint) -> (
-      v.server_id <- Pbrt.Decoder.int_as_varint d; server_id_is_set := true;
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(1)", pk))
-    )
-    | Some (2, Pbrt.Varint) -> (
-      v.next_index <- Pbrt.Decoder.int_as_varint d; next_index_is_set := true;
-      loop ()
-    )
-    | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(2)", pk))
-    )
-    | Some (3, Pbrt.Varint) -> (
-      v.match_index <- Pbrt.Decoder.int_as_varint d; match_index_is_set := true;
-      loop ()
-    )
-    | Some (3, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(3)", pk))
-    )
-    | Some (5, Pbrt.Bits32) -> (
-      v.heartbeat_deadline <- Pbrt.Decoder.float_as_bits32 d; heartbeat_deadline_is_set := true;
-      loop ()
-    )
-    | Some (5, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(5)", pk))
-    )
-    | Some (6, Pbrt.Varint) -> (
-      v.outstanding_request <- Pbrt.Decoder.bool d; outstanding_request_is_set := true;
-      loop ()
-    )
-    | Some (6, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(6)", pk))
-    )
-    | Some (4, Pbrt.Bytes) -> (
-      v.unsent_entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.unsent_entries;
-      loop ()
-    )
-    | Some (4, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(4)", pk))
-    )
-    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  begin if not !outstanding_request_is_set then raise Protobuf.Decoder.(Failure (Missing_field "outstanding_request")) end;
-  begin if not !heartbeat_deadline_is_set then raise Protobuf.Decoder.(Failure (Missing_field "heartbeat_deadline")) end;
-  begin if not !match_index_is_set then raise Protobuf.Decoder.(Failure (Missing_field "match_index")) end;
-  begin if not !next_index_is_set then raise Protobuf.Decoder.(Failure (Missing_field "next_index")) end;
-  begin if not !server_id_is_set then raise Protobuf.Decoder.(Failure (Missing_field "server_id")) end;
-  let v:follower_info = Obj.magic v in
-  v
-
-let rec decode_leader_state d =
-  let v = default_leader_state_mutable () in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-      v.followers <- List.rev v.followers;
-    )
-    | Some (1, Pbrt.Bytes) -> (
-      v.followers <- (decode_follower_info (Pbrt.Decoder.nested d)) :: v.followers;
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(leader_state), field(1)", pk))
-    )
-    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  let v:leader_state = Obj.magic v in
-  v
-
-let rec decode_candidate_state d =
-  let v = default_candidate_state_mutable () in
-  let election_deadline_is_set = ref false in
-  let vote_count_is_set = ref false in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-    )
-    | Some (1, Pbrt.Varint) -> (
-      v.vote_count <- Pbrt.Decoder.int_as_varint d; vote_count_is_set := true;
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(candidate_state), field(1)", pk))
-    )
-    | Some (2, Pbrt.Bits64) -> (
-      v.election_deadline <- Pbrt.Decoder.float_as_bits64 d; election_deadline_is_set := true;
-      loop ()
-    )
-    | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(candidate_state), field(2)", pk))
-    )
-    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  begin if not !election_deadline_is_set then raise Protobuf.Decoder.(Failure (Missing_field "election_deadline")) end;
-  begin if not !vote_count_is_set then raise Protobuf.Decoder.(Failure (Missing_field "vote_count")) end;
-  let v:candidate_state = Obj.magic v in
-  v
-
-let rec decode_follower_state d =
-  let v = default_follower_state_mutable () in
-  let election_deadline_is_set = ref false in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-    )
-    | Some (1, Pbrt.Varint) -> (
-      v.voted_for <- Some (Pbrt.Decoder.int_as_varint d);
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_state), field(1)", pk))
-    )
-    | Some (2, Pbrt.Varint) -> (
-      v.current_leader <- Some (Pbrt.Decoder.int_as_varint d);
-      loop ()
-    )
-    | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_state), field(2)", pk))
-    )
-    | Some (3, Pbrt.Bits64) -> (
-      v.election_deadline <- Pbrt.Decoder.float_as_bits64 d; election_deadline_is_set := true;
-      loop ()
-    )
-    | Some (3, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_state), field(3)", pk))
-    )
-    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  begin if not !election_deadline_is_set then raise Protobuf.Decoder.(Failure (Missing_field "election_deadline")) end;
-  let v:follower_state = Obj.magic v in
-  v
-
-let rec decode_role d = 
-  let rec loop () = 
-    let ret:role = match Pbrt.Decoder.key d with
-      | None -> failwith "None of the known key is found"
-      | Some (6, _) -> Leader (decode_leader_state (Pbrt.Decoder.nested d))
-      | Some (7, _) -> Candidate (decode_candidate_state (Pbrt.Decoder.nested d))
-      | Some (8, _) -> Follower (decode_follower_state (Pbrt.Decoder.nested d))
-      | Some (n, payload_kind) -> (
-        Pbrt.Decoder.skip d payload_kind; 
-        loop () 
-      )
-    in
-    ret
-  in
-  loop ()
-
 let rec encode_request_vote_request (v:request_vote_request) encoder = 
   Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
   Pbrt.Encoder.int_as_varint v.candidate_term encoder;
@@ -989,73 +733,6 @@ let rec encode_message (v:message) encoder =
     Pbrt.Encoder.nested (encode_append_entries_response x) encoder;
   )
 
-let rec encode_follower_info (v:follower_info) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.server_id encoder;
-  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.next_index encoder;
-  Pbrt.Encoder.key (3, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.match_index encoder;
-  Pbrt.Encoder.key (5, Pbrt.Bits32) encoder; 
-  Pbrt.Encoder.float_as_bits32 v.heartbeat_deadline encoder;
-  Pbrt.Encoder.key (6, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.bool v.outstanding_request encoder;
-  List.iter (fun x -> 
-    Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_log_entry x) encoder;
-  ) v.unsent_entries;
-  ()
-
-let rec encode_leader_state (v:leader_state) encoder = 
-  List.iter (fun x -> 
-    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_follower_info x) encoder;
-  ) v.followers;
-  ()
-
-let rec encode_candidate_state (v:candidate_state) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.vote_count encoder;
-  Pbrt.Encoder.key (2, Pbrt.Bits64) encoder; 
-  Pbrt.Encoder.float_as_bits64 v.election_deadline encoder;
-  ()
-
-let rec encode_follower_state (v:follower_state) encoder = 
-  (
-    match v.voted_for with 
-    | Some x -> (
-      Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
-      Pbrt.Encoder.int_as_varint x encoder;
-    )
-    | None -> ();
-  );
-  (
-    match v.current_leader with 
-    | Some x -> (
-      Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
-      Pbrt.Encoder.int_as_varint x encoder;
-    )
-    | None -> ();
-  );
-  Pbrt.Encoder.key (3, Pbrt.Bits64) encoder; 
-  Pbrt.Encoder.float_as_bits64 v.election_deadline encoder;
-  ()
-
-let rec encode_role (v:role) encoder = 
-  match v with
-  | Leader x -> (
-    Pbrt.Encoder.key (6, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_leader_state x) encoder;
-  )
-  | Candidate x -> (
-    Pbrt.Encoder.key (7, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_candidate_state x) encoder;
-  )
-  | Follower x -> (
-    Pbrt.Encoder.key (8, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_follower_state x) encoder;
-  )
-
 let rec pp_request_vote_request fmt (v:request_vote_request) = 
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
@@ -1139,49 +816,3 @@ let rec pp_message fmt (v:message) =
   | Request_vote_response x -> Format.fprintf fmt "@[Request_vote_response(%a)@]" pp_request_vote_response x
   | Append_entries_request x -> Format.fprintf fmt "@[Append_entries_request(%a)@]" pp_append_entries_request x
   | Append_entries_response x -> Format.fprintf fmt "@[Append_entries_response(%a)@]" pp_append_entries_response x
-
-let rec pp_follower_info fmt (v:follower_info) = 
-  let pp_i fmt () =
-    Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "server_id" Pbrt.Pp.pp_int fmt v.server_id;
-    Pbrt.Pp.pp_record_field "next_index" Pbrt.Pp.pp_int fmt v.next_index;
-    Pbrt.Pp.pp_record_field "match_index" Pbrt.Pp.pp_int fmt v.match_index;
-    Pbrt.Pp.pp_record_field "heartbeat_deadline" Pbrt.Pp.pp_float fmt v.heartbeat_deadline;
-    Pbrt.Pp.pp_record_field "outstanding_request" Pbrt.Pp.pp_bool fmt v.outstanding_request;
-    Pbrt.Pp.pp_record_field "unsent_entries" (Pbrt.Pp.pp_list pp_log_entry) fmt v.unsent_entries;
-    Format.pp_close_box fmt ()
-  in
-  Pbrt.Pp.pp_brk pp_i fmt ()
-
-let rec pp_leader_state fmt (v:leader_state) = 
-  let pp_i fmt () =
-    Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "followers" (Pbrt.Pp.pp_list pp_follower_info) fmt v.followers;
-    Format.pp_close_box fmt ()
-  in
-  Pbrt.Pp.pp_brk pp_i fmt ()
-
-let rec pp_candidate_state fmt (v:candidate_state) = 
-  let pp_i fmt () =
-    Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "vote_count" Pbrt.Pp.pp_int fmt v.vote_count;
-    Pbrt.Pp.pp_record_field "election_deadline" Pbrt.Pp.pp_float fmt v.election_deadline;
-    Format.pp_close_box fmt ()
-  in
-  Pbrt.Pp.pp_brk pp_i fmt ()
-
-let rec pp_follower_state fmt (v:follower_state) = 
-  let pp_i fmt () =
-    Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "voted_for" (Pbrt.Pp.pp_option Pbrt.Pp.pp_int) fmt v.voted_for;
-    Pbrt.Pp.pp_record_field "current_leader" (Pbrt.Pp.pp_option Pbrt.Pp.pp_int) fmt v.current_leader;
-    Pbrt.Pp.pp_record_field "election_deadline" Pbrt.Pp.pp_float fmt v.election_deadline;
-    Format.pp_close_box fmt ()
-  in
-  Pbrt.Pp.pp_brk pp_i fmt ()
-
-let rec pp_role fmt (v:role) =
-  match v with
-  | Leader x -> Format.fprintf fmt "@[Leader(%a)@]" pp_leader_state x
-  | Candidate x -> Format.fprintf fmt "@[Candidate(%a)@]" pp_candidate_state x
-  | Follower x -> Format.fprintf fmt "@[Follower(%a)@]" pp_follower_state x
