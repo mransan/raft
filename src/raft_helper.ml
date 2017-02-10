@@ -1,6 +1,5 @@
 open Raft_pb
 
-module Log    = Raft_log
 module State  = Raft_state
 module Leader = Raft_role.Leader
 

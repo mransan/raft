@@ -192,7 +192,7 @@ let ()  =
   in
 
   assert(State.is_leader server0);
-  assert((New_leader {leader_id = 0})::[] = notifications);
+  assert((New_leader 0)::[] = notifications);
     (*
      * Because a single vote is enough to reach a majority in a 3-server cluster,
      * server0 becomes a [Leader].
@@ -261,7 +261,7 @@ let ()  =
     Raft_logic.handle_message server1 msg now
   in
 
-  assert((New_leader {leader_id = 0})::[] = notifications);
+  assert((New_leader 0)::[] = notifications);
 
   begin match server1.role with
   | Follower f -> (
@@ -546,7 +546,7 @@ let ()  =
 
   assert(State.is_follower server2);
   assert(1 = server2.current_term);
-  assert((New_leader {leader_id = 0})::[] = notifications);
+  assert((New_leader 0)::[] = notifications);
     (*
      * Receiving an [Append_entries] request with a term at least equal
      * or supperior to one [current_term] means that the sender is a valid
@@ -796,7 +796,7 @@ let ()  =
   assert(State.is_leader server0);
   assert(1 = server0.commit_index);
   begin match notifications with 
-  | (Committed_data { rev_log_entries = [{id = "01"; _ }]})::[] -> ()
+  | (Committed_data [{id = "01"; _ }])::[] -> ()
   | _ -> assert(false)
   end; 
     (*
@@ -910,7 +910,7 @@ let ()  =
      *)
 
   begin match notifications with 
-  | (Committed_data { rev_log_entries = [{id = "01"; _ }]})::[] -> ()
+  | (Committed_data [{id = "01"; _ }])::[] -> ()
   | _ -> assert(false)
   end; 
   assert(1 = server1.commit_index);
@@ -955,7 +955,7 @@ let ()  =
   assert(State.is_leader server0);
 
   begin match notifications with 
-  | (Committed_data { rev_log_entries = [{id = "02"; _ }]})::[] -> ()
+  | (Committed_data [{id = "02"; _ }])::[] -> ()
   | _ -> assert(false)
   end; 
   assert(2 = server0.commit_index);
@@ -1042,7 +1042,7 @@ let ()  =
   assert(State.is_follower server1);
 
   begin match notifications with 
-  | (Committed_data { rev_log_entries = [{id = "02"; _ }]})::[] -> ()
+  | (Committed_data [{id = "02"; _ }])::[] -> ()
   | _ -> assert(false)
   end; 
   assert(2 = server1.commit_index);
@@ -1073,7 +1073,7 @@ let ()  =
 
   assert(State.is_follower server2);
   begin match notifications with 
-  | (Committed_data { rev_log_entries = [{id = "02"; _ }]})::[] -> ()
+  | (Committed_data [{id = "02"; _ }])::[] -> ()
   | _ -> assert(false)
   end; 
   assert(2 = server2.commit_index);
@@ -1395,7 +1395,7 @@ let ()  =
     Raft_logic.handle_message server1 msg now
   in
 
-  assert((New_leader {leader_id = 1})::[] = notifications);
+  assert((New_leader 1)::[] = notifications);
   assert(State.is_leader server1);
     (*
      * One vote is enough to become a [Leader].
@@ -1445,7 +1445,7 @@ let ()  =
     Raft_logic.handle_message server2 msg now
   in
 
-  assert((New_leader {leader_id = 1})::[] = notifications);
+  assert((New_leader 1)::[] = notifications);
   assert(State.is_follower server2);
   assert(3 = server2.current_term);
 
@@ -1574,7 +1574,7 @@ let ()  =
   assert(3 = server1.current_term);
 
   begin match notifications with 
-  | (Committed_data { rev_log_entries = [{id = "03"; _ }]})::[] -> ()
+  | (Committed_data [{id = "03"; _ }])::[] -> ()
   | _ -> assert(false)
   end; 
   assert(3 = server1.commit_index);
@@ -1684,7 +1684,7 @@ let ()  =
 
   assert(1 = List.length notifications);
   begin match notifications with 
-  | (Committed_data { rev_log_entries = [{id = "03"; _ }]})::[] -> ()
+  | (Committed_data [{id = "03"; _ }])::[] -> ()
   | _ -> assert(false)
   end; 
 
@@ -1721,7 +1721,7 @@ let ()  =
   assert(1 = List.length notifications);
 
   begin match notifications with 
-  | (Committed_data { rev_log_entries }) :: [] -> 
+  | (Committed_data rev_log_entries ) :: [] -> 
     assert(2 = List.length rev_log_entries)
   | _ -> assert(false)
   end; 
@@ -1804,7 +1804,7 @@ let ()  =
   assert(5 = server2.commit_index);
   assert(1 = List.length notifications);
   begin match notifications with 
-  | (Committed_data { rev_log_entries }) :: [] -> 
+  | (Committed_data rev_log_entries ) :: [] -> 
     assert(2 = List.length rev_log_entries)
   | _ -> assert(false)
   end; 

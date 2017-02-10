@@ -44,7 +44,7 @@ let notifications before after =
 
     | Candidate _  , Leader _ -> 
       (* Case of the server becoming a leader *)
-      (New_leader {leader_id = after.id;})::notifications 
+      (New_leader after.id)::notifications 
     
     | Follower {current_leader = Some bleader; _ }, 
       Follower {current_leader = Some aleader; _ } when bleader = aleader ->
@@ -52,7 +52,7 @@ let notifications before after =
       (* No leader change, following the same leader *)
 
     | _, Follower{current_leader = Some aleader;_} -> 
-      (New_leader {leader_id = aleader;})::notifications 
+      (New_leader aleader)::notifications 
       (* There is a new leader *) 
 
     | Follower {current_leader = Some _; _}, Candidate _
@@ -95,7 +95,7 @@ let notifications before after =
          *) 
         rev_log_entries 
     in
-    (Committed_data {rev_log_entries = aux [] after.log.Log.recent_entries})::notifications 
+    (Committed_data (aux [] after.log.Log.recent_entries))::notifications 
   else 
     notifications
 

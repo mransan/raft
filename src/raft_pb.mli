@@ -1,5 +1,6 @@
 (** raft.proto Generated Types and Encoding *)
 
+
 (** {2 Types} *)
 
 type request_vote_request = {
@@ -122,19 +123,10 @@ type timeout_event = {
   timeout_type : timeout_event_time_out_type;
 }
 
-type notification_commited_data = {
-  rev_log_entries : log_entry list;
-}
-
-type notification_new_leader = {
-  leader_id : int;
-}
-
 type notification =
-  | Committed_data of notification_commited_data
-  | New_leader of notification_new_leader
+  | Committed_data of log_entry list
+  | New_leader of int 
   | No_leader
-
 type compaction_report = {
   to_be_compacted : log_interval list;
   to_be_expanded : log_interval list;
@@ -286,21 +278,6 @@ val default_timeout_event :
   timeout_event
 (** [default_timeout_event ()] is the default value for type [timeout_event] *)
 
-val default_notification_commited_data : 
-  ?rev_log_entries:log_entry list ->
-  unit ->
-  notification_commited_data
-(** [default_notification_commited_data ()] is the default value for type [notification_commited_data] *)
-
-val default_notification_new_leader : 
-  ?leader_id:int ->
-  unit ->
-  notification_new_leader
-(** [default_notification_new_leader ()] is the default value for type [notification_new_leader] *)
-
-val default_notification : unit -> notification
-(** [default_notification ()] is the default value for type [notification] *)
-
 val default_compaction_report : 
   ?to_be_compacted:log_interval list ->
   ?to_be_expanded:log_interval list ->
@@ -374,15 +351,6 @@ val decode_timeout_event_time_out_type : Pbrt.Decoder.t -> timeout_event_time_ou
 val decode_timeout_event : Pbrt.Decoder.t -> timeout_event
 (** [decode_timeout_event decoder] decodes a [timeout_event] value from [decoder] *)
 
-val decode_notification_commited_data : Pbrt.Decoder.t -> notification_commited_data
-(** [decode_notification_commited_data decoder] decodes a [notification_commited_data] value from [decoder] *)
-
-val decode_notification_new_leader : Pbrt.Decoder.t -> notification_new_leader
-(** [decode_notification_new_leader decoder] decodes a [notification_new_leader] value from [decoder] *)
-
-val decode_notification : Pbrt.Decoder.t -> notification
-(** [decode_notification decoder] decodes a [notification] value from [decoder] *)
-
 val decode_compaction_report : Pbrt.Decoder.t -> compaction_report
 (** [decode_compaction_report decoder] decodes a [compaction_report] value from [decoder] *)
 
@@ -452,15 +420,6 @@ val encode_timeout_event_time_out_type : timeout_event_time_out_type -> Pbrt.Enc
 val encode_timeout_event : timeout_event -> Pbrt.Encoder.t -> unit
 (** [encode_timeout_event v encoder] encodes [v] with the given [encoder] *)
 
-val encode_notification_commited_data : notification_commited_data -> Pbrt.Encoder.t -> unit
-(** [encode_notification_commited_data v encoder] encodes [v] with the given [encoder] *)
-
-val encode_notification_new_leader : notification_new_leader -> Pbrt.Encoder.t -> unit
-(** [encode_notification_new_leader v encoder] encodes [v] with the given [encoder] *)
-
-val encode_notification : notification -> Pbrt.Encoder.t -> unit
-(** [encode_notification v encoder] encodes [v] with the given [encoder] *)
-
 val encode_compaction_report : compaction_report -> Pbrt.Encoder.t -> unit
 (** [encode_compaction_report v encoder] encodes [v] with the given [encoder] *)
 
@@ -529,15 +488,6 @@ val pp_timeout_event_time_out_type : Format.formatter -> timeout_event_time_out_
 
 val pp_timeout_event : Format.formatter -> timeout_event -> unit 
 (** [pp_timeout_event v] formats v *)
-
-val pp_notification_commited_data : Format.formatter -> notification_commited_data -> unit 
-(** [pp_notification_commited_data v] formats v *)
-
-val pp_notification_new_leader : Format.formatter -> notification_new_leader -> unit 
-(** [pp_notification_new_leader v] formats v *)
-
-val pp_notification : Format.formatter -> notification -> unit 
-(** [pp_notification v] formats v *)
 
 val pp_compaction_report : Format.formatter -> compaction_report -> unit 
 (** [pp_compaction_report v] formats v *)

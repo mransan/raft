@@ -457,25 +457,6 @@ message TimeoutEvent {
   required TimeOutType timeout_type = 2;
 }
 
-message Notification {
-  
-  message CommitedData {
-    repeated LogEntry rev_log_entries = 1;
-  }
-
-  message NewLeader {
-    required int32  leader_id = 1;
-  }
-  
-  message NoLeader { } 
-
-  oneof t {
-    CommitedData committed_data = 1;
-    NewLeader    new_leader     = 2;
-    NoLeader     no_leader      = 3;
-  }
-}
-
 message CompactionReport {
   repeated LogInterval to_be_compacted = 1;
   repeated LogInterval to_be_expanded = 2;

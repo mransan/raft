@@ -216,27 +216,10 @@ and timeout_event_mutable = {
   mutable timeout_type : timeout_event_time_out_type;
 }
 
-type notification_commited_data = {
-  rev_log_entries : log_entry list;
-}
-
-and notification_commited_data_mutable = {
-  mutable rev_log_entries : log_entry list;
-}
-
-type notification_new_leader = {
-  leader_id : int;
-}
-
-and notification_new_leader_mutable = {
-  mutable leader_id : int;
-}
-
 type notification =
-  | Committed_data of notification_commited_data
-  | New_leader of notification_new_leader
+  | Committed_data of log_entry list
+  | New_leader of int 
   | No_leader
-
 type compaction_report = {
   to_be_compacted : log_interval list;
   to_be_expanded : log_interval list;
@@ -285,7 +268,7 @@ and default_request_vote_response_mutable () : request_vote_response_mutable = {
 let rec default_log_entry 
   ?index:((index:int) = 0)
   ?term:((term:int) = 0)
-  ?data:((data:bytes) = Bytes.create 64)
+  ?data:((data:bytes) = Bytes.create 0)
   ?id:((id:string) = "")
   () : log_entry  = {
   index;
@@ -297,7 +280,7 @@ let rec default_log_entry
 and default_log_entry_mutable () : log_entry_mutable = {
   index = 0;
   term = 0;
-  data = Bytes.create 64;
+  data = Bytes.create 0;
   id = "";
 }
 
@@ -513,28 +496,6 @@ and default_timeout_event_mutable () : timeout_event_mutable = {
   timeout_type = default_timeout_event_time_out_type ();
 }
 
-let rec default_notification_commited_data 
-  ?rev_log_entries:((rev_log_entries:log_entry list) = [])
-  () : notification_commited_data  = {
-  rev_log_entries;
-}
-
-and default_notification_commited_data_mutable () : notification_commited_data_mutable = {
-  rev_log_entries = [];
-}
-
-let rec default_notification_new_leader 
-  ?leader_id:((leader_id:int) = 0)
-  () : notification_new_leader  = {
-  leader_id;
-}
-
-and default_notification_new_leader_mutable () : notification_new_leader_mutable = {
-  leader_id = 0;
-}
-
-let rec default_notification () : notification = Committed_data (default_notification_commited_data ())
-
 let rec default_compaction_report 
   ?to_be_compacted:((to_be_compacted:log_interval list) = [])
   ?to_be_expanded:((to_be_expanded:log_interval list) = [])
@@ -550,33 +511,37 @@ and default_compaction_report_mutable () : compaction_report_mutable = {
 
 let rec decode_request_vote_request d =
   let v = default_request_vote_request_mutable () in
+  let candidate_last_log_term_is_set = ref false in
+  let candidate_last_log_index_is_set = ref false in
+  let candidate_id_is_set = ref false in
+  let candidate_term_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Varint) -> (
-      v.candidate_term <- Pbrt.Decoder.int_as_varint d;
+      v.candidate_term <- Pbrt.Decoder.int_as_varint d; candidate_term_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(request_vote_request), field(1)", pk))
     )
     | Some (2, Pbrt.Varint) -> (
-      v.candidate_id <- Pbrt.Decoder.int_as_varint d;
+      v.candidate_id <- Pbrt.Decoder.int_as_varint d; candidate_id_is_set := true;
       loop ()
     )
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(request_vote_request), field(2)", pk))
     )
     | Some (3, Pbrt.Varint) -> (
-      v.candidate_last_log_index <- Pbrt.Decoder.int_as_varint d;
+      v.candidate_last_log_index <- Pbrt.Decoder.int_as_varint d; candidate_last_log_index_is_set := true;
       loop ()
     )
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(request_vote_request), field(3)", pk))
     )
     | Some (4, Pbrt.Varint) -> (
-      v.candidate_last_log_term <- Pbrt.Decoder.int_as_varint d;
+      v.candidate_last_log_term <- Pbrt.Decoder.int_as_varint d; candidate_last_log_term_is_set := true;
       loop ()
     )
     | Some (4, pk) -> raise (
@@ -585,31 +550,38 @@ let rec decode_request_vote_request d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !candidate_last_log_term_is_set then raise Protobuf.Decoder.(Failure (Missing_field "candidate_last_log_term")) end;
+  begin if not !candidate_last_log_index_is_set then raise Protobuf.Decoder.(Failure (Missing_field "candidate_last_log_index")) end;
+  begin if not !candidate_id_is_set then raise Protobuf.Decoder.(Failure (Missing_field "candidate_id")) end;
+  begin if not !candidate_term_is_set then raise Protobuf.Decoder.(Failure (Missing_field "candidate_term")) end;
   let v:request_vote_request = Obj.magic v in
   v
 
 let rec decode_request_vote_response d =
   let v = default_request_vote_response_mutable () in
+  let vote_granted_is_set = ref false in
+  let voter_term_is_set = ref false in
+  let voter_id_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Varint) -> (
-      v.voter_id <- Pbrt.Decoder.int_as_varint d;
+      v.voter_id <- Pbrt.Decoder.int_as_varint d; voter_id_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(request_vote_response), field(1)", pk))
     )
     | Some (2, Pbrt.Varint) -> (
-      v.voter_term <- Pbrt.Decoder.int_as_varint d;
+      v.voter_term <- Pbrt.Decoder.int_as_varint d; voter_term_is_set := true;
       loop ()
     )
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(request_vote_response), field(2)", pk))
     )
     | Some (3, Pbrt.Varint) -> (
-      v.vote_granted <- Pbrt.Decoder.bool d;
+      v.vote_granted <- Pbrt.Decoder.bool d; vote_granted_is_set := true;
       loop ()
     )
     | Some (3, pk) -> raise (
@@ -618,38 +590,45 @@ let rec decode_request_vote_response d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !vote_granted_is_set then raise Protobuf.Decoder.(Failure (Missing_field "vote_granted")) end;
+  begin if not !voter_term_is_set then raise Protobuf.Decoder.(Failure (Missing_field "voter_term")) end;
+  begin if not !voter_id_is_set then raise Protobuf.Decoder.(Failure (Missing_field "voter_id")) end;
   let v:request_vote_response = Obj.magic v in
   v
 
 let rec decode_log_entry d =
   let v = default_log_entry_mutable () in
+  let id_is_set = ref false in
+  let data_is_set = ref false in
+  let term_is_set = ref false in
+  let index_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Varint) -> (
-      v.index <- Pbrt.Decoder.int_as_varint d;
+      v.index <- Pbrt.Decoder.int_as_varint d; index_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_entry), field(1)", pk))
     )
     | Some (2, Pbrt.Varint) -> (
-      v.term <- Pbrt.Decoder.int_as_varint d;
+      v.term <- Pbrt.Decoder.int_as_varint d; term_is_set := true;
       loop ()
     )
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_entry), field(2)", pk))
     )
     | Some (3, Pbrt.Bytes) -> (
-      v.data <- Pbrt.Decoder.bytes d;
+      v.data <- Pbrt.Decoder.bytes d; data_is_set := true;
       loop ()
     )
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_entry), field(3)", pk))
     )
     | Some (4, Pbrt.Bytes) -> (
-      v.id <- Pbrt.Decoder.string d;
+      v.id <- Pbrt.Decoder.string d; id_is_set := true;
       loop ()
     )
     | Some (4, pk) -> raise (
@@ -658,39 +637,48 @@ let rec decode_log_entry d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !id_is_set then raise Protobuf.Decoder.(Failure (Missing_field "id")) end;
+  begin if not !data_is_set then raise Protobuf.Decoder.(Failure (Missing_field "data")) end;
+  begin if not !term_is_set then raise Protobuf.Decoder.(Failure (Missing_field "term")) end;
+  begin if not !index_is_set then raise Protobuf.Decoder.(Failure (Missing_field "index")) end;
   let v:log_entry = Obj.magic v in
   v
 
 let rec decode_append_entries_request d =
   let v = default_append_entries_request_mutable () in
+  let leader_commit_is_set = ref false in
+  let prev_log_term_is_set = ref false in
+  let prev_log_index_is_set = ref false in
+  let leader_id_is_set = ref false in
+  let leader_term_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
       v.rev_log_entries <- List.rev v.rev_log_entries;
     )
     | Some (1, Pbrt.Varint) -> (
-      v.leader_term <- Pbrt.Decoder.int_as_varint d;
+      v.leader_term <- Pbrt.Decoder.int_as_varint d; leader_term_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_request), field(1)", pk))
     )
     | Some (2, Pbrt.Varint) -> (
-      v.leader_id <- Pbrt.Decoder.int_as_varint d;
+      v.leader_id <- Pbrt.Decoder.int_as_varint d; leader_id_is_set := true;
       loop ()
     )
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_request), field(2)", pk))
     )
     | Some (3, Pbrt.Varint) -> (
-      v.prev_log_index <- Pbrt.Decoder.int_as_varint d;
+      v.prev_log_index <- Pbrt.Decoder.int_as_varint d; prev_log_index_is_set := true;
       loop ()
     )
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_request), field(3)", pk))
     )
     | Some (4, Pbrt.Varint) -> (
-      v.prev_log_term <- Pbrt.Decoder.int_as_varint d;
+      v.prev_log_term <- Pbrt.Decoder.int_as_varint d; prev_log_term_is_set := true;
       loop ()
     )
     | Some (4, pk) -> raise (
@@ -704,7 +692,7 @@ let rec decode_append_entries_request d =
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_request), field(5)", pk))
     )
     | Some (6, Pbrt.Varint) -> (
-      v.leader_commit <- Pbrt.Decoder.int_as_varint d;
+      v.leader_commit <- Pbrt.Decoder.int_as_varint d; leader_commit_is_set := true;
       loop ()
     )
     | Some (6, pk) -> raise (
@@ -713,17 +701,23 @@ let rec decode_append_entries_request d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !leader_commit_is_set then raise Protobuf.Decoder.(Failure (Missing_field "leader_commit")) end;
+  begin if not !prev_log_term_is_set then raise Protobuf.Decoder.(Failure (Missing_field "prev_log_term")) end;
+  begin if not !prev_log_index_is_set then raise Protobuf.Decoder.(Failure (Missing_field "prev_log_index")) end;
+  begin if not !leader_id_is_set then raise Protobuf.Decoder.(Failure (Missing_field "leader_id")) end;
+  begin if not !leader_term_is_set then raise Protobuf.Decoder.(Failure (Missing_field "leader_term")) end;
   let v:append_entries_request = Obj.magic v in
   v
 
 let rec decode_append_entries_response_success_data d =
   let v = default_append_entries_response_success_data_mutable () in
+  let receiver_last_log_index_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Varint) -> (
-      v.receiver_last_log_index <- Pbrt.Decoder.int_as_varint d;
+      v.receiver_last_log_index <- Pbrt.Decoder.int_as_varint d; receiver_last_log_index_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
@@ -732,17 +726,19 @@ let rec decode_append_entries_response_success_data d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !receiver_last_log_index_is_set then raise Protobuf.Decoder.(Failure (Missing_field "receiver_last_log_index")) end;
   let v:append_entries_response_success_data = Obj.magic v in
   v
 
 let rec decode_append_entries_response_log_failure_data d =
   let v = default_append_entries_response_log_failure_data_mutable () in
+  let receiver_last_log_index_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Varint) -> (
-      v.receiver_last_log_index <- Pbrt.Decoder.int_as_varint d;
+      v.receiver_last_log_index <- Pbrt.Decoder.int_as_varint d; receiver_last_log_index_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
@@ -751,6 +747,7 @@ let rec decode_append_entries_response_log_failure_data d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !receiver_last_log_index_is_set then raise Protobuf.Decoder.(Failure (Missing_field "receiver_last_log_index")) end;
   let v:append_entries_response_log_failure_data = Obj.magic v in
   v
 
@@ -772,19 +769,21 @@ let rec decode_append_entries_response_result d =
 
 and decode_append_entries_response d =
   let v = default_append_entries_response_mutable () in
+  let receiver_term_is_set = ref false in
+  let receiver_id_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Varint) -> (
-      v.receiver_id <- Pbrt.Decoder.int_as_varint d;
+      v.receiver_id <- Pbrt.Decoder.int_as_varint d; receiver_id_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(append_entries_response), field(1)", pk))
     )
     | Some (2, Pbrt.Varint) -> (
-      v.receiver_term <- Pbrt.Decoder.int_as_varint d;
+      v.receiver_term <- Pbrt.Decoder.int_as_varint d; receiver_term_is_set := true;
       loop ()
     )
     | Some (2, pk) -> raise (
@@ -815,6 +814,8 @@ and decode_append_entries_response d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !receiver_term_is_set then raise Protobuf.Decoder.(Failure (Missing_field "receiver_term")) end;
+  begin if not !receiver_id_is_set then raise Protobuf.Decoder.(Failure (Missing_field "receiver_id")) end;
   let v:append_entries_response = Obj.magic v in
   v
 
@@ -837,12 +838,13 @@ let rec decode_message d =
 
 let rec decode_log_interval_compacted d =
   let v = default_log_interval_compacted_mutable () in
+  let record_id_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Bytes) -> (
-      v.record_id <- Pbrt.Decoder.string d;
+      v.record_id <- Pbrt.Decoder.string d; record_id_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
@@ -851,6 +853,7 @@ let rec decode_log_interval_compacted d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !record_id_is_set then raise Protobuf.Decoder.(Failure (Missing_field "record_id")) end;
   let v:log_interval_compacted = Obj.magic v in
   v
 
@@ -891,26 +894,29 @@ let rec decode_log_interval_rev_log_entries d =
 
 and decode_log_interval d =
   let v = default_log_interval_mutable () in
+  let last_index_is_set = ref false in
+  let prev_term_is_set = ref false in
+  let prev_index_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Varint) -> (
-      v.prev_index <- Pbrt.Decoder.int_as_varint d;
+      v.prev_index <- Pbrt.Decoder.int_as_varint d; prev_index_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval), field(1)", pk))
     )
     | Some (2, Pbrt.Varint) -> (
-      v.prev_term <- Pbrt.Decoder.int_as_varint d;
+      v.prev_term <- Pbrt.Decoder.int_as_varint d; prev_term_is_set := true;
       loop ()
     )
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(log_interval), field(2)", pk))
     )
     | Some (3, Pbrt.Varint) -> (
-      v.last_index <- Pbrt.Decoder.int_as_varint d;
+      v.last_index <- Pbrt.Decoder.int_as_varint d; last_index_is_set := true;
       loop ()
     )
     | Some (3, pk) -> raise (
@@ -933,46 +939,54 @@ and decode_log_interval d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !last_index_is_set then raise Protobuf.Decoder.(Failure (Missing_field "last_index")) end;
+  begin if not !prev_term_is_set then raise Protobuf.Decoder.(Failure (Missing_field "prev_term")) end;
+  begin if not !prev_index_is_set then raise Protobuf.Decoder.(Failure (Missing_field "prev_index")) end;
   let v:log_interval = Obj.magic v in
   v
 
 let rec decode_follower_info d =
   let v = default_follower_info_mutable () in
+  let outstanding_request_is_set = ref false in
+  let heartbeat_deadline_is_set = ref false in
+  let match_index_is_set = ref false in
+  let next_index_is_set = ref false in
+  let server_id_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
       v.unsent_entries <- List.rev v.unsent_entries;
     )
     | Some (1, Pbrt.Varint) -> (
-      v.server_id <- Pbrt.Decoder.int_as_varint d;
+      v.server_id <- Pbrt.Decoder.int_as_varint d; server_id_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(1)", pk))
     )
     | Some (2, Pbrt.Varint) -> (
-      v.next_index <- Pbrt.Decoder.int_as_varint d;
+      v.next_index <- Pbrt.Decoder.int_as_varint d; next_index_is_set := true;
       loop ()
     )
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(2)", pk))
     )
     | Some (3, Pbrt.Varint) -> (
-      v.match_index <- Pbrt.Decoder.int_as_varint d;
+      v.match_index <- Pbrt.Decoder.int_as_varint d; match_index_is_set := true;
       loop ()
     )
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(3)", pk))
     )
     | Some (5, Pbrt.Bits32) -> (
-      v.heartbeat_deadline <- Pbrt.Decoder.float_as_bits32 d;
+      v.heartbeat_deadline <- Pbrt.Decoder.float_as_bits32 d; heartbeat_deadline_is_set := true;
       loop ()
     )
     | Some (5, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_info), field(5)", pk))
     )
     | Some (6, Pbrt.Varint) -> (
-      v.outstanding_request <- Pbrt.Decoder.bool d;
+      v.outstanding_request <- Pbrt.Decoder.bool d; outstanding_request_is_set := true;
       loop ()
     )
     | Some (6, pk) -> raise (
@@ -988,6 +1002,11 @@ let rec decode_follower_info d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !outstanding_request_is_set then raise Protobuf.Decoder.(Failure (Missing_field "outstanding_request")) end;
+  begin if not !heartbeat_deadline_is_set then raise Protobuf.Decoder.(Failure (Missing_field "heartbeat_deadline")) end;
+  begin if not !match_index_is_set then raise Protobuf.Decoder.(Failure (Missing_field "match_index")) end;
+  begin if not !next_index_is_set then raise Protobuf.Decoder.(Failure (Missing_field "next_index")) end;
+  begin if not !server_id_is_set then raise Protobuf.Decoder.(Failure (Missing_field "server_id")) end;
   let v:follower_info = Obj.magic v in
   v
 
@@ -1013,19 +1032,21 @@ let rec decode_leader_state d =
 
 let rec decode_candidate_state d =
   let v = default_candidate_state_mutable () in
+  let election_deadline_is_set = ref false in
+  let vote_count_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Varint) -> (
-      v.vote_count <- Pbrt.Decoder.int_as_varint d;
+      v.vote_count <- Pbrt.Decoder.int_as_varint d; vote_count_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(candidate_state), field(1)", pk))
     )
     | Some (2, Pbrt.Bits64) -> (
-      v.election_deadline <- Pbrt.Decoder.float_as_bits64 d;
+      v.election_deadline <- Pbrt.Decoder.float_as_bits64 d; election_deadline_is_set := true;
       loop ()
     )
     | Some (2, pk) -> raise (
@@ -1034,11 +1055,14 @@ let rec decode_candidate_state d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !election_deadline_is_set then raise Protobuf.Decoder.(Failure (Missing_field "election_deadline")) end;
+  begin if not !vote_count_is_set then raise Protobuf.Decoder.(Failure (Missing_field "vote_count")) end;
   let v:candidate_state = Obj.magic v in
   v
 
 let rec decode_follower_state d =
   let v = default_follower_state_mutable () in
+  let election_deadline_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
@@ -1058,7 +1082,7 @@ let rec decode_follower_state d =
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(follower_state), field(2)", pk))
     )
     | Some (3, Pbrt.Bits64) -> (
-      v.election_deadline <- Pbrt.Decoder.float_as_bits64 d;
+      v.election_deadline <- Pbrt.Decoder.float_as_bits64 d; election_deadline_is_set := true;
       loop ()
     )
     | Some (3, pk) -> raise (
@@ -1067,6 +1091,7 @@ let rec decode_follower_state d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !election_deadline_is_set then raise Protobuf.Decoder.(Failure (Missing_field "election_deadline")) end;
   let v:follower_state = Obj.magic v in
   v
 
@@ -1088,47 +1113,53 @@ let rec decode_role d =
 
 let rec decode_configuration d =
   let v = default_configuration_mutable () in
+  let log_interval_size_is_set = ref false in
+  let max_nb_logs_per_message_is_set = ref false in
+  let hearbeat_timeout_is_set = ref false in
+  let election_timeout_range_is_set = ref false in
+  let election_timeout_is_set = ref false in
+  let nb_of_server_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Varint) -> (
-      v.nb_of_server <- Pbrt.Decoder.int_as_varint d;
+      v.nb_of_server <- Pbrt.Decoder.int_as_varint d; nb_of_server_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(1)", pk))
     )
     | Some (2, Pbrt.Bits64) -> (
-      v.election_timeout <- Pbrt.Decoder.float_as_bits64 d;
+      v.election_timeout <- Pbrt.Decoder.float_as_bits64 d; election_timeout_is_set := true;
       loop ()
     )
     | Some (2, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(2)", pk))
     )
     | Some (3, Pbrt.Bits64) -> (
-      v.election_timeout_range <- Pbrt.Decoder.float_as_bits64 d;
+      v.election_timeout_range <- Pbrt.Decoder.float_as_bits64 d; election_timeout_range_is_set := true;
       loop ()
     )
     | Some (3, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(3)", pk))
     )
     | Some (4, Pbrt.Bits64) -> (
-      v.hearbeat_timeout <- Pbrt.Decoder.float_as_bits64 d;
+      v.hearbeat_timeout <- Pbrt.Decoder.float_as_bits64 d; hearbeat_timeout_is_set := true;
       loop ()
     )
     | Some (4, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(4)", pk))
     )
     | Some (5, Pbrt.Varint) -> (
-      v.max_nb_logs_per_message <- Pbrt.Decoder.int_as_varint d;
+      v.max_nb_logs_per_message <- Pbrt.Decoder.int_as_varint d; max_nb_logs_per_message_is_set := true;
       loop ()
     )
     | Some (5, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(configuration), field(5)", pk))
     )
     | Some (6, Pbrt.Varint) -> (
-      v.log_interval_size <- Pbrt.Decoder.int_as_varint d;
+      v.log_interval_size <- Pbrt.Decoder.int_as_varint d; log_interval_size_is_set := true;
       loop ()
     )
     | Some (6, pk) -> raise (
@@ -1137,6 +1168,12 @@ let rec decode_configuration d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !log_interval_size_is_set then raise Protobuf.Decoder.(Failure (Missing_field "log_interval_size")) end;
+  begin if not !max_nb_logs_per_message_is_set then raise Protobuf.Decoder.(Failure (Missing_field "max_nb_logs_per_message")) end;
+  begin if not !hearbeat_timeout_is_set then raise Protobuf.Decoder.(Failure (Missing_field "hearbeat_timeout")) end;
+  begin if not !election_timeout_range_is_set then raise Protobuf.Decoder.(Failure (Missing_field "election_timeout_range")) end;
+  begin if not !election_timeout_is_set then raise Protobuf.Decoder.(Failure (Missing_field "election_timeout")) end;
+  begin if not !nb_of_server_is_set then raise Protobuf.Decoder.(Failure (Missing_field "nb_of_server")) end;
   let v:configuration = Obj.magic v in
   v
 
@@ -1148,19 +1185,21 @@ let rec decode_timeout_event_time_out_type d =
 
 let rec decode_timeout_event d =
   let v = default_timeout_event_mutable () in
+  let timeout_type_is_set = ref false in
+  let timeout_is_set = ref false in
   let rec loop () = 
     match Pbrt.Decoder.key d with
     | None -> (
     )
     | Some (1, Pbrt.Bits64) -> (
-      v.timeout <- Pbrt.Decoder.float_as_bits64 d;
+      v.timeout <- Pbrt.Decoder.float_as_bits64 d; timeout_is_set := true;
       loop ()
     )
     | Some (1, pk) -> raise (
       Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(timeout_event), field(1)", pk))
     )
     | Some (2, Pbrt.Varint) -> (
-      v.timeout_type <- decode_timeout_event_time_out_type d;
+      v.timeout_type <- decode_timeout_event_time_out_type d; timeout_type_is_set := true;
       loop ()
     )
     | Some (2, pk) -> raise (
@@ -1169,63 +1208,10 @@ let rec decode_timeout_event d =
     | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
   in
   loop ();
+  begin if not !timeout_type_is_set then raise Protobuf.Decoder.(Failure (Missing_field "timeout_type")) end;
+  begin if not !timeout_is_set then raise Protobuf.Decoder.(Failure (Missing_field "timeout")) end;
   let v:timeout_event = Obj.magic v in
   v
-
-let rec decode_notification_commited_data d =
-  let v = default_notification_commited_data_mutable () in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-      v.rev_log_entries <- List.rev v.rev_log_entries;
-    )
-    | Some (1, Pbrt.Bytes) -> (
-      v.rev_log_entries <- (decode_log_entry (Pbrt.Decoder.nested d)) :: v.rev_log_entries;
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(notification_commited_data), field(1)", pk))
-    )
-    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  let v:notification_commited_data = Obj.magic v in
-  v
-
-let rec decode_notification_new_leader d =
-  let v = default_notification_new_leader_mutable () in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-    )
-    | Some (1, Pbrt.Varint) -> (
-      v.leader_id <- Pbrt.Decoder.int_as_varint d;
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(notification_new_leader), field(1)", pk))
-    )
-    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  let v:notification_new_leader = Obj.magic v in
-  v
-
-let rec decode_notification d = 
-  let rec loop () = 
-    let ret:notification = match Pbrt.Decoder.key d with
-      | None -> failwith "None of the known key is found"
-      | Some (1, _) -> Committed_data (decode_notification_commited_data (Pbrt.Decoder.nested d))
-      | Some (2, _) -> New_leader (decode_notification_new_leader (Pbrt.Decoder.nested d))
-      | Some (3, _) -> (Pbrt.Decoder.empty_nested d ; No_leader)
-      | Some (n, payload_kind) -> (
-        Pbrt.Decoder.skip d payload_kind; 
-        loop () 
-      )
-    in
-    ret
-  in
-  loop ()
 
 let rec decode_compaction_report d =
   let v = default_compaction_report_mutable () in
@@ -1506,33 +1492,6 @@ let rec encode_timeout_event (v:timeout_event) encoder =
   encode_timeout_event_time_out_type v.timeout_type encoder;
   ()
 
-let rec encode_notification_commited_data (v:notification_commited_data) encoder = 
-  List.iter (fun x -> 
-    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_log_entry x) encoder;
-  ) v.rev_log_entries;
-  ()
-
-let rec encode_notification_new_leader (v:notification_new_leader) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
-  Pbrt.Encoder.int_as_varint v.leader_id encoder;
-  ()
-
-let rec encode_notification (v:notification) encoder = 
-  match v with
-  | Committed_data x -> (
-    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_notification_commited_data x) encoder;
-  )
-  | New_leader x -> (
-    Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.nested (encode_notification_new_leader x) encoder;
-  )
-  | No_leader -> (
-    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
-    Pbrt.Encoder.empty_nested encoder
-  )
-
 let rec encode_compaction_report (v:compaction_report) encoder = 
   List.iter (fun x -> 
     Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
@@ -1732,28 +1691,6 @@ let rec pp_timeout_event fmt (v:timeout_event) =
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
-
-let rec pp_notification_commited_data fmt (v:notification_commited_data) = 
-  let pp_i fmt () =
-    Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "rev_log_entries" (Pbrt.Pp.pp_list pp_log_entry) fmt v.rev_log_entries;
-    Format.pp_close_box fmt ()
-  in
-  Pbrt.Pp.pp_brk pp_i fmt ()
-
-let rec pp_notification_new_leader fmt (v:notification_new_leader) = 
-  let pp_i fmt () =
-    Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "leader_id" Pbrt.Pp.pp_int fmt v.leader_id;
-    Format.pp_close_box fmt ()
-  in
-  Pbrt.Pp.pp_brk pp_i fmt ()
-
-let rec pp_notification fmt (v:notification) =
-  match v with
-  | Committed_data x -> Format.fprintf fmt "@[Committed_data(%a)@]" pp_notification_commited_data x
-  | New_leader x -> Format.fprintf fmt "@[New_leader(%a)@]" pp_notification_new_leader x
-  | No_leader  -> Format.fprintf fmt "No_leader"
 
 let rec pp_compaction_report fmt (v:compaction_report) = 
   let pp_i fmt () =
