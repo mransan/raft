@@ -30,11 +30,11 @@ val make_initial_state :
   id:int ->
   unit ->
   Raft_state.t
-(* [make_initial_state ~configuration ~now ~id ()] creates an initial server
-   state.
+(** [make_initial_state ~configuration ~now ~id ()] creates an initial server
+    state.
   
-   The server is initially a [Followe] and its [election_deadline] will be
-   set according to the [configuration].
+    The server is initially a [Follower] and its [election_deadline] will be
+    set according to the [configuration].
  *)
 
 val handle_message :
@@ -42,9 +42,7 @@ val handle_message :
   Raft_pb.message ->
   time ->
   Raft_state.t * (message_to_send list) * Raft_pb.notification list 
-(** [handle_message state message now] process the message by dispatching it
-    to the appropriate module. It also handles keeping track to which server
-    the response must be sent.
+(** [handle_message state message now] handle an incoming Raft message. 
   *)
 
 val handle_new_election_timeout :

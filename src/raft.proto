@@ -28,9 +28,9 @@ package raft;
 //                            /  \ 
 //                     C2a- S2----S3 - C3a
 //
-// The messages below define the data exchanged between the servers participating
-// in the RAFT protocol; they do not include the message between the clients 
-// and the RAFT servers. 
+// The messages below define the data exchanged between the servers 
+// participating in the RAFT protocol; they do not include the message 
+// between the clients and the RAFT servers. 
 //
 // The 4 RAFT messages are divided into 2 request/response pairs. 
 //

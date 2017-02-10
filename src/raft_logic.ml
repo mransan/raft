@@ -279,6 +279,7 @@ let handle_request_vote_response state response now =
        *)
 
 (** {2 Append Entries} *)
+
 let update_state leader_commit receiver_last_log_index log state = 
   if leader_commit > state.State.commit_index
   then 
@@ -314,7 +315,9 @@ let handle_append_entries_request state request now =
     (* This request is coming from a legetimate leader,
      * let's ensure that this server is a follower.
      *)
-    let state  = Follower.become ~current_leader:leader_id ~term:leader_term ~now state in
+    let state  = 
+      Follower.become ~current_leader:leader_id ~term:leader_term ~now state 
+    in 
 
     (* Next step is to handle the log entries from the leader.
      *
@@ -331,7 +334,6 @@ let handle_append_entries_request state request now =
     ) = Log.last_log_index_and_term state.State.log in 
 
     let commit_index = state.State.commit_index in 
-
 
     if prev_log_index < commit_index
     then 
@@ -351,7 +353,10 @@ let handle_append_entries_request state request now =
            *)
           let log = Log.add_log_entries ~rev_log_entries state.State.log in 
           let receiver_last_log_index = Log.last_log_index log in 
-          let state = update_state leader_commit receiver_last_log_index log state in
+          let state = 
+            update_state leader_commit receiver_last_log_index log state 
+          in
+          
           (state, make_response state (Success {receiver_last_log_index})) 
 
         | x when x > 0 -> 
@@ -367,8 +372,9 @@ let handle_append_entries_request state request now =
            * This case is possible when messages are received out of order  by 
            * the Follower
            *
-           * Note that even if the prev_log_index is earlier, it's important that 
-           * no log entry is removed from the log if they come from the current leader. 
+           * Note that even if the prev_log_index is earlier, it's important 
+           * that no log entry is removed from the log if they come from the 
+           * current leader. 
            *
            * The current leader might have sent a commit message back to a 
            * client believing that the log entry is replicated on this server. 
@@ -388,26 +394,34 @@ let handle_append_entries_request state request now =
           (state, make_response state (Log_failure {receiver_last_log_index})) 
         else
           (* 
-           * Because it is a new Leader, this followe can safely remove all the logs 
-           * from previous terms which were not commited. 
+           * Because it is a new Leader, this followe can safely remove all 
+           * the logs from previous terms which were not commited. 
            *)
-          match Log.remove_log_since ~prev_log_index ~prev_log_term state.State.log with
+          
+          match Log.remove_log_since ~prev_log_index 
+                ~prev_log_term state.State.log with
           | exception Not_found ->
-            (state, make_response state (Log_failure {receiver_last_log_index = commit_index}))
+             let failure = {
+               receiver_last_log_index = commit_index; 
+             } in 
+            (state, make_response state (Log_failure failure))
             (* 
              * This is the case where there is a mismatch between the [Leader] 
-             * and this server and the log entry identified with (prev_log_index, prev_log_term)
+             * and this server and the log entry identified with 
+             * (prev_log_index, prev_log_term)
              * could not be found. 
              *
-             * In such a case, the safest log entry to synchronize upon is the commit_index 
+             * In such a case, the safest log entry to synchronize upon is the 
+             * commit_index 
              * of the follower. 
-             *
              *)
 
           | log -> 
             let log = Log.add_log_entries ~rev_log_entries log in 
             let receiver_last_log_index = Log.last_log_index log in 
-            let state = update_state leader_commit receiver_last_log_index log state in 
+            let state = 
+              update_state leader_commit receiver_last_log_index log state 
+            in 
             (state, make_response state (Success {receiver_last_log_index})) 
 
 let handle_append_entries_response state response now =
