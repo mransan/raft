@@ -2,12 +2,39 @@ open Raft_pb
 
 module Log = Raft_log
 
+type follower_info = {
+  server_id : int;
+  next_index : int;
+  match_index : int;
+  heartbeat_deadline : float;
+  outstanding_request : bool;
+  unsent_entries : log_entry list;
+}
+
+type leader_state = follower_info list
+
+type candidate_state = {
+  vote_count : int;
+  election_deadline : float;
+}
+
+type follower_state = {
+  voted_for : int option;
+  current_leader : int option;
+  election_deadline : float;
+}
+
+type role =
+  | Leader of leader_state
+  | Candidate of candidate_state
+  | Follower of follower_state
+
 type t = {
   id : int;
   current_term : int;
   log : Raft_log.t;
   commit_index : int;
-  role : Raft_pb.role;
+  role : role;
   configuration : Raft_pb.configuration;
 }
 
@@ -142,7 +169,7 @@ let compaction state =
         {to_be_expanded = []; to_be_compacted = []}
     end
 
-  | Leader {followers} -> 
+  | Leader followers -> 
     (* For each server next_index we should keep expanded 2 log intervals:
      * a) The one that the next index belongs to 
      * b) The next one after a)

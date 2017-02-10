@@ -205,7 +205,7 @@ let ()  =
      *)
 
   begin match server0.role with
-  | Leader {followers} -> (
+  | Leader followers -> (
     assert(2 = List.length followers);
       (*
        * The leader maintain various state for each of the

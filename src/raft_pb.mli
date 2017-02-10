@@ -76,35 +76,6 @@ and log_interval = {
   rev_log_entries : log_interval_rev_log_entries;
 }
 
-type follower_info = {
-  server_id : int;
-  next_index : int;
-  match_index : int;
-  heartbeat_deadline : float;
-  outstanding_request : bool;
-  unsent_entries : log_entry list;
-}
-
-type leader_state = {
-  followers : follower_info list;
-}
-
-type candidate_state = {
-  vote_count : int;
-  election_deadline : float;
-}
-
-type follower_state = {
-  voted_for : int option;
-  current_leader : int option;
-  election_deadline : float;
-}
-
-type role =
-  | Leader of leader_state
-  | Candidate of candidate_state
-  | Follower of follower_state
-
 type configuration = {
   nb_of_server : int;
   election_timeout : float;

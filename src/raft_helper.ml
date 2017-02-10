@@ -26,11 +26,11 @@ module Timeout_event = struct
 
   let next state now = 
     match state.State.role with
-    | Follower {election_deadline; _} ->
+    | State.Follower {State.election_deadline; _} ->
       existing_election_wait election_deadline  now  
-    | Leader leader_state -> 
+    | State.Leader leader_state -> 
       make_heartbeat_wait (Leader.min_heartbeat_timout ~now leader_state)
-    | Candidate {election_deadline; _ } -> 
+    | State.Candidate {State.election_deadline; _ } -> 
       existing_election_wait election_deadline  now  
 
 end 

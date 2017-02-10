@@ -34,7 +34,9 @@ module Candidate : sig
       of the configuration. 
     *)
 
-  val increment_vote_count : Raft_pb.candidate_state -> Raft_pb.candidate_state
+  val increment_vote_count : 
+    Raft_state.candidate_state -> 
+    Raft_state.candidate_state
   (** [increment_vote_count state] increments the candidate vote count 
       by 1.
 
@@ -61,8 +63,8 @@ module Leader : sig
   val update_receiver_last_log_index : 
     receiver_id:int -> 
     log_index:int -> 
-    Raft_pb.leader_state -> 
-    (Raft_pb.leader_state * int) 
+    Raft_state.leader_state -> 
+    (Raft_state.leader_state * int) 
   (** [update_receiver_last_log_index leader_state receiver_id last_log_index] updates the leader
        state with the [last_log_index] information received from a server. (Both [next_index]
        and [match_index] are updated. 
@@ -74,8 +76,8 @@ module Leader : sig
 
   val record_response_received : 
     receiver_id:int -> 
-    Raft_pb.leader_state -> 
-    Raft_pb.leader_state 
+    Raft_state.leader_state -> 
+    Raft_state.leader_state 
   (** [record_response_received ~server_id leader_state] keeps track of the 
       fact that there are no more outstanding request for [server_id].
     *) 
@@ -84,9 +86,9 @@ module Leader : sig
     log_failure:Raft_pb.append_entries_response_log_failure_data -> 
     receiver_id:int -> 
     Raft_state.t -> 
-    Raft_pb.leader_state -> 
-    Raft_pb.leader_state
+    Raft_state.leader_state -> 
+    Raft_state.leader_state
   
-  val min_heartbeat_timout : now:float -> Raft_pb.leader_state -> float
+  val min_heartbeat_timout : now:float -> Raft_state.leader_state -> float
 
 end (* Leader  *) 

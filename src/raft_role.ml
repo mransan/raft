@@ -13,11 +13,11 @@ module Follower = struct
       id; 
       log = Log.empty;
       commit_index = 0; 
-      role = Follower {
+      role = State.(Follower {
         voted_for = None; 
         current_leader = None;
         election_deadline = now +.  timeout 
-      };  
+      });  
       configuration; 
     }
 
@@ -26,27 +26,27 @@ module Follower = struct
     let election_deadline  = now +. t +. (Random.float r -. (r /. 2.)) in
 
     let role = match state.State.role with
-      | Follower follower_state -> 
+      | State.Follower follower_state -> 
         let voted_for = 
           if term = state.State.current_term 
-          then follower_state.voted_for 
+          then follower_state.State.voted_for 
           else None 
         in 
-        Follower {
-          current_leader; 
-          election_deadline;
-          voted_for;
+        State.Follower {
+          State.current_leader; 
+          State.election_deadline;
+          State.voted_for;
         }
-      | Candidate _ when state.State.current_term = term -> 
-        Follower {
-          voted_for = Some state.State.id;
-          current_leader; 
-          election_deadline; 
+      | State.Candidate _ when state.State.current_term = term -> 
+        State.Follower {
+          State.voted_for = Some state.State.id;
+          State.current_leader; 
+          State.election_deadline; 
         }
-      | _ -> Follower {
-        voted_for = None;
-        current_leader; 
-        election_deadline;
+      | _ -> State.Follower {
+        State.voted_for = None;
+        State.current_leader; 
+        State.election_deadline;
       }
     in 
     { state with State.current_term = term; role } 
@@ -58,17 +58,17 @@ module Candidate = struct
   let become ~now state = 
     let {election_timeout = t; election_timeout_range = r; _ } = state.State.configuration in 
     let timeout = t +. (Random.float r -. (r /. 2.)) in
-    let candidate_state = {
+    let role = State.(Candidate {
       vote_count = 1; 
       election_deadline = now +. timeout;
-    } in 
+    }) in 
     {state with 
-     State.role = Candidate candidate_state; 
+     State.role;
      State.current_term = state.State.current_term + 1; 
     } 
 
-  let increment_vote_count ({vote_count; _ } as candidate_state) = 
-    {candidate_state with vote_count = vote_count + 1}
+  let increment_vote_count ({State.vote_count; _ } as candidate_state) = 
+    {candidate_state with State.vote_count = vote_count + 1}
 
 end 
 
@@ -95,8 +95,8 @@ module Leader = struct
              * added. 
              *)
 
-          let follower:follower_info = {
-            server_id = i; 
+          let follower:State.follower_info = {
+            State.server_id = i; 
             next_index; 
             match_index; 
             unsent_entries; 
@@ -114,7 +114,7 @@ module Leader = struct
     in 
     let followers = aux [] (nb_of_server - 1) in 
     
-    {state with State.role = Leader {followers}}
+    {state with State.role = State.(Leader followers)}
 
 
   (*
@@ -123,22 +123,21 @@ module Leader = struct
    *)  
   let update_index ~receiver_id ~f leader_state = 
 
-    let followers = List.map (fun follower -> 
-      if follower.server_id = receiver_id
+    List.map (fun follower -> 
+      if follower.State.server_id = receiver_id
       then (f follower)
       else follower
-    ) leader_state.followers in
-
-    {followers}
+    ) leader_state 
 
   let update_receiver_last_log_index ~receiver_id ~log_index leader_state = 
 
-    let leader_state = update_index ~receiver_id ~f:(fun ({next_index; match_index; _} as index) ->
+    let leader_state = update_index ~receiver_id ~f:(fun index -> 
+      let {State.next_index; match_index; _} = index in 
       let upd_next_index = log_index + 1 in 
       let upd_match_index = log_index in 
       if upd_match_index > match_index && upd_next_index > next_index
       then 
-        {index with next_index = log_index + 1; match_index = log_index}
+        {index with State.next_index = log_index + 1; match_index = log_index}
       else
         (*
          * It is possible to receive out of order responses from the other 
@@ -154,11 +153,11 @@ module Leader = struct
     (* Calculate the number of server which also have replicated that 
        log entry
      *)
-    let nb_of_replications = List.fold_left (fun n {match_index; _ } -> 
+    let nb_of_replications = List.fold_left (fun n {State.match_index; _ } -> 
       if match_index >= log_index 
       then n + 1 
       else n
-    ) 0 leader_state.followers in 
+    ) 0 leader_state in
     
     (leader_state, nb_of_replications) 
 
@@ -185,8 +184,8 @@ module Leader = struct
        *)
     update_index ~receiver_id ~f:(fun index -> 
       {index with 
-       next_index = receiver_last_log_index + 1; 
-       match_index = receiver_last_log_index}
+       State.next_index = receiver_last_log_index + 1; 
+       State.match_index = receiver_last_log_index}
     )  leader_state
 
   let record_response_received ~receiver_id leader_state = 
@@ -194,13 +193,14 @@ module Leader = struct
     update_index 
       ~receiver_id
       ~f:(fun index ->
-        {index with outstanding_request = false;}
+        {index with State.outstanding_request = false;}
       ) 
       leader_state
     
-  let min_heartbeat_timout ~now {followers} = 
+  let min_heartbeat_timout ~now followers = 
 
-    let min_heartbeat_deadline = List.fold_left (fun min_deadline {heartbeat_deadline; _ } -> 
+    let min_heartbeat_deadline = List.fold_left (fun min_deadline f -> 
+      let {State.heartbeat_deadline; _ } = f in
         if heartbeat_deadline < min_deadline
         then heartbeat_deadline
         else min_deadline

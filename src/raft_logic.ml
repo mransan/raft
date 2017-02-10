@@ -53,14 +53,14 @@ module Log_entry_util = struct
     } in
     (unsent_entries, request)
 
-  let compute_append_entries state {followers} now =
+  let compute_append_entries state followers now =
 
     let rec aux followers msgs_to_send = function 
-      | [] -> ({followers}, msgs_to_send) 
+      | [] -> (followers, msgs_to_send) 
 
       | follower::tl -> 
         let {
-          server_id;
+          State.server_id;
           heartbeat_deadline;
           outstanding_request;
           next_index;
@@ -100,11 +100,13 @@ module Log_entry_util = struct
           let unsent_entries, request = make_append_entries (next_index - 1) unsent_entries state in
           let follower = 
             let outstanding_request = true in 
-            let heartbeat_deadline = now +. state.State.configuration.hearbeat_timeout in 
+            let heartbeat_deadline = 
+              now +. state.State.configuration.hearbeat_timeout 
+            in 
             {follower with
-              unsent_entries; 
-              outstanding_request; 
-              heartbeat_deadline; 
+              State.unsent_entries; 
+              State.outstanding_request; 
+              State.heartbeat_deadline; 
             } 
           in 
           let followers = follower::followers in
@@ -169,7 +171,7 @@ let handle_request_vote_request state request now =
     else
       let role = state.State.role in
       match role with
-      | Follower {voted_for = None; _} ->
+      | State.Follower {State.voted_for = None; _} ->
         (*
          * This server has never voted before, candidate is getting the vote
          *
@@ -180,15 +182,15 @@ let handle_request_vote_request state request now =
 
         let {State.configuration = {election_timeout; _ }; _} = state in
         let state ={state with
-          State.role = Follower {
-            voted_for         = Some candidate_id;
-            current_leader    = None;
-            election_deadline = now +. election_timeout;
+          State.role = State.Follower {
+            State.voted_for         = Some candidate_id;
+            State.current_leader    = None;
+            State.election_deadline = now +. election_timeout;
           }
         } in
         (state, make_response state true)
 
-      | Follower {voted_for = Some id; _ } when id = candidate_id ->
+      | State.Follower {State.voted_for = Some id; _ } when id = candidate_id ->
         (*
          * This server has already voted for that candidate ... reminding him
          *
@@ -220,7 +222,7 @@ let handle_request_vote_response state response now =
 
   else
     match role, vote_granted  with
-    | Candidate ({vote_count; _ } as candidate_state) , true ->
+    | State.Candidate ({State.vote_count; _ } as candidate_state) , true ->
       let has_majority = vote_count >= (configuration.nb_of_server / 2) in
       if  has_majority
       then
@@ -237,21 +239,21 @@ let handle_request_vote_response state response now =
          * start synching its log with the others.
          *)
         begin match state.State.role with
-        | Leader {followers} ->
+        | State.Leader followers ->
           let rec aux followers msgs_to_send = function
             | [] -> 
-              ({state with State.role = Leader {followers}}, msgs_to_send)
+              (State.({state with role = Leader followers}), msgs_to_send)
 
             | follower :: tl ->
               let {
-                server_id; 
-                next_index; 
-                unsent_entries;_  
+                State.server_id; 
+                State.next_index; 
+                State.unsent_entries;_  
               } = follower in 
               let prev_log_index = next_index - 1 in
               let unsent_entries, req  = Log_entry_util.make_append_entries prev_log_index unsent_entries state in
               let msg_to_send = (Append_entries_request req, server_id) in
-              aux ({follower with unsent_entries;}::followers) (msg_to_send::msgs_to_send) tl 
+              aux ({follower with State.unsent_entries;}::followers) (msg_to_send::msgs_to_send) tl 
           in
           aux [] [] followers 
         | _ -> assert(false)
@@ -259,18 +261,18 @@ let handle_request_vote_response state response now =
       else
         (* Candidate has a new vote but not yet reached the majority
          *)
-        let new_state = {state with
-          State.role = Candidate (Candidate.increment_vote_count candidate_state);
+        let new_state = State.{state with
+          role = Candidate (Candidate.increment_vote_count candidate_state);
         } in
         (new_state, [])
 
-    | Candidate _ , false
+    | State.Candidate _ , false
       (* The vote was denied, the election keeps on going until
        * its deadline.
        *)
 
-    | Follower _ , _
-    | Leader   _ , _ -> (state, [])
+    | State.Follower _ , _
+    | State.Leader   _ , _ -> (state, [])
       (* If the server is either Follower or Leader, it means that
        * it has changed role in between the time it sent the
        * [RequestVote] request and this response.
@@ -438,10 +440,10 @@ let handle_append_entries_response state response now =
 
   else
     match state.State.role with
-    | Follower _
-    | Candidate _ -> (state, [])
+    | State.Follower _
+    | State.Candidate _ -> (state, [])
 
-    | Leader leader_state ->
+    | State.Leader leader_state ->
 
       let leader_state =
         Leader.record_response_received ~receiver_id leader_state
@@ -487,7 +489,7 @@ let handle_append_entries_response state response now =
           Log_entry_util.compute_append_entries state leader_state now 
         in
 
-        let state = {state with State.role = Leader leader_state} in
+        let state = State.({state with role = Leader leader_state}) in
 
         (state, msgs_to_send)
 
@@ -575,11 +577,11 @@ let handle_new_election_timeout state now =
 
 let handle_heartbeat_timeout state now =
   match state.State.role with
-  | Leader leader_state ->
+  | State.Leader leader_state ->
     let leader_state, msgs_to_send =
       Log_entry_util.compute_append_entries state leader_state now
     in
-    let state = {state with State.role = Leader leader_state} in
+    let state = State.({state with role = Leader leader_state}) in
     (state, msgs_to_send)
   | _ ->
     (state, [])
@@ -591,25 +593,27 @@ type new_log_response =
 
 let handle_add_log_entries state datas now =
   match state.State.role with
-  | Follower {current_leader = None ; _ }
-  | Candidate _ ->
+  | State.Follower {State.current_leader = None ; _ }
+  | State.Candidate _ ->
     Delay
     (* Server in the middle of an election with no [Leader]
      * agreed upon yet
      *)
 
-  | Follower {current_leader = Some leader_id; _ } ->
+  | State.Follower {State.current_leader = Some leader_id; _ } ->
     Forward_to_leader leader_id
     (* The [Leader] should be the one centralizing all the
      * new log entries.
      *)
 
-  | Leader leader_state ->
+  | State.Leader leader_state ->
 
     let state = {state with 
       State.log = Log.add_log_datas state.State.current_term datas state.State.log
     } in 
-    let leader_state, msgs_to_send = Log_entry_util.compute_append_entries state leader_state now in
+    let leader_state, msgs_to_send = 
+      Log_entry_util.compute_append_entries state leader_state now 
+    in
     let state = State.({state with role = Leader leader_state }) in
     Appended (state, msgs_to_send)
 
