@@ -97,27 +97,6 @@ type message =
   | Append_entries_request of append_entries_request
   | Append_entries_response of append_entries_response
 
-type log_interval_compacted = {
-  record_id : string;
-}
-
-type log_interval_expanded = {
-  entries : log_entry list;
-}
-
-type log_interval_rev_log_entries =
-  | Compacted of log_interval_compacted
-  | Expanded of log_interval_expanded
-
-and log_interval = {
-  prev_index : int;
-  prev_term : int;
-  last_index : int;
-  rev_log_entries : log_interval_rev_log_entries;
-
-}
-
-
 type configuration = {
   nb_of_server : int;
   election_timeout : float;
@@ -140,11 +119,6 @@ type notification =
   | Committed_data of log_entry list
   | New_leader of int 
   | No_leader
-
-type compaction_report = {
-  to_be_compacted : log_interval list;
-  to_be_expanded : log_interval list;
-}
 
 let rec default_request_vote_request 
   ?candidate_term:((candidate_term:int) = 0)

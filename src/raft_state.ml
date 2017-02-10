@@ -137,9 +137,14 @@ let current_leader {id; role; _} =
  *)
 let collect_all_non_compacted_logs state = 
   Log.Past_entries.fold (fun acc -> function
-    | {rev_log_entries = Compacted _; _} -> acc 
+    | {Log.rev_log_entries = Log.Compacted _; _} -> acc 
     | log_interval -> log_interval::acc 
   ) [] state.log
+
+type compaction_report = {
+  to_be_compacted : Log.log_interval list;
+  to_be_expanded : Log.log_interval list;
+}
 
 let compaction state = 
 
@@ -160,10 +165,11 @@ let compaction state =
      * than itself. Therefore having the last 2 cache available would avoid
      * reloading compacted logs. 
      *
-     * We also assume that a Follower would never need to un-compact a previously
-     * compacted log which is Ok since it is not used by other Followers to replicate
-     * data. (Maybe one day we would allow a [Follower] to be used to return previously 
-     * commited log, since a follower is usually less busy then the [Leader]. 
+     * We also assume that a Follower would never need to un-compact a 
+     * previously compacted log which is Ok since it is not used by other 
+     * Followers to replicate data. (Maybe one day we would allow a 
+     * [Follower] to be used to return previously commited log, since a 
+     * follower is usually less busy then the [Leader]. 
      *) 
     | _ -> 
         {to_be_expanded = []; to_be_compacted = []}
@@ -205,15 +211,19 @@ let compaction state =
         then ((c, log_interval::e, true), tl)
         else 
           begin 
-            assert(next_index > log_interval.last_index);
+            assert(next_index > log_interval.Log.last_index);
             if append_next
             then ((c, log_interval::e, false), next_indices)
             else ((log_interval::c, e, false), next_indices)
           end 
     ) (([], [], false), next_indices) state.log in 
 
-    let is_compacted : log_interval -> bool = function | {rev_log_entries = Compacted _ ; _ } -> true | _ -> false in 
-    let is_expanded  : log_interval -> bool = function | {rev_log_entries = Expanded  _ ; _ } -> true | _ -> false in 
+    let is_compacted : Log.log_interval -> bool = function 
+      | {Log.rev_log_entries = Log.Compacted _ ; _ } -> true | _ -> false 
+    in 
+    let is_expanded  : Log.log_interval -> bool = function 
+      | {Log.rev_log_entries = Log.Expanded  _ ; _ } -> true | _ -> false 
+    in 
 
     let c = List.filter is_expanded  c in 
     let e = List.filter is_compacted e in 

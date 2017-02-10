@@ -1,5 +1,24 @@
 open Raft_pb
 
+type log_interval_compacted = {
+  record_id : string;
+}
+
+type log_interval_expanded = {
+  entries : Raft_pb.log_entry list;
+}
+
+type log_interval_rev_log_entries =
+  | Compacted of log_interval_compacted
+  | Expanded of log_interval_expanded
+
+and log_interval = {
+  prev_index : int;
+  prev_term : int;
+  last_index : int;
+  rev_log_entries : log_interval_rev_log_entries;
+}
+
 module Rope = Raft_rope 
 
 module Term_tree = struct 
@@ -122,7 +141,7 @@ let pp_term_tree = Term_tree.pp
 
 module Past_interval = struct 
 
-  type t = Raft_pb.log_interval 
+  type t = log_interval 
   
   let make_expanded entries = 
     Expanded {entries}
@@ -218,7 +237,7 @@ end (* Past_interval *)
 type t = {
   recent_entries : log_entry list;
   log_size : int;
-  past_entries : Raft_pb.log_interval Raft_rope.t;
+  past_entries : log_interval Raft_rope.t;
   term_tree : term_tree; 
 } 
 

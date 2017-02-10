@@ -91,4 +91,9 @@ val notifications : t -> t -> Raft_pb.notification list
 (** [notifications before after] computes the notification between 2 states 
   *)
 
-val compaction : t -> Raft_pb.compaction_report 
+type compaction_report = {
+  to_be_compacted : Raft_log.log_interval list;
+  to_be_expanded : Raft_log.log_interval list;
+}
+
+val compaction : t -> compaction_report 

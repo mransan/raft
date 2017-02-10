@@ -1,5 +1,24 @@
 (** All Log related logic *)
 
+type log_interval_compacted = {
+  record_id : string;
+}
+
+type log_interval_expanded = {
+  entries : Raft_pb.log_entry list;
+}
+
+type log_interval_rev_log_entries =
+  | Compacted of log_interval_compacted
+  | Expanded of log_interval_expanded
+
+and log_interval = {
+  prev_index : int;
+  prev_term : int;
+  last_index : int;
+  rev_log_entries : log_interval_rev_log_entries;
+}
+
 type term_tree 
 
 val pp_term_tree : Format.formatter -> term_tree -> unit 
@@ -7,7 +26,7 @@ val pp_term_tree : Format.formatter -> term_tree -> unit
 type t = {
   recent_entries : Raft_pb.log_entry list;
   log_size : int;
-  past_entries : Raft_pb.log_interval Raft_rope.t;
+  past_entries : log_interval Raft_rope.t;
   term_tree : term_tree;
 } 
 
@@ -85,7 +104,7 @@ val service : prev_commit_index:int -> configuration:Raft_pb.configuration -> t 
 
 module Past_interval : sig 
 
-  val contains : int -> Raft_pb.log_interval -> bool
+  val contains : int -> log_interval -> bool
   (** [contains_next_of since interval] return true if [interval] contains 
       the [log_entry] which index is next of [since]. 
     *)
@@ -93,13 +112,13 @@ end
 
 module Past_entries : sig
 
-  val fold : ('a -> Raft_pb.log_interval -> 'a) -> 'a -> t -> 'a 
+  val fold : ('a -> log_interval -> 'a) -> 'a -> t -> 'a 
   (** [fold f e0 past_entries] iterates over all the local cache starting in
       ascending order. The first local cache would therefore be the one containing
       the earliest entries. 
     *)
 
-  val replace : Raft_pb.log_interval ->  t -> t
+  val replace : log_interval ->  t -> t
   (** [replace interval past_entries] replaces the matching [interval] 
       in [past_entries]. 
   
@@ -109,7 +128,7 @@ module Past_entries : sig
       raises [Failure] if [interval] cannot be matched.
     *)
 
-  val find : index:int -> t -> Raft_pb.log_interval 
+  val find : index:int -> t -> log_interval 
   (** [find ~index past_entries] finds the interval \]prev_index;last_index\] which contains
       [index]. 
   
@@ -139,7 +158,7 @@ module Builder : sig
 
   val make_t1 : unit -> t1 
 
-  val add_interval : t1 -> Raft_pb.log_interval -> t1 
+  val add_interval : t1 -> log_interval -> t1 
   
   val t2_of_t1 : t1 -> t2 
 
