@@ -202,24 +202,20 @@ and configuration_mutable = {
   mutable log_interval_size : int;
 }
 
-type timeout_event_time_out_type =
+type timeout_type =
   | New_leader_election 
   | Heartbeat 
 
 type timeout_event = {
   timeout : float;
-  timeout_type : timeout_event_time_out_type;
-}
-
-and timeout_event_mutable = {
-  mutable timeout : float;
-  mutable timeout_type : timeout_event_time_out_type;
+  timeout_type : timeout_type;
 }
 
 type notification =
   | Committed_data of log_entry list
   | New_leader of int 
   | No_leader
+
 type compaction_report = {
   to_be_compacted : log_interval list;
   to_be_expanded : log_interval list;
@@ -479,21 +475,6 @@ and default_configuration_mutable () : configuration_mutable = {
   hearbeat_timeout = 0.;
   max_nb_logs_per_message = 0;
   log_interval_size = 0;
-}
-
-let rec default_timeout_event_time_out_type () = (New_leader_election:timeout_event_time_out_type)
-
-let rec default_timeout_event 
-  ?timeout:((timeout:float) = 0.)
-  ?timeout_type:((timeout_type:timeout_event_time_out_type) = default_timeout_event_time_out_type ())
-  () : timeout_event  = {
-  timeout;
-  timeout_type;
-}
-
-and default_timeout_event_mutable () : timeout_event_mutable = {
-  timeout = 0.;
-  timeout_type = default_timeout_event_time_out_type ();
 }
 
 let rec default_compaction_report 
@@ -1177,42 +1158,6 @@ let rec decode_configuration d =
   let v:configuration = Obj.magic v in
   v
 
-let rec decode_timeout_event_time_out_type d = 
-  match Pbrt.Decoder.int_as_varint d with
-  | 1 -> (New_leader_election:timeout_event_time_out_type)
-  | 2 -> (Heartbeat:timeout_event_time_out_type)
-  | _ -> failwith "Unknown value for enum timeout_event_time_out_type"
-
-let rec decode_timeout_event d =
-  let v = default_timeout_event_mutable () in
-  let timeout_type_is_set = ref false in
-  let timeout_is_set = ref false in
-  let rec loop () = 
-    match Pbrt.Decoder.key d with
-    | None -> (
-    )
-    | Some (1, Pbrt.Bits64) -> (
-      v.timeout <- Pbrt.Decoder.float_as_bits64 d; timeout_is_set := true;
-      loop ()
-    )
-    | Some (1, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(timeout_event), field(1)", pk))
-    )
-    | Some (2, Pbrt.Varint) -> (
-      v.timeout_type <- decode_timeout_event_time_out_type d; timeout_type_is_set := true;
-      loop ()
-    )
-    | Some (2, pk) -> raise (
-      Protobuf.Decoder.Failure (Protobuf.Decoder.Unexpected_payload ("Message(timeout_event), field(2)", pk))
-    )
-    | Some (_, payload_kind) -> Pbrt.Decoder.skip d payload_kind; loop ()
-  in
-  loop ();
-  begin if not !timeout_type_is_set then raise Protobuf.Decoder.(Failure (Missing_field "timeout_type")) end;
-  begin if not !timeout_is_set then raise Protobuf.Decoder.(Failure (Missing_field "timeout")) end;
-  let v:timeout_event = Obj.magic v in
-  v
-
 let rec decode_compaction_report d =
   let v = default_compaction_report_mutable () in
   let rec loop () = 
@@ -1480,18 +1425,6 @@ let rec encode_configuration (v:configuration) encoder =
   Pbrt.Encoder.int_as_varint v.log_interval_size encoder;
   ()
 
-let rec encode_timeout_event_time_out_type (v:timeout_event_time_out_type) encoder =
-  match v with
-  | New_leader_election -> Pbrt.Encoder.int_as_varint 1 encoder
-  | Heartbeat -> Pbrt.Encoder.int_as_varint 2 encoder
-
-let rec encode_timeout_event (v:timeout_event) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Bits64) encoder; 
-  Pbrt.Encoder.float_as_bits64 v.timeout encoder;
-  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
-  encode_timeout_event_time_out_type v.timeout_type encoder;
-  ()
-
 let rec encode_compaction_report (v:compaction_report) encoder = 
   List.iter (fun x -> 
     Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
@@ -1674,20 +1607,6 @@ let rec pp_configuration fmt (v:configuration) =
     Pbrt.Pp.pp_record_field "hearbeat_timeout" Pbrt.Pp.pp_float fmt v.hearbeat_timeout;
     Pbrt.Pp.pp_record_field "max_nb_logs_per_message" Pbrt.Pp.pp_int fmt v.max_nb_logs_per_message;
     Pbrt.Pp.pp_record_field "log_interval_size" Pbrt.Pp.pp_int fmt v.log_interval_size;
-    Format.pp_close_box fmt ()
-  in
-  Pbrt.Pp.pp_brk pp_i fmt ()
-
-let rec pp_timeout_event_time_out_type fmt (v:timeout_event_time_out_type) =
-  match v with
-  | New_leader_election -> Format.fprintf fmt "New_leader_election"
-  | Heartbeat -> Format.fprintf fmt "Heartbeat"
-
-let rec pp_timeout_event fmt (v:timeout_event) = 
-  let pp_i fmt () =
-    Format.pp_open_vbox fmt 1;
-    Pbrt.Pp.pp_record_field "timeout" Pbrt.Pp.pp_float fmt v.timeout;
-    Pbrt.Pp.pp_record_field "timeout_type" pp_timeout_event_time_out_type fmt v.timeout_type;
     Format.pp_close_box fmt ()
   in
   Pbrt.Pp.pp_brk pp_i fmt ()

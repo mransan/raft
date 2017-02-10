@@ -448,14 +448,6 @@ message Configuration {
 //   allowed time. The server (which can only be a [Leader]) must
 //   then send a new [AppendEntriesRequest].  
 //
-message TimeoutEvent {
-  enum TimeOutType {
-    NEW_LEADER_ELECTION = 1;
-    HEARTBEAT           = 2; 
-  }
-  required double      timeout      = 1;
-  required TimeOutType timeout_type = 2;
-}
 
 message CompactionReport {
   repeated LogInterval to_be_compacted = 1;

@@ -114,24 +114,24 @@ type configuration = {
   log_interval_size : int;
 }
 
-type timeout_event_time_out_type =
+type timeout_type =
   | New_leader_election 
   | Heartbeat 
 
 type timeout_event = {
   timeout : float;
-  timeout_type : timeout_event_time_out_type;
+  timeout_type : timeout_type;
 }
 
 type notification =
   | Committed_data of log_entry list
   | New_leader of int 
   | No_leader
+
 type compaction_report = {
   to_be_compacted : log_interval list;
   to_be_expanded : log_interval list;
 }
-
 
 (** {2 Default values} *)
 
@@ -268,16 +268,6 @@ val default_configuration :
   configuration
 (** [default_configuration ()] is the default value for type [configuration] *)
 
-val default_timeout_event_time_out_type : unit -> timeout_event_time_out_type
-(** [default_timeout_event_time_out_type ()] is the default value for type [timeout_event_time_out_type] *)
-
-val default_timeout_event : 
-  ?timeout:float ->
-  ?timeout_type:timeout_event_time_out_type ->
-  unit ->
-  timeout_event
-(** [default_timeout_event ()] is the default value for type [timeout_event] *)
-
 val default_compaction_report : 
   ?to_be_compacted:log_interval list ->
   ?to_be_expanded:log_interval list ->
@@ -345,12 +335,6 @@ val decode_role : Pbrt.Decoder.t -> role
 val decode_configuration : Pbrt.Decoder.t -> configuration
 (** [decode_configuration decoder] decodes a [configuration] value from [decoder] *)
 
-val decode_timeout_event_time_out_type : Pbrt.Decoder.t -> timeout_event_time_out_type
-(** [decode_timeout_event_time_out_type decoder] decodes a [timeout_event_time_out_type] value from [decoder] *)
-
-val decode_timeout_event : Pbrt.Decoder.t -> timeout_event
-(** [decode_timeout_event decoder] decodes a [timeout_event] value from [decoder] *)
-
 val decode_compaction_report : Pbrt.Decoder.t -> compaction_report
 (** [decode_compaction_report decoder] decodes a [compaction_report] value from [decoder] *)
 
@@ -414,12 +398,6 @@ val encode_role : role -> Pbrt.Encoder.t -> unit
 val encode_configuration : configuration -> Pbrt.Encoder.t -> unit
 (** [encode_configuration v encoder] encodes [v] with the given [encoder] *)
 
-val encode_timeout_event_time_out_type : timeout_event_time_out_type -> Pbrt.Encoder.t -> unit
-(** [encode_timeout_event_time_out_type v encoder] encodes [v] with the given [encoder] *)
-
-val encode_timeout_event : timeout_event -> Pbrt.Encoder.t -> unit
-(** [encode_timeout_event v encoder] encodes [v] with the given [encoder] *)
-
 val encode_compaction_report : compaction_report -> Pbrt.Encoder.t -> unit
 (** [encode_compaction_report v encoder] encodes [v] with the given [encoder] *)
 
@@ -482,12 +460,6 @@ val pp_role : Format.formatter -> role -> unit
 
 val pp_configuration : Format.formatter -> configuration -> unit 
 (** [pp_configuration v] formats v *)
-
-val pp_timeout_event_time_out_type : Format.formatter -> timeout_event_time_out_type -> unit 
-(** [pp_timeout_event_time_out_type v] formats v *)
-
-val pp_timeout_event : Format.formatter -> timeout_event -> unit 
-(** [pp_timeout_event v] formats v *)
 
 val pp_compaction_report : Format.formatter -> compaction_report -> unit 
 (** [pp_compaction_report v] formats v *)
