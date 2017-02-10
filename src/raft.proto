@@ -240,26 +240,26 @@ message LogEntry {
 //   -> Due to the fact each new log index increments by one 
 //      the previous one. 
 //    
-message LogInterval {
-  required int32    prev_index      = 1; 
-  required int32    prev_term       = 2; 
-  required int32    last_index      = 3;
- 
-  message Compacted { 
-    required string record_id = 1;
-      // A Unique identifier to find the LogInterval in 
-      // the permanent storage
-  }
-
-  message Expanded {
-    repeated LogEntry entries = 1;
-  }
-
-  oneof rev_log_entries {
-    Compacted compacted = 4;
-    Expanded  expanded  = 5;
-  }
-}
+// message LogInterval {
+//   required int32    prev_index      = 1; 
+//   required int32    prev_term       = 2; 
+//   required int32    last_index      = 3;
+//  
+//   message Compacted { 
+//     required string record_id = 1;
+//       // A Unique identifier to find the LogInterval in 
+//       // the permanent storage
+//   }
+// 
+//   message Expanded {
+//     repeated LogEntry entries = 1;
+//   }
+// 
+//   oneof rev_log_entries {
+//     Compacted compacted = 4;
+//     Expanded  expanded  = 5;
+//   }
+// }
 
 // STATE
 // ----------------------------------------------------------------------------
@@ -449,10 +449,10 @@ message FollowerInfo {
 //   then send a new [AppendEntriesRequest].  
 //
 
-message CompactionReport {
-  repeated LogInterval to_be_compacted = 1;
-  repeated LogInterval to_be_expanded = 2;
-}
+// message CompactionReport {
+//   repeated LogInterval to_be_compacted = 1;
+//   repeated LogInterval to_be_expanded = 2;
+// }
 
 // Notes 
 // ---------------

@@ -199,30 +199,6 @@ val default_append_entries_response :
 val default_message : unit -> message
 (** [default_message ()] is the default value for type [message] *)
 
-val default_log_interval_compacted : 
-  ?record_id:string ->
-  unit ->
-  log_interval_compacted
-(** [default_log_interval_compacted ()] is the default value for type [log_interval_compacted] *)
-
-val default_log_interval_expanded : 
-  ?entries:log_entry list ->
-  unit ->
-  log_interval_expanded
-(** [default_log_interval_expanded ()] is the default value for type [log_interval_expanded] *)
-
-val default_log_interval_rev_log_entries : unit -> log_interval_rev_log_entries
-(** [default_log_interval_rev_log_entries ()] is the default value for type [log_interval_rev_log_entries] *)
-
-val default_log_interval : 
-  ?prev_index:int ->
-  ?prev_term:int ->
-  ?last_index:int ->
-  ?rev_log_entries:log_interval_rev_log_entries ->
-  unit ->
-  log_interval
-(** [default_log_interval ()] is the default value for type [log_interval] *)
-
 val default_follower_info : 
   ?server_id:int ->
   ?next_index:int ->
@@ -258,13 +234,6 @@ val default_follower_state :
 val default_role : unit -> role
 (** [default_role ()] is the default value for type [role] *)
 
-val default_compaction_report : 
-  ?to_be_compacted:log_interval list ->
-  ?to_be_expanded:log_interval list ->
-  unit ->
-  compaction_report
-(** [default_compaction_report ()] is the default value for type [compaction_report] *)
-
 
 (** {2 Protobuf Decoding} *)
 
@@ -295,18 +264,6 @@ val decode_append_entries_response : Pbrt.Decoder.t -> append_entries_response
 val decode_message : Pbrt.Decoder.t -> message
 (** [decode_message decoder] decodes a [message] value from [decoder] *)
 
-val decode_log_interval_compacted : Pbrt.Decoder.t -> log_interval_compacted
-(** [decode_log_interval_compacted decoder] decodes a [log_interval_compacted] value from [decoder] *)
-
-val decode_log_interval_expanded : Pbrt.Decoder.t -> log_interval_expanded
-(** [decode_log_interval_expanded decoder] decodes a [log_interval_expanded] value from [decoder] *)
-
-val decode_log_interval_rev_log_entries : Pbrt.Decoder.t -> log_interval_rev_log_entries
-(** [decode_log_interval_rev_log_entries decoder] decodes a [log_interval_rev_log_entries] value from [decoder] *)
-
-val decode_log_interval : Pbrt.Decoder.t -> log_interval
-(** [decode_log_interval decoder] decodes a [log_interval] value from [decoder] *)
-
 val decode_follower_info : Pbrt.Decoder.t -> follower_info
 (** [decode_follower_info decoder] decodes a [follower_info] value from [decoder] *)
 
@@ -321,9 +278,6 @@ val decode_follower_state : Pbrt.Decoder.t -> follower_state
 
 val decode_role : Pbrt.Decoder.t -> role
 (** [decode_role decoder] decodes a [role] value from [decoder] *)
-
-val decode_compaction_report : Pbrt.Decoder.t -> compaction_report
-(** [decode_compaction_report decoder] decodes a [compaction_report] value from [decoder] *)
 
 
 (** {2 Protobuf Toding} *)
@@ -355,18 +309,6 @@ val encode_append_entries_response : append_entries_response -> Pbrt.Encoder.t -
 val encode_message : message -> Pbrt.Encoder.t -> unit
 (** [encode_message v encoder] encodes [v] with the given [encoder] *)
 
-val encode_log_interval_compacted : log_interval_compacted -> Pbrt.Encoder.t -> unit
-(** [encode_log_interval_compacted v encoder] encodes [v] with the given [encoder] *)
-
-val encode_log_interval_expanded : log_interval_expanded -> Pbrt.Encoder.t -> unit
-(** [encode_log_interval_expanded v encoder] encodes [v] with the given [encoder] *)
-
-val encode_log_interval_rev_log_entries : log_interval_rev_log_entries -> Pbrt.Encoder.t -> unit
-(** [encode_log_interval_rev_log_entries v encoder] encodes [v] with the given [encoder] *)
-
-val encode_log_interval : log_interval -> Pbrt.Encoder.t -> unit
-(** [encode_log_interval v encoder] encodes [v] with the given [encoder] *)
-
 val encode_follower_info : follower_info -> Pbrt.Encoder.t -> unit
 (** [encode_follower_info v encoder] encodes [v] with the given [encoder] *)
 
@@ -381,9 +323,6 @@ val encode_follower_state : follower_state -> Pbrt.Encoder.t -> unit
 
 val encode_role : role -> Pbrt.Encoder.t -> unit
 (** [encode_role v encoder] encodes [v] with the given [encoder] *)
-
-val encode_compaction_report : compaction_report -> Pbrt.Encoder.t -> unit
-(** [encode_compaction_report v encoder] encodes [v] with the given [encoder] *)
 
 
 (** {2 Formatters} *)
@@ -415,18 +354,6 @@ val pp_append_entries_response : Format.formatter -> append_entries_response -> 
 val pp_message : Format.formatter -> message -> unit 
 (** [pp_message v] formats v *)
 
-val pp_log_interval_compacted : Format.formatter -> log_interval_compacted -> unit 
-(** [pp_log_interval_compacted v] formats v *)
-
-val pp_log_interval_expanded : Format.formatter -> log_interval_expanded -> unit 
-(** [pp_log_interval_expanded v] formats v *)
-
-val pp_log_interval_rev_log_entries : Format.formatter -> log_interval_rev_log_entries -> unit 
-(** [pp_log_interval_rev_log_entries v] formats v *)
-
-val pp_log_interval : Format.formatter -> log_interval -> unit 
-(** [pp_log_interval v] formats v *)
-
 val pp_follower_info : Format.formatter -> follower_info -> unit 
 (** [pp_follower_info v] formats v *)
 
@@ -441,6 +368,3 @@ val pp_follower_state : Format.formatter -> follower_state -> unit
 
 val pp_role : Format.formatter -> role -> unit 
 (** [pp_role v] formats v *)
-
-val pp_compaction_report : Format.formatter -> compaction_report -> unit 
-(** [pp_compaction_report v] formats v *)
