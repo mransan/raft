@@ -16,55 +16,55 @@ type message_to_send = message * int
 
 module Log_entry_util = struct
 
-  let keep_first_n l n = 
+  let keep_first_n l n =
     let rec aux f l = function
-    | 0 -> f [] 
+    | 0 -> f []
     | n ->
       begin match l with
-      | hd::tl -> aux (fun lhs -> f (hd::lhs)) tl (n-1) 
-      | []     -> f [] 
+      | hd::tl -> aux (fun lhs -> f (hd::lhs)) tl (n-1)
+      | []     -> f []
       end
     in
-    aux (fun x -> x) l n 
+    aux (fun x -> x) l n
 
   let rec sub since = function
     | []             -> []
-    | {index; _}::tl -> 
-      if index = since then tl else sub since tl  
+    | {index; _}::tl ->
+      if index = since then tl else sub since tl
 
   let make_append_entries prev_log_index unsent_entries state =
 
     let max = state.Types.configuration.Types.max_nb_logs_per_message in
 
-    let unsent_entries = 
+    let unsent_entries =
       match sub prev_log_index unsent_entries with
       | [] -> Log.rev_log_entries_since prev_log_index state.Types.log
-      | unsent_entries -> unsent_entries 
-    in 
-    let to_send = keep_first_n unsent_entries max in 
+      | unsent_entries -> unsent_entries
+    in
+    let to_send = keep_first_n unsent_entries max in
 
     let request = {
       leader_term = state.Types.current_term;
       leader_id = state.Types.id;
       prev_log_index;
       prev_log_term = Log.term_of_index prev_log_index state.Types.log;
-      rev_log_entries = to_send; 
+      rev_log_entries = to_send;
       leader_commit = state.Types.commit_index;
     } in
     (unsent_entries, request)
 
   let compute_append_entries state followers now =
 
-    let rec aux followers msgs_to_send = function 
-      | [] -> (followers, msgs_to_send) 
+    let rec aux followers msgs_to_send = function
+      | [] -> (followers, msgs_to_send)
 
-      | follower::tl -> 
+      | follower::tl ->
         let {
           Types.server_id;
           heartbeat_deadline;
           outstanding_request;
           next_index;
-          unsent_entries; _ 
+          unsent_entries; _
         } = follower in
 
         let shoud_send_request =
@@ -98,24 +98,24 @@ module Log_entry_util = struct
         if shoud_send_request
         then
           let unsent_entries, request = make_append_entries (next_index - 1) unsent_entries state in
-          let follower = 
-            let outstanding_request = true in 
-            let heartbeat_deadline = 
-              now +. state.Types.configuration.Types.hearbeat_timeout 
-            in 
+          let follower =
+            let outstanding_request = true in
+            let heartbeat_deadline =
+              now +. state.Types.configuration.Types.hearbeat_timeout
+            in
             {follower with
-              Types.unsent_entries; 
-              Types.outstanding_request; 
-              Types.heartbeat_deadline; 
-            } 
-          in 
+              Types.unsent_entries;
+              Types.outstanding_request;
+              Types.heartbeat_deadline;
+            }
+          in
           let followers = follower::followers in
           let msgs_to_send = (Append_entries_request request, server_id)::msgs_to_send in
           aux followers msgs_to_send tl
         else
-          aux (follower::followers) msgs_to_send tl 
+          aux (follower::followers) msgs_to_send tl
     in
-    aux [] [] followers 
+    aux [] [] followers
 
 end (* Log_entry_util *)
 
@@ -154,9 +154,9 @@ let handle_request_vote_request state request now =
        *
        *)
       if candidate_term > state.Types.current_term
-      then 
+      then
         Follower.become ~term:candidate_term ~now state
-      else 
+      else
         state
     in
     let last_log_index = Log.last_log_index state.Types.log in
@@ -182,7 +182,7 @@ let handle_request_vote_request state request now =
 
         let {
           Types.configuration = {
-            Types.election_timeout; _ 
+            Types.election_timeout; _
           }; _} = state in
 
         let state ={state with
@@ -227,11 +227,11 @@ let handle_request_vote_response state response now =
   else
     match role, vote_granted  with
     | Types.Candidate ({Types.vote_count; _ } as candidate_state) , true ->
-      
-      let has_majority = 
-        (* TODO : why not use Helper.Configuration.is_majority *) 
-        let nb_of_server = configuration.Types.nb_of_server in 
-        vote_count >= (nb_of_server / 2) 
+
+      let has_majority =
+        (* TODO : why not use Helper.Configuration.is_majority *)
+        let nb_of_server = configuration.Types.nb_of_server in
+        vote_count >= (nb_of_server / 2)
       in
       if  has_majority
       then
@@ -250,21 +250,21 @@ let handle_request_vote_response state response now =
         begin match state.Types.role with
         | Types.Leader followers ->
           let rec aux followers msgs_to_send = function
-            | [] -> 
+            | [] ->
               (Types.({state with role = Leader followers}), msgs_to_send)
 
             | follower :: tl ->
               let {
-                Types.server_id; 
-                Types.next_index; 
-                Types.unsent_entries;_  
-              } = follower in 
+                Types.server_id;
+                Types.next_index;
+                Types.unsent_entries;_
+              } = follower in
               let prev_log_index = next_index - 1 in
               let unsent_entries, req  = Log_entry_util.make_append_entries prev_log_index unsent_entries state in
               let msg_to_send = (Append_entries_request req, server_id) in
-              aux ({follower with Types.unsent_entries;}::followers) (msg_to_send::msgs_to_send) tl 
+              aux ({follower with Types.unsent_entries;}::followers) (msg_to_send::msgs_to_send) tl
           in
-          aux [] [] followers 
+          aux [] [] followers
         | _ -> assert(false)
         end
       else
@@ -291,18 +291,18 @@ let handle_request_vote_response state response now =
 
 (** {2 Append Entries} *)
 
-let update_state leader_commit receiver_last_log_index log state = 
+let update_state leader_commit receiver_last_log_index log state =
   if leader_commit > state.Types.commit_index
-  then 
-    let log = 
-      let open Types in 
-      let prev_commit_index = state.commit_index in 
-      let log_interval_size = state.configuration.log_interval_size in 
-      Log.service ~prev_commit_index ~log_interval_size log 
-    in 
-    let commit_index = min leader_commit receiver_last_log_index in 
+  then
+    let log =
+      let open Types in
+      let prev_commit_index = state.commit_index in
+      let log_interval_size = state.configuration.log_interval_size in
+      Log.service ~prev_commit_index ~log_interval_size log
+    in
+    let commit_index = min leader_commit receiver_last_log_index in
     {state with Types.log; commit_index}
-  else 
+  else
     {state with Types.log}
 
 let handle_append_entries_request state request now =
@@ -317,9 +317,9 @@ let handle_append_entries_request state request now =
   then
     (* This request is coming from a leader lagging behind...
      *
-     * TODO [INVARIANTS] We could check here that this request is 
+     * TODO [INVARIANTS] We could check here that this request is
      * not coming from the current leader. (Which would be a violation
-     * of the protocol rules). 
+     * of the protocol rules).
      *)
     (state, make_response state Term_failure)
 
@@ -327,114 +327,114 @@ let handle_append_entries_request state request now =
     (* This request is coming from a legetimate leader,
      * let's ensure that this server is a follower.
      *)
-    let state  = 
-      Follower.become ~current_leader:leader_id ~term:leader_term ~now state 
-    in 
+    let state  =
+      Follower.become ~current_leader:leader_id ~term:leader_term ~now state
+    in
 
     (* Next step is to handle the log entries from the leader.
      *
      *)
     let {
-      prev_log_index; 
-      prev_log_term; 
-      rev_log_entries; 
+      prev_log_index;
+      prev_log_term;
+      rev_log_entries;
       leader_commit; _ } = request in
 
     let (
-      receiver_last_log_index, 
+      receiver_last_log_index,
       receiver_last_log_term
-    ) = Log.last_log_index_and_term state.Types.log in 
+    ) = Log.last_log_index_and_term state.Types.log in
 
-    let commit_index = state.Types.commit_index in 
+    let commit_index = state.Types.commit_index in
 
     if prev_log_index < commit_index
-    then 
-      (* The only reason that can happen is if the messages 
+    then
+      (* The only reason that can happen is if the messages
        * are delivered out of order. (Which is completely possible).
        *
        * Servers should never remove a commited log.
        *)
       (state, make_response state (Success {receiver_last_log_index}))
     else
-      if leader_term = receiver_last_log_term 
-      then 
+      if leader_term = receiver_last_log_term
+      then
         match compare prev_log_index receiver_last_log_index with
-        | 0 -> 
-          (* Leader info about the receiver last log index is matching 
-           * perfectly, we can append the logs. 
+        | 0 ->
+          (* Leader info about the receiver last log index is matching
+           * perfectly, we can append the logs.
            *)
-          let log = Log.add_log_entries ~rev_log_entries state.Types.log in 
-          let receiver_last_log_index = Log.last_log_index log in 
-          let state = 
-            update_state leader_commit receiver_last_log_index log state 
+          let log = Log.add_log_entries ~rev_log_entries state.Types.log in
+          let receiver_last_log_index = Log.last_log_index log in
+          let state =
+            update_state leader_commit receiver_last_log_index log state
           in
-          
-          (state, make_response state (Success {receiver_last_log_index})) 
 
-        | x when x > 0 -> 
+          (state, make_response state (Success {receiver_last_log_index}))
+
+        | x when x > 0 ->
           (* This should really never happen since:
-           * - No logs belonging to the Leader term can be removed 
-           * - The leader is supposed to keep track of the latest log from 
-           *   the receiver. 
-           *) 
-          (state, make_response state (Log_failure {receiver_last_log_index})) 
+           * - No logs belonging to the Leader term can be removed
+           * - The leader is supposed to keep track of the latest log from
+           *   the receiver.
+           *)
+          (state, make_response state (Log_failure {receiver_last_log_index}))
 
-        | _ (* x when x < 0 *) ->  
-          (* 
-           * This case is possible when messages are received out of order  by 
+        | _ (* x when x < 0 *) ->
+          (*
+           * This case is possible when messages are received out of order  by
            * the Follower
            *
-           * Note that even if the prev_log_index is earlier, it's important 
-           * that no log entry is removed from the log if they come from the 
-           * current leader. 
+           * Note that even if the prev_log_index is earlier, it's important
+           * that no log entry is removed from the log if they come from the
+           * current leader.
            *
-           * The current leader might have sent a commit message back to a 
-           * client believing that the log entry is replicated on this server. 
+           * The current leader might have sent a commit message back to a
+           * client believing that the log entry is replicated on this server.
            * If we remove the log entry we violate the assumption.
            *
            *)
           (state, make_response state (Success {receiver_last_log_index}))
-          
+
       else
         if prev_log_index > receiver_last_log_index
-        then 
-          (* 
-           * This is likely the case after a new election, the Leader has 
-           * more log entries in its log and assumes that this server has 
-           * the same number. 
+        then
+          (*
+           * This is likely the case after a new election, the Leader has
+           * more log entries in its log and assumes that this server has
+           * the same number.
            *)
-          (state, make_response state (Log_failure {receiver_last_log_index})) 
+          (state, make_response state (Log_failure {receiver_last_log_index}))
         else
-          (* 
-           * Because it is a new Leader, this followe can safely remove all 
-           * the logs from previous terms which were not commited. 
+          (*
+           * Because it is a new Leader, this followe can safely remove all
+           * the logs from previous terms which were not commited.
            *)
-          
-          match Log.remove_log_since ~prev_log_index 
+
+          match Log.remove_log_since ~prev_log_index
                 ~prev_log_term state.Types.log with
           | exception Not_found ->
              let failure = {
-               receiver_last_log_index = commit_index; 
-             } in 
+               receiver_last_log_index = commit_index;
+             } in
             (state, make_response state (Log_failure failure))
-            (* 
-             * This is the case where there is a mismatch between the [Leader] 
-             * and this server and the log entry identified with 
+            (*
+             * This is the case where there is a mismatch between the [Leader]
+             * and this server and the log entry identified with
              * (prev_log_index, prev_log_term)
-             * could not be found. 
+             * could not be found.
              *
-             * In such a case, the safest log entry to synchronize upon is the 
-             * commit_index 
-             * of the follower. 
+             * In such a case, the safest log entry to synchronize upon is the
+             * commit_index
+             * of the follower.
              *)
 
-          | log -> 
-            let log = Log.add_log_entries ~rev_log_entries log in 
-            let receiver_last_log_index = Log.last_log_index log in 
-            let state = 
-              update_state leader_commit receiver_last_log_index log state 
-            in 
-            (state, make_response state (Success {receiver_last_log_index})) 
+          | log ->
+            let log = Log.add_log_entries ~rev_log_entries log in
+            let receiver_last_log_index = Log.last_log_index log in
+            let state =
+              update_state leader_commit receiver_last_log_index log state
+            in
+            (state, make_response state (Success {receiver_last_log_index}))
 
 let handle_append_entries_response state response now =
 
@@ -484,21 +484,21 @@ let handle_append_entries_response state response now =
            *)
           if Configuration.is_majority configuration (nb_of_replications + 1) &&
              receiver_last_log_index > state.Types.commit_index
-          then 
-            let log = 
-              let open Types in 
-              let prev_commit_index = state.commit_index in 
-              let log_interval_size = state.configuration.log_interval_size in 
-              let log = state.log in 
-              Log.service ~prev_commit_index ~log_interval_size log 
-            in 
+          then
+            let log =
+              let open Types in
+              let prev_commit_index = state.commit_index in
+              let log_interval_size = state.configuration.log_interval_size in
+              let log = state.log in
+              Log.service ~prev_commit_index ~log_interval_size log
+            in
             {state with Types.commit_index = receiver_last_log_index; log }
-          else 
+          else
             state
         in
 
-        let leader_state, msgs_to_send = 
-          Log_entry_util.compute_append_entries state leader_state now 
+        let leader_state, msgs_to_send =
+          Log_entry_util.compute_append_entries state leader_state now
         in
 
         let state = Types.({state with role = Leader leader_state}) in
@@ -517,24 +517,24 @@ let handle_append_entries_response state response now =
       let state  = Types.({state with role = Leader leader_state}) in
       (state,msgs_to_send)
 
-    | Term_failure  -> 
-      (state, []) 
+    | Term_failure  ->
+      (state, [])
       (*
-       * The receiver could have detected that this server term was not the latest one and 
-       * sent the [Term_failure] response. 
-       * However while this recipient server was handling the request, the sender (ie this server) 
-       * might had received other messages which triggered a new (and increased) term number. 
+       * The receiver could have detected that this server term was not the latest one and
+       * sent the [Term_failure] response.
+       * However while this recipient server was handling the request, the sender (ie this server)
+       * might had received other messages which triggered a new (and increased) term number.
        *
-       * Hence it is possible that current_term >= recipient_term and also receiving the [Term_failure]./ 
+       * Hence it is possible that current_term >= recipient_term and also receiving the [Term_failure]./
        *
        * Here is a concrete sequence which would lead to this condition:
-       * 
+       *
        * 1.  Leader (ie this server) send an [Append_entries_request]
-       * 2.a Receiver detects that the leader term is less than its current one 
-       * 2.b Leader receives a valid [Append_entries_request] from a new leader 
-       *     and increments its current_term to match that new leader current term. 
-       * 3   The sender (ie ex leader) receives the [Append_entries_response] from 
-       *     the receiver with the [Term_failure]. 
+       * 2.a Receiver detects that the leader term is less than its current one
+       * 2.b Leader receives a valid [Append_entries_request] from a new leader
+       *     and increments its current_term to match that new leader current term.
+       * 3   The sender (ie ex leader) receives the [Append_entries_response] from
+       *     the receiver with the [Term_failure].
        *
        * (Note 2.a and 2.b occurs concurently)
        *)
@@ -545,7 +545,7 @@ let make_initial_state ~configuration ~now ~id () =
   Follower.create ~configuration ~now ~id ()
 
 let handle_message state message now =
-  let state', message_to_send = 
+  let state', message_to_send =
     match message with
     | Request_vote_request ({candidate_id; _ } as r) ->
       let state, response = handle_request_vote_request state r now in
@@ -569,9 +569,9 @@ let handle_message state message now =
 let fold_over_servers f e0 state =
 
   let {
-    Types.id; 
+    Types.id;
     configuration = {Types.nb_of_server; _}; _
-  } = state in 
+  } = state in
 
   let rec aux acc = function
     | -1 -> acc
@@ -626,11 +626,11 @@ let handle_add_log_entries state datas now =
 
   | Types.Leader leader_state ->
 
-    let state = {state with 
+    let state = {state with
       Types.log = Log.add_log_datas state.Types.current_term datas state.Types.log
-    } in 
-    let leader_state, msgs_to_send = 
-      Log_entry_util.compute_append_entries state leader_state now 
+    } in
+    let leader_state, msgs_to_send =
+      Log_entry_util.compute_append_entries state leader_state now
     in
     let state = Types.({state with role = Leader leader_state }) in
     Appended (state, msgs_to_send)

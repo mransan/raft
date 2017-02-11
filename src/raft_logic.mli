@@ -5,7 +5,7 @@
     {li Request Vote}
     {li Append Entry}
     }
-  
+
     This module implements the RAFT protocol logic in a functional way and
     agnostic of any transport mechanism (TCP/UDP/HTTP).
  *)
@@ -32,7 +32,7 @@ val make_initial_state :
   Raft_types.state
 (** [make_initial_state ~configuration ~now ~id ()] creates an initial server
     state.
-  
+
     The server is initially a [Follower] and its [election_deadline] will be
     set according to the [configuration].
  *)
@@ -41,14 +41,14 @@ val handle_message :
   Raft_types.state ->
   Raft_pb.message ->
   time ->
-  Raft_types.state * (message_to_send list) * Raft_types.notification list 
-(** [handle_message state message now] handle an incoming Raft message. 
+  Raft_types.state * (message_to_send list) * Raft_types.notification list
+(** [handle_message state message now] handle an incoming Raft message.
   *)
 
 val handle_new_election_timeout :
   Raft_types.state ->
   time ->
-  Raft_types.state * (message_to_send list) * Raft_types.notification list 
+  Raft_types.state * (message_to_send list) * Raft_types.notification list
 (** [handle_new_election_timeout state now] implements the state change to
     a Candidate along with the list of request vote message to send.
   *)
@@ -90,7 +90,7 @@ val handle_add_log_entries: Raft_types.state -> (bytes * string) list -> time ->
 val next_timeout_event : Raft_types.state -> time -> Raft_types.timeout_event
 (** [next_timeout_event state now] returns the timeout information
     that the serve should implement.
-   
+
     The server application is responsible for managing the main event
     loop such as listening for messaging and waking up for timeout events.
   *)

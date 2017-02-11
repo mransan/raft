@@ -12,8 +12,8 @@ type configuration = {
 }
 
 type timeout_type =
-  | New_leader_election 
-  | Heartbeat 
+  | New_leader_election
+  | Heartbeat
 
 type timeout_event = {
   timeout : float;
@@ -22,7 +22,7 @@ type timeout_event = {
 
 type notification =
   | Committed_data of log_entry list
-  | New_leader of int 
+  | New_leader of int
   | No_leader
 
 type follower_info = {
@@ -61,107 +61,107 @@ type state = {
   configuration : configuration;
 }
 
-let is_follower {role; _} = 
-  match role with 
-  | Follower _ -> true 
-  | _ -> false 
+let is_follower {role; _} =
+  match role with
+  | Follower _ -> true
+  | _ -> false
 
-let is_candidate {role; _ } = 
-  match role with 
-  | Candidate _ -> true 
-  | _ -> false 
+let is_candidate {role; _ } =
+  match role with
+  | Candidate _ -> true
+  | _ -> false
 
-let is_leader {role; _ } = 
-  match role with 
-  | Leader _ -> true 
-  | _ -> false 
+let is_leader {role; _ } =
+  match role with
+  | Leader _ -> true
+  | _ -> false
 
-let notifications before after = 
-  
-  let { commit_index = bcommit_index; role = brole; _ } = before in 
-  let { commit_index = acommit_index; role = arole; _ } = after in 
-  
-  let notifications = [] in  
+let notifications before after =
 
-  let notifications = 
+  let { commit_index = bcommit_index; role = brole; _ } = before in
+  let { commit_index = acommit_index; role = arole; _ } = after in
+
+  let notifications = [] in
+
+  let notifications =
     match brole, arole with
-    | Follower _   , Leader _ 
+    | Follower _   , Leader _
     | Leader _     , Candidate _ ->
-      (* Impossible transition which would violate the rules of the 
-       * RAFT protocol 
+      (* Impossible transition which would violate the rules of the
+       * RAFT protocol
        *)
-      assert(false) 
+      assert(false)
 
-    | Candidate _  , Leader _ -> 
+    | Candidate _  , Leader _ ->
       (* Case of the server becoming a leader *)
-      (New_leader after.id)::notifications 
-    
-    | Follower {current_leader = Some bleader; _ }, 
+      (New_leader after.id)::notifications
+
+    | Follower {current_leader = Some bleader; _ },
       Follower {current_leader = Some aleader; _ } when bleader = aleader ->
-      notifications 
+      notifications
       (* No leader change, following the same leader *)
 
-    | _, Follower{current_leader = Some aleader;_} -> 
-      (New_leader aleader)::notifications 
-      (* There is a new leader *) 
+    | _, Follower{current_leader = Some aleader;_} ->
+      (New_leader aleader)::notifications
+      (* There is a new leader *)
 
     | Follower {current_leader = Some _; _}, Candidate _
     | Follower {current_leader = Some _; _}, Follower  {current_leader = None; _}
     | Leader  _                            , Follower  {current_leader = None; _} ->
       (No_leader::notifications)
 
-    | Leader _                             , Leader _ 
-    | Candidate _                          , Candidate _ 
-    | Candidate _                          , Follower {current_leader = None;_} 
+    | Leader _                             , Leader _
+    | Candidate _                          , Candidate _
+    | Candidate _                          , Follower {current_leader = None;_}
     | Follower {current_leader = None; _}  , Follower {current_leader = None;_}
     | Follower {current_leader = None; _}  , Candidate _ ->
       notifications
   in
 
   if acommit_index > bcommit_index
-  then 
-    let rec aux rev_log_entries = function 
-      | ({index;_ } as log_entry)::tl -> 
-          if index > acommit_index 
-          then aux rev_log_entries tl 
-          else 
+  then
+    let rec aux rev_log_entries = function
+      | ({index;_ } as log_entry)::tl ->
+          if index > acommit_index
+          then aux rev_log_entries tl
+          else
             if index = bcommit_index
             then rev_log_entries
-            else aux (log_entry :: rev_log_entries) tl 
-      | [] ->  
-        assert(bcommit_index = 0); 
-        (* If commit_index is different than 0 then this means 
-         * that we could not identify all the [log_entry] which 
-         * have been commited between [before] and [after]. 
+            else aux (log_entry :: rev_log_entries) tl
+      | [] ->
+        assert(bcommit_index = 0);
+        (* If commit_index is different than 0 then this means
+         * that we could not identify all the [log_entry] which
+         * have been commited between [before] and [after].
          *
          * One of the reason could be that the [log_entry]s are not
-         * in the [log] but rather in the [global_cache]. 
+         * in the [log] but rather in the [global_cache].
          * This should be prevented by the fact that [Rev_log_cache.update_global_cache]
-         * only move the [log_entry] to the cache wihch are prior to the 
-         * previous commit index (ie the one of [before]. 
-         * 
-         * The other is a plain bug, all entries between 2 commit_index should be 
+         * only move the [log_entry] to the cache wihch are prior to the
+         * previous commit index (ie the one of [before].
+         *
+         * The other is a plain bug, all entries between 2 commit_index should be
          * in the log.
-         *) 
-        rev_log_entries 
+         *)
+        rev_log_entries
     in
-    (Committed_data (aux [] after.log.Log.recent_entries))::notifications 
-  else 
+    (Committed_data (aux [] after.log.Log.recent_entries))::notifications
+  else
     notifications
 
-let current_leader {id; role; _} = 
+let current_leader {id; role; _} =
     match role with
     | Follower {current_leader; _ }-> current_leader
-    | Candidate _ -> None 
-    | Leader _ -> Some id 
+    | Candidate _ -> None
+    | Leader _ -> Some id
 
-(* The latest non compacted log will be at the front 
- * of the list. 
+(* The latest non compacted log will be at the front
+ * of the list.
  *)
-let collect_all_non_compacted_logs state = 
+let collect_all_non_compacted_logs state =
   Log.Past_entries.fold (fun acc -> function
-    | {Log.rev_log_entries = Log.Compacted _; _} -> acc 
-    | log_interval -> log_interval::acc 
+    | {Log.rev_log_entries = Log.Compacted _; _} -> acc
+    | log_interval -> log_interval::acc
   ) [] state.log
 
 type compaction_report = {
@@ -169,62 +169,62 @@ type compaction_report = {
   to_be_expanded : Log.log_interval list;
 }
 
-let compaction state = 
+let compaction state =
 
   match state.role with
-  | Candidate _ -> 
+  | Candidate _ ->
     {to_be_expanded = []; to_be_compacted = []}
 
-  | Follower  _ -> 
-    let non_compacted = collect_all_non_compacted_logs state in 
+  | Follower  _ ->
+    let non_compacted = collect_all_non_compacted_logs state in
     begin match non_compacted with
-    | _::_::to_be_compacted -> 
+    | _::_::to_be_compacted ->
         {to_be_expanded = []; to_be_compacted}
-    (* 
-     * We don't want to compact the last 2 logs ... first 
+    (*
+     * We don't want to compact the last 2 logs ... first
      * the machine memory should have enough capacity (hopefully)
      * second in the event that this Follower become a Leader it's likely
      * that it will have to sync other followers which will have less entries
      * than itself. Therefore having the last 2 cache available would avoid
-     * reloading compacted logs. 
+     * reloading compacted logs.
      *
-     * We also assume that a Follower would never need to un-compact a 
-     * previously compacted log which is Ok since it is not used by other 
-     * Followers to replicate data. (Maybe one day we would allow a 
-     * [Follower] to be used to return previously commited log, since a 
-     * follower is usually less busy then the [Leader]. 
-     *) 
-    | _ -> 
+     * We also assume that a Follower would never need to un-compact a
+     * previously compacted log which is Ok since it is not used by other
+     * Followers to replicate data. (Maybe one day we would allow a
+     * [Follower] to be used to return previously commited log, since a
+     * follower is usually less busy then the [Leader].
+     *)
+    | _ ->
         {to_be_expanded = []; to_be_compacted = []}
     end
 
-  | Leader followers -> 
+  | Leader followers ->
     (* For each server next_index we should keep expanded 2 log intervals:
-     * a) The one that the next index belongs to 
+     * a) The one that the next index belongs to
      * b) The next one after a)
      *
-     * This strategy should allow detecting early enough the log interval which needs 
-     * un-compacting while still maitainig memory usage low enough. 
+     * This strategy should allow detecting early enough the log interval which needs
+     * un-compacting while still maitainig memory usage low enough.
      * In the worst case the number of logs kept uncompacted would be:
-     *         (nb of servers - 1) * 2 * Rev_log_cache.size  
+     *         (nb of servers - 1) * 2 * Rev_log_cache.size
      *
      * All other logs should be compacted
      *
-     * > Note that we should make this `2` value part of the configuration. 
+     * > Note that we should make this `2` value part of the configuration.
      *
      *)
 
-    let next_indices = 
-      let cmp (x:int) (y:int) = compare x y in 
+    let next_indices =
+      let cmp (x:int) (y:int) = compare x y in
       followers
       |> List.map (fun {next_index; _ } -> next_index)
       |> List.sort_uniq cmp
     in
 
-    let ((c, e,_ ), _) = Log.Past_entries.fold (fun ((c, e, append_next), next_indices) log_interval -> 
+    let ((c, e,_ ), _) = Log.Past_entries.fold (fun ((c, e, append_next), next_indices) log_interval ->
 
       match next_indices with
-      | [] -> 
+      | [] ->
         if append_next
         then ((c, log_interval::e, false), next_indices)
         else ((log_interval::c, e, false), next_indices)
@@ -232,22 +232,22 @@ let compaction state =
       | next_index::tl ->
         if Log.Past_interval.contains next_index log_interval
         then ((c, log_interval::e, true), tl)
-        else 
-          begin 
+        else
+          begin
             assert(next_index > log_interval.Log.last_index);
             if append_next
             then ((c, log_interval::e, false), next_indices)
             else ((log_interval::c, e, false), next_indices)
-          end 
-    ) (([], [], false), next_indices) state.log in 
+          end
+    ) (([], [], false), next_indices) state.log in
 
-    let is_compacted : Log.log_interval -> bool = function 
-      | {Log.rev_log_entries = Log.Compacted _ ; _ } -> true | _ -> false 
-    in 
-    let is_expanded  : Log.log_interval -> bool = function 
-      | {Log.rev_log_entries = Log.Expanded  _ ; _ } -> true | _ -> false 
-    in 
+    let is_compacted : Log.log_interval -> bool = function
+      | {Log.rev_log_entries = Log.Compacted _ ; _ } -> true | _ -> false
+    in
+    let is_expanded  : Log.log_interval -> bool = function
+      | {Log.rev_log_entries = Log.Expanded  _ ; _ } -> true | _ -> false
+    in
 
-    let c = List.filter is_expanded  c in 
-    let e = List.filter is_compacted e in 
+    let c = List.filter is_expanded  c in
+    let e = List.filter is_compacted e in
     {to_be_compacted = c; to_be_expanded = e}

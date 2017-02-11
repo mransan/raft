@@ -97,7 +97,7 @@ type message =
   | Append_entries_request of append_entries_request
   | Append_entries_response of append_entries_response
 
-let rec default_request_vote_request 
+let rec default_request_vote_request
   ?candidate_term:((candidate_term:int) = 0)
   ?candidate_id:((candidate_id:int) = 0)
   ?candidate_last_log_index:((candidate_last_log_index:int) = 0)
@@ -116,7 +116,7 @@ and default_request_vote_request_mutable () : request_vote_request_mutable = {
   candidate_last_log_term = 0;
 }
 
-let rec default_request_vote_response 
+let rec default_request_vote_response
   ?voter_id:((voter_id:int) = 0)
   ?voter_term:((voter_term:int) = 0)
   ?vote_granted:((vote_granted:bool) = false)
@@ -132,7 +132,7 @@ and default_request_vote_response_mutable () : request_vote_response_mutable = {
   vote_granted = false;
 }
 
-let rec default_log_entry 
+let rec default_log_entry
   ?index:((index:int) = 0)
   ?term:((term:int) = 0)
   ?data:((data:bytes) = Bytes.create 0)
@@ -151,7 +151,7 @@ and default_log_entry_mutable () : log_entry_mutable = {
   id = "";
 }
 
-let rec default_append_entries_request 
+let rec default_append_entries_request
   ?leader_term:((leader_term:int) = 0)
   ?leader_id:((leader_id:int) = 0)
   ?prev_log_index:((prev_log_index:int) = 0)
@@ -176,7 +176,7 @@ and default_append_entries_request_mutable () : append_entries_request_mutable =
   leader_commit = 0;
 }
 
-let rec default_append_entries_response_success_data 
+let rec default_append_entries_response_success_data
   ?receiver_last_log_index:((receiver_last_log_index:int) = 0)
   () : append_entries_response_success_data  = {
   receiver_last_log_index;
@@ -186,7 +186,7 @@ and default_append_entries_response_success_data_mutable () : append_entries_res
   receiver_last_log_index = 0;
 }
 
-let rec default_append_entries_response_log_failure_data 
+let rec default_append_entries_response_log_failure_data
   ?receiver_last_log_index:((receiver_last_log_index:int) = 0)
   () : append_entries_response_log_failure_data  = {
   receiver_last_log_index;
@@ -198,7 +198,7 @@ and default_append_entries_response_log_failure_data_mutable () : append_entries
 
 let rec default_append_entries_response_result () : append_entries_response_result = Success (default_append_entries_response_success_data ())
 
-and default_append_entries_response 
+and default_append_entries_response
   ?receiver_id:((receiver_id:int) = 0)
   ?receiver_term:((receiver_term:int) = 0)
   ?result:((result:append_entries_response_result) = Success (default_append_entries_response_success_data ()))
@@ -222,7 +222,7 @@ let rec decode_request_vote_request d =
   let candidate_last_log_index_is_set = ref false in
   let candidate_id_is_set = ref false in
   let candidate_term_is_set = ref false in
-  let rec loop () = 
+  let rec loop () =
     match Pbrt.Decoder.key d with
     | None -> (
     )
@@ -269,7 +269,7 @@ let rec decode_request_vote_response d =
   let vote_granted_is_set = ref false in
   let voter_term_is_set = ref false in
   let voter_id_is_set = ref false in
-  let rec loop () = 
+  let rec loop () =
     match Pbrt.Decoder.key d with
     | None -> (
     )
@@ -309,7 +309,7 @@ let rec decode_log_entry d =
   let data_is_set = ref false in
   let term_is_set = ref false in
   let index_is_set = ref false in
-  let rec loop () = 
+  let rec loop () =
     match Pbrt.Decoder.key d with
     | None -> (
     )
@@ -358,7 +358,7 @@ let rec decode_append_entries_request d =
   let prev_log_index_is_set = ref false in
   let leader_id_is_set = ref false in
   let leader_term_is_set = ref false in
-  let rec loop () = 
+  let rec loop () =
     match Pbrt.Decoder.key d with
     | None -> (
       v.rev_log_entries <- List.rev v.rev_log_entries;
@@ -419,7 +419,7 @@ let rec decode_append_entries_request d =
 let rec decode_append_entries_response_success_data d =
   let v = default_append_entries_response_success_data_mutable () in
   let receiver_last_log_index_is_set = ref false in
-  let rec loop () = 
+  let rec loop () =
     match Pbrt.Decoder.key d with
     | None -> (
     )
@@ -440,7 +440,7 @@ let rec decode_append_entries_response_success_data d =
 let rec decode_append_entries_response_log_failure_data d =
   let v = default_append_entries_response_log_failure_data_mutable () in
   let receiver_last_log_index_is_set = ref false in
-  let rec loop () = 
+  let rec loop () =
     match Pbrt.Decoder.key d with
     | None -> (
     )
@@ -458,16 +458,16 @@ let rec decode_append_entries_response_log_failure_data d =
   let v:append_entries_response_log_failure_data = Obj.magic v in
   v
 
-let rec decode_append_entries_response_result d = 
-  let rec loop () = 
+let rec decode_append_entries_response_result d =
+  let rec loop () =
     let ret:append_entries_response_result = match Pbrt.Decoder.key d with
       | None -> failwith "None of the known key is found"
       | Some (4, _) -> Success (decode_append_entries_response_success_data (Pbrt.Decoder.nested d))
       | Some (5, _) -> Log_failure (decode_append_entries_response_log_failure_data (Pbrt.Decoder.nested d))
       | Some (6, _) -> (Pbrt.Decoder.empty_nested d ; Term_failure)
       | Some (n, payload_kind) -> (
-        Pbrt.Decoder.skip d payload_kind; 
-        loop () 
+        Pbrt.Decoder.skip d payload_kind;
+        loop ()
       )
     in
     ret
@@ -478,7 +478,7 @@ and decode_append_entries_response d =
   let v = default_append_entries_response_mutable () in
   let receiver_term_is_set = ref false in
   let receiver_id_is_set = ref false in
-  let rec loop () = 
+  let rec loop () =
     match Pbrt.Decoder.key d with
     | None -> (
     )
@@ -526,8 +526,8 @@ and decode_append_entries_response d =
   let v:append_entries_response = Obj.magic v in
   v
 
-let rec decode_message d = 
-  let rec loop () = 
+let rec decode_message d =
+  let rec loop () =
     let ret:message = match Pbrt.Decoder.key d with
       | None -> failwith "None of the known key is found"
       | Some (1, _) -> Request_vote_request (decode_request_vote_request (Pbrt.Decoder.nested d))
@@ -535,129 +535,129 @@ let rec decode_message d =
       | Some (3, _) -> Append_entries_request (decode_append_entries_request (Pbrt.Decoder.nested d))
       | Some (4, _) -> Append_entries_response (decode_append_entries_response (Pbrt.Decoder.nested d))
       | Some (n, payload_kind) -> (
-        Pbrt.Decoder.skip d payload_kind; 
-        loop () 
+        Pbrt.Decoder.skip d payload_kind;
+        loop ()
       )
     in
     ret
   in
   loop ()
 
-let rec encode_request_vote_request (v:request_vote_request) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+let rec encode_request_vote_request (v:request_vote_request) encoder =
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.candidate_term encoder;
-  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (2, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.candidate_id encoder;
-  Pbrt.Encoder.key (3, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (3, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.candidate_last_log_index encoder;
-  Pbrt.Encoder.key (4, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (4, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.candidate_last_log_term encoder;
   ()
 
-let rec encode_request_vote_response (v:request_vote_response) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+let rec encode_request_vote_response (v:request_vote_response) encoder =
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.voter_id encoder;
-  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (2, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.voter_term encoder;
-  Pbrt.Encoder.key (3, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (3, Pbrt.Varint) encoder;
   Pbrt.Encoder.bool v.vote_granted encoder;
   ()
 
-let rec encode_log_entry (v:log_entry) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+let rec encode_log_entry (v:log_entry) encoder =
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.index encoder;
-  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (2, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.term encoder;
-  Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
+  Pbrt.Encoder.key (3, Pbrt.Bytes) encoder;
   Pbrt.Encoder.bytes v.data encoder;
-  Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
+  Pbrt.Encoder.key (4, Pbrt.Bytes) encoder;
   Pbrt.Encoder.string v.id encoder;
   ()
 
-let rec encode_append_entries_request (v:append_entries_request) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+let rec encode_append_entries_request (v:append_entries_request) encoder =
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.leader_term encoder;
-  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (2, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.leader_id encoder;
-  Pbrt.Encoder.key (3, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (3, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.prev_log_index encoder;
-  Pbrt.Encoder.key (4, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (4, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.prev_log_term encoder;
-  List.iter (fun x -> 
-    Pbrt.Encoder.key (5, Pbrt.Bytes) encoder; 
+  List.iter (fun x ->
+    Pbrt.Encoder.key (5, Pbrt.Bytes) encoder;
     Pbrt.Encoder.nested (encode_log_entry x) encoder;
   ) v.rev_log_entries;
-  Pbrt.Encoder.key (6, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (6, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.leader_commit encoder;
   ()
 
-let rec encode_append_entries_response_success_data (v:append_entries_response_success_data) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+let rec encode_append_entries_response_success_data (v:append_entries_response_success_data) encoder =
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.receiver_last_log_index encoder;
   ()
 
-let rec encode_append_entries_response_log_failure_data (v:append_entries_response_log_failure_data) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+let rec encode_append_entries_response_log_failure_data (v:append_entries_response_log_failure_data) encoder =
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.receiver_last_log_index encoder;
   ()
 
-let rec encode_append_entries_response_result (v:append_entries_response_result) encoder = 
+let rec encode_append_entries_response_result (v:append_entries_response_result) encoder =
   match v with
   | Success x -> (
-    Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.key (4, Pbrt.Bytes) encoder;
     Pbrt.Encoder.nested (encode_append_entries_response_success_data x) encoder;
   )
   | Log_failure x -> (
-    Pbrt.Encoder.key (5, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.key (5, Pbrt.Bytes) encoder;
     Pbrt.Encoder.nested (encode_append_entries_response_log_failure_data x) encoder;
   )
   | Term_failure -> (
-    Pbrt.Encoder.key (6, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.key (6, Pbrt.Bytes) encoder;
     Pbrt.Encoder.empty_nested encoder
   )
 
-and encode_append_entries_response (v:append_entries_response) encoder = 
-  Pbrt.Encoder.key (1, Pbrt.Varint) encoder; 
+and encode_append_entries_response (v:append_entries_response) encoder =
+  Pbrt.Encoder.key (1, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.receiver_id encoder;
-  Pbrt.Encoder.key (2, Pbrt.Varint) encoder; 
+  Pbrt.Encoder.key (2, Pbrt.Varint) encoder;
   Pbrt.Encoder.int_as_varint v.receiver_term encoder;
   (
     match v.result with
     | Success x -> (
-      Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
+      Pbrt.Encoder.key (4, Pbrt.Bytes) encoder;
       Pbrt.Encoder.nested (encode_append_entries_response_success_data x) encoder;
     )
     | Log_failure x -> (
-      Pbrt.Encoder.key (5, Pbrt.Bytes) encoder; 
+      Pbrt.Encoder.key (5, Pbrt.Bytes) encoder;
       Pbrt.Encoder.nested (encode_append_entries_response_log_failure_data x) encoder;
     )
     | Term_failure -> (
-      Pbrt.Encoder.key (6, Pbrt.Bytes) encoder; 
+      Pbrt.Encoder.key (6, Pbrt.Bytes) encoder;
       Pbrt.Encoder.empty_nested encoder
     )
   );
   ()
 
-let rec encode_message (v:message) encoder = 
+let rec encode_message (v:message) encoder =
   match v with
   | Request_vote_request x -> (
-    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.key (1, Pbrt.Bytes) encoder;
     Pbrt.Encoder.nested (encode_request_vote_request x) encoder;
   )
   | Request_vote_response x -> (
-    Pbrt.Encoder.key (2, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.key (2, Pbrt.Bytes) encoder;
     Pbrt.Encoder.nested (encode_request_vote_response x) encoder;
   )
   | Append_entries_request x -> (
-    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.key (3, Pbrt.Bytes) encoder;
     Pbrt.Encoder.nested (encode_append_entries_request x) encoder;
   )
   | Append_entries_response x -> (
-    Pbrt.Encoder.key (4, Pbrt.Bytes) encoder; 
+    Pbrt.Encoder.key (4, Pbrt.Bytes) encoder;
     Pbrt.Encoder.nested (encode_append_entries_response x) encoder;
   )
 
-let rec pp_request_vote_request fmt (v:request_vote_request) = 
+let rec pp_request_vote_request fmt (v:request_vote_request) =
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "candidate_term" Pbrt.Pp.pp_int fmt v.candidate_term;
@@ -668,7 +668,7 @@ let rec pp_request_vote_request fmt (v:request_vote_request) =
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
-let rec pp_request_vote_response fmt (v:request_vote_response) = 
+let rec pp_request_vote_response fmt (v:request_vote_response) =
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "voter_id" Pbrt.Pp.pp_int fmt v.voter_id;
@@ -678,7 +678,7 @@ let rec pp_request_vote_response fmt (v:request_vote_response) =
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
-let rec pp_log_entry fmt (v:log_entry) = 
+let rec pp_log_entry fmt (v:log_entry) =
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "index" Pbrt.Pp.pp_int fmt v.index;
@@ -689,7 +689,7 @@ let rec pp_log_entry fmt (v:log_entry) =
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
-let rec pp_append_entries_request fmt (v:append_entries_request) = 
+let rec pp_append_entries_request fmt (v:append_entries_request) =
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "leader_term" Pbrt.Pp.pp_int fmt v.leader_term;
@@ -702,7 +702,7 @@ let rec pp_append_entries_request fmt (v:append_entries_request) =
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
-let rec pp_append_entries_response_success_data fmt (v:append_entries_response_success_data) = 
+let rec pp_append_entries_response_success_data fmt (v:append_entries_response_success_data) =
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "receiver_last_log_index" Pbrt.Pp.pp_int fmt v.receiver_last_log_index;
@@ -710,7 +710,7 @@ let rec pp_append_entries_response_success_data fmt (v:append_entries_response_s
   in
   Pbrt.Pp.pp_brk pp_i fmt ()
 
-let rec pp_append_entries_response_log_failure_data fmt (v:append_entries_response_log_failure_data) = 
+let rec pp_append_entries_response_log_failure_data fmt (v:append_entries_response_log_failure_data) =
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "receiver_last_log_index" Pbrt.Pp.pp_int fmt v.receiver_last_log_index;
@@ -724,7 +724,7 @@ let rec pp_append_entries_response_result fmt (v:append_entries_response_result)
   | Log_failure x -> Format.fprintf fmt "@[Log_failure(%a)@]" pp_append_entries_response_log_failure_data x
   | Term_failure  -> Format.fprintf fmt "Term_failure"
 
-and pp_append_entries_response fmt (v:append_entries_response) = 
+and pp_append_entries_response fmt (v:append_entries_response) =
   let pp_i fmt () =
     Format.pp_open_vbox fmt 1;
     Pbrt.Pp.pp_record_field "receiver_id" Pbrt.Pp.pp_int fmt v.receiver_id;

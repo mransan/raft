@@ -60,7 +60,7 @@ type message =
 
 (** {2 Default values} *)
 
-val default_request_vote_request : 
+val default_request_vote_request :
   ?candidate_term:int ->
   ?candidate_id:int ->
   ?candidate_last_log_index:int ->
@@ -69,7 +69,7 @@ val default_request_vote_request :
   request_vote_request
 (** [default_request_vote_request ()] is the default value for type [request_vote_request] *)
 
-val default_request_vote_response : 
+val default_request_vote_response :
   ?voter_id:int ->
   ?voter_term:int ->
   ?vote_granted:bool ->
@@ -77,7 +77,7 @@ val default_request_vote_response :
   request_vote_response
 (** [default_request_vote_response ()] is the default value for type [request_vote_response] *)
 
-val default_log_entry : 
+val default_log_entry :
   ?index:int ->
   ?term:int ->
   ?data:bytes ->
@@ -86,7 +86,7 @@ val default_log_entry :
   log_entry
 (** [default_log_entry ()] is the default value for type [log_entry] *)
 
-val default_append_entries_request : 
+val default_append_entries_request :
   ?leader_term:int ->
   ?leader_id:int ->
   ?prev_log_index:int ->
@@ -97,13 +97,13 @@ val default_append_entries_request :
   append_entries_request
 (** [default_append_entries_request ()] is the default value for type [append_entries_request] *)
 
-val default_append_entries_response_success_data : 
+val default_append_entries_response_success_data :
   ?receiver_last_log_index:int ->
   unit ->
   append_entries_response_success_data
 (** [default_append_entries_response_success_data ()] is the default value for type [append_entries_response_success_data] *)
 
-val default_append_entries_response_log_failure_data : 
+val default_append_entries_response_log_failure_data :
   ?receiver_last_log_index:int ->
   unit ->
   append_entries_response_log_failure_data
@@ -112,7 +112,7 @@ val default_append_entries_response_log_failure_data :
 val default_append_entries_response_result : unit -> append_entries_response_result
 (** [default_append_entries_response_result ()] is the default value for type [append_entries_response_result] *)
 
-val default_append_entries_response : 
+val default_append_entries_response :
   ?receiver_id:int ->
   ?receiver_term:int ->
   ?result:append_entries_response_result ->
@@ -186,29 +186,29 @@ val encode_message : message -> Pbrt.Encoder.t -> unit
 
 (** {2 Formatters} *)
 
-val pp_request_vote_request : Format.formatter -> request_vote_request -> unit 
+val pp_request_vote_request : Format.formatter -> request_vote_request -> unit
 (** [pp_request_vote_request v] formats v *)
 
-val pp_request_vote_response : Format.formatter -> request_vote_response -> unit 
+val pp_request_vote_response : Format.formatter -> request_vote_response -> unit
 (** [pp_request_vote_response v] formats v *)
 
-val pp_log_entry : Format.formatter -> log_entry -> unit 
+val pp_log_entry : Format.formatter -> log_entry -> unit
 (** [pp_log_entry v] formats v *)
 
-val pp_append_entries_request : Format.formatter -> append_entries_request -> unit 
+val pp_append_entries_request : Format.formatter -> append_entries_request -> unit
 (** [pp_append_entries_request v] formats v *)
 
-val pp_append_entries_response_success_data : Format.formatter -> append_entries_response_success_data -> unit 
+val pp_append_entries_response_success_data : Format.formatter -> append_entries_response_success_data -> unit
 (** [pp_append_entries_response_success_data v] formats v *)
 
-val pp_append_entries_response_log_failure_data : Format.formatter -> append_entries_response_log_failure_data -> unit 
+val pp_append_entries_response_log_failure_data : Format.formatter -> append_entries_response_log_failure_data -> unit
 (** [pp_append_entries_response_log_failure_data v] formats v *)
 
-val pp_append_entries_response_result : Format.formatter -> append_entries_response_result -> unit 
+val pp_append_entries_response_result : Format.formatter -> append_entries_response_result -> unit
 (** [pp_append_entries_response_result v] formats v *)
 
-val pp_append_entries_response : Format.formatter -> append_entries_response -> unit 
+val pp_append_entries_response : Format.formatter -> append_entries_response -> unit
 (** [pp_append_entries_response v] formats v *)
 
-val pp_message : Format.formatter -> message -> unit 
+val pp_message : Format.formatter -> message -> unit
 (** [pp_message v] formats v *)

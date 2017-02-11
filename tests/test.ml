@@ -24,10 +24,10 @@ let default_configuration = {
   log_interval_size = 5;
 }
 
-let recent_log_length {log = {recent_entries; _ }; _ } = 
-  List.length recent_entries  
+let recent_log_length {log = {recent_entries; _ }; _ } =
+  List.length recent_entries
 
-let recent_log_hd {log = {recent_entries; _ }; _ } = 
+let recent_log_hd {log = {recent_entries; _ }; _ } =
   List.hd recent_entries
 
 let initial_state
@@ -795,10 +795,10 @@ let ()  =
 
   assert(Types.is_leader server0);
   assert(1 = server0.commit_index);
-  begin match notifications with 
+  begin match notifications with
   | (Committed_data [{id = "01"; _ }])::[] -> ()
   | _ -> assert(false)
-  end; 
+  end;
     (*
      * server1 has replicated the log successfully so this means
      * that a majority of servers have done the replication.
@@ -821,7 +821,7 @@ let ()  =
    *)
 
   let now = now +. 0.001 in
-   
+
   let new_log_result =
     let data = Bytes.of_string "Message02" in
     Raft_logic.handle_add_log_entries server0 [(data,"02")] now
@@ -842,7 +842,7 @@ let ()  =
      * server log.
      *)
 
-  begin match recent_log_hd server0 with 
+  begin match recent_log_hd server0 with
   | {index = 2; term = 1; _ }  -> ()
     (*
      * Make sure the index is incremented by
@@ -867,7 +867,7 @@ let ()  =
 
   begin match data2_msg with
   | (Append_entries_request r, 1) :: []  -> (
-    
+
     assert(r.leader_term = 1);
     assert(r.leader_id = 0);
     assert(r.prev_log_index = 1);
@@ -909,10 +909,10 @@ let ()  =
      * with [index = 2].
      *)
 
-  begin match notifications with 
+  begin match notifications with
   | (Committed_data [{id = "01"; _ }])::[] -> ()
   | _ -> assert(false)
-  end; 
+  end;
   assert(1 = server1.commit_index);
     (*
      * The [Append_entries] request contained the [commit_index]
@@ -954,10 +954,10 @@ let ()  =
 
   assert(Types.is_leader server0);
 
-  begin match notifications with 
+  begin match notifications with
   | (Committed_data [{id = "02"; _ }])::[] -> ()
   | _ -> assert(false)
-  end; 
+  end;
   assert(2 = server0.commit_index);
     (*
      * A successfull replication is enough for a majority.
@@ -1041,10 +1041,10 @@ let ()  =
 
   assert(Types.is_follower server1);
 
-  begin match notifications with 
+  begin match notifications with
   | (Committed_data [{id = "02"; _ }])::[] -> ()
   | _ -> assert(false)
-  end; 
+  end;
   assert(2 = server1.commit_index);
    (*
     * server1 is updating its commit index based on latest
@@ -1072,10 +1072,10 @@ let ()  =
   in
 
   assert(Types.is_follower server2);
-  begin match notifications with 
+  begin match notifications with
   | (Committed_data [{id = "02"; _ }])::[] -> ()
   | _ -> assert(false)
-  end; 
+  end;
   assert(2 = server2.commit_index);
    (*
     * server2 is updating its commit index based on latest
@@ -1134,7 +1134,7 @@ let ()  =
   assert([] = notications);
 
   (*
-   * Both servers have replicated the 2 logs, no outstanding 
+   * Both servers have replicated the 2 logs, no outstanding
    * logs to be sent.
    *)
   assert(0 = List.length msg_to_send);
@@ -1573,10 +1573,10 @@ let ()  =
   assert(Types.is_leader server1);
   assert(3 = server1.current_term);
 
-  begin match notifications with 
+  begin match notifications with
   | (Committed_data [{id = "03"; _ }])::[] -> ()
   | _ -> assert(false)
-  end; 
+  end;
   assert(3 = server1.commit_index);
     (*
      * The 3rd [log_entry] has been replicated one one other
@@ -1683,10 +1683,10 @@ let ()  =
      *)
 
   assert(1 = List.length notifications);
-  begin match notifications with 
+  begin match notifications with
   | (Committed_data [{id = "03"; _ }])::[] -> ()
   | _ -> assert(false)
-  end; 
+  end;
 
   begin match msgs with
   | (Append_entries_response r, 1) :: [] -> (
@@ -1720,11 +1720,11 @@ let ()  =
   assert([] = msgs);
   assert(1 = List.length notifications);
 
-  begin match notifications with 
-  | (Committed_data rev_log_entries ) :: [] -> 
+  begin match notifications with
+  | (Committed_data rev_log_entries ) :: [] ->
     assert(2 = List.length rev_log_entries)
   | _ -> assert(false)
-  end; 
+  end;
 
   (*
    * The test of the cache is not something that a client API should
@@ -1773,7 +1773,7 @@ let ()  =
     | Delay | Forward_to_leader _ -> assert(false)
   in
 
-  assert(12 = recent_log_length server1); 
+  assert(12 = recent_log_length server1);
   assert(5  = server1.commit_index);
    (* we did not do the [Append_entries] request for the 6th log
     * entries so no commit change.
@@ -1799,15 +1799,15 @@ let ()  =
   assert(Types.is_follower server2);
   assert(3 = server2.current_term);
 
-  assert(12 = recent_log_length server2); 
+  assert(12 = recent_log_length server2);
 
   assert(5 = server2.commit_index);
   assert(1 = List.length notifications);
-  begin match notifications with 
-  | (Committed_data rev_log_entries ) :: [] -> 
+  begin match notifications with
+  | (Committed_data rev_log_entries ) :: [] ->
     assert(2 = List.length rev_log_entries)
   | _ -> assert(false)
-  end; 
+  end;
     (* commit index updated to match server1.
      * and therefore a new notification with
      * 2 entries is expected
@@ -1838,24 +1838,24 @@ let ()  =
 
   assert(Types.is_leader server1);
   assert(12 = server1.commit_index);
-  
-  (* 
-   * The global cache is updated everytime the commit index is increased and there
-   * are sufficient log entries to be cached between the previous cache 
-   * and the previous commit index. 
-   * 
-   * In our case:
-   * previous commit index = 5 
-   * previous cached index = 0 // No cache 
-   * cache size            = 5 
-   *
-   * This combination triggers the addition of a log interval ]0; 5] to 
-   * the global cache. 
-   *
-   * Additionally the entries ]0;4] are also removed from the state log. 
-   *) 
 
-  (* TODO 
+  (*
+   * The global cache is updated everytime the commit index is increased and there
+   * are sufficient log entries to be cached between the previous cache
+   * and the previous commit index.
+   *
+   * In our case:
+   * previous commit index = 5
+   * previous cached index = 0 // No cache
+   * cache size            = 5
+   *
+   * This combination triggers the addition of a log interval ]0; 5] to
+   * the global cache.
+   *
+   * Additionally the entries ]0;4] are also removed from the state log.
+   *)
+
+  (* TODO
   begin match server1.log.past_entries with
   | None -> assert(false)
   | Some (Interval {prev_index; prev_term; rev_log_entries; last_index}) ->
@@ -1884,28 +1884,28 @@ let ()  =
   end;
   *)
 
-  assert(12 = server1.log.log_size); 
-  assert(8  = recent_log_length server1); 
+  assert(12 = server1.log.log_size);
+  assert(8  = recent_log_length server1);
   assert(1  = List.length notifications);
     (* New commited logs means notification back!
      *)
 
   assert(0 = List.length msgs);
     (* No new messages to be send:
-     * Server2 has replicated all the logs 
-     * Server0 (still crashed) has an outstanding request. 
+     * Server2 has replicated all the logs
+     * Server0 (still crashed) has an outstanding request.
      *)
-  (* 
+  (*
    * The commit index increased from 6 to 12. However [6] is not
-   * commited log is not enough to trigger a new global cache 
-   * update since the previously cached index is 5. 
+   * commited log is not enough to trigger a new global cache
+   * update since the previously cached index is 5.
    *     `6 - 5 = 1 <  log_interval_size = 5`
    *
    *)
-  (* TODO 
+  (* TODO
   begin match server1.log.past_entries with
   | Some (Interval {last_index = 5; _}) -> assert(true)
-  | _ -> assert(false) 
+  | _ -> assert(false)
   end;
   *)
 
@@ -1942,34 +1942,34 @@ let ()  =
   in
   assert(20 = server1.commit_index);
   assert(12 = server2.commit_index);
-  assert(9  = recent_log_length server1); 
-    (* 20 - 5 - 7 + 1 
-     * where 20: total number of log 
-     * where 5 : logs in first global cache interval 
-     * where 7 : logs in second global cache interval 
-     * where +1: because the last cached index is not removed from 
+  assert(9  = recent_log_length server1);
+    (* 20 - 5 - 7 + 1
+     * where 20: total number of log
+     * where 5 : logs in first global cache interval
+     * where 7 : logs in second global cache interval
+     * where +1: because the last cached index is not removed from
      *           the logs.
      *)
   assert(16 = recent_log_length server2);
 
   assert(20 = server1.log.log_size);
   assert(20 = server2.log.log_size);
-  
-  (* The global cache update will create a new cache entry since 
+
+  (* The global cache update will create a new cache entry since
    *
-   * previous commit      = 12 
-   * previous cache index = 5 
-   * log interval size    = 5 
-   *  ->  12 - 5 >  5 
+   * previous commit      = 12
+   * previous cache index = 5
+   * log interval size    = 5
+   *  ->  12 - 5 >  5
    *
    * We should now have 2 log interval in the cache:
    *                   Append
    *                 /        \
-   *           Interval      Interval 
+   *           Interval      Interval
    *            ]0;5]          ]5;12]
    *
    *)
-  (* TODO 
+  (* TODO
   begin match server1.log.past_entries with
   | None -> assert(false)
   | Some (Append a) ->
@@ -2024,7 +2024,7 @@ let ()  =
     request_response ~from:server1 ~to_:server2 ~now data21_msgs
   in
 
-  assert(21 = server1.commit_index); 
+  assert(21 = server1.commit_index);
   assert(20 = server2.commit_index);
   assert(21 = server1.log.log_size);
   assert(21 = server2.log.log_size);
@@ -2045,7 +2045,7 @@ let ()  =
    *
    *)
 
-  (* TODO 
+  (* TODO
   begin match server1.log.past_entries with
   | None -> assert(false)
   | Some (Append {rhs; lhs; last_index; height})  ->
@@ -2076,72 +2076,72 @@ let ()  =
   (*
    * Compaction test!
    *
-   * The compaction algorithm will look at where the next 
-   * indices for all followers are with respect to the intervals 
-   * of the global cache. 
+   * The compaction algorithm will look at where the next
+   * indices for all followers are with respect to the intervals
+   * of the global cache.
    *
-   * server2 next index = 21 (it has replicated all logs) 
+   * server2 next index = 21 (it has replicated all logs)
    * server0 next index = 4  (server0 was down ever since server1
    *   became leader and therefore its next index is still set to the
    *   initial value : log size @ election time + 1
    *
-   * The compaction will then recommend that the log interval to which 
-   * next indices belong to are kept expanded. Additionally the log intervals 
-   * following those should also be kept expanded to allow some headroom. 
+   * The compaction will then recommend that the log interval to which
+   * next indices belong to are kept expanded. Additionally the log intervals
+   * following those should also be kept expanded to allow some headroom.
    *
    * In our current global cache:
    * - next index 21 : does not belong to any log interval -> no effect
-   * - next index 4  : belong to the right most log interval -> both ]0;5] and 
-   *   ]5;12] should be kept expanded 
+   * - next index 4  : belong to the right most log interval -> both ]0;5] and
+   *   ]5;12] should be kept expanded
    * -> ]12;20] should be compacted.
    *
    *)
-  let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in  
+  let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in
 
   assert(e = []);
     (* No compaction required *)
-  assert(1 = List.length c); 
+  assert(1 = List.length c);
 
   begin match c with
   | {prev_index = 12; prev_term = 3; last_index = 20; _ }::[] -> ()
   | _ -> assert(false)
   end;
 
-  
 
-  begin 
-    let compact ~prev_index state = 
-      let interval = Log.Past_entries.find ~index:(prev_index + 1) state.log in  
-      let interval = {interval with 
-        rev_log_entries = Compacted {record_id = "test"}} 
-      in 
-      {state with log = Log.Past_entries.replace interval state.log} 
-    in 
-        
-    (* This section gradually compact all the logs from left (earlier) to 
+
+  begin
+    let compact ~prev_index state =
+      let interval = Log.Past_entries.find ~index:(prev_index + 1) state.log in
+      let interval = {interval with
+        rev_log_entries = Compacted {record_id = "test"}}
+      in
+      {state with log = Log.Past_entries.replace interval state.log}
+    in
+
+    (* This section gradually compact all the logs from left (earlier) to
      * right (later) and make sure the compaction
      * algorithm works well.
      *)
 
-    let server1 = compact ~prev_index:0 server1 in 
-    let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in  
-    assert(1 = List.length e); 
+    let server1 = compact ~prev_index:0 server1 in
+    let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in
+    assert(1 = List.length e);
       (* The log interval that we have intentionally compacted above
        * is correctly selected for expansion.
        *)
     assert(1 = List.length c);
-      (* The log interval ]12;20] should still be compacted. 
+      (* The log interval ]12;20] should still be compacted.
        *)
-    
-    let server1 = compact ~prev_index:5 server1 in  
-    let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in  
-    assert(2 = List.length e); 
-    assert(1 = List.length c); 
-    
-    let server1 = compact ~prev_index:12 server1 in  
-    let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in  
-    assert(2 = List.length e); 
-    assert(0 = List.length c); 
+
+    let server1 = compact ~prev_index:5 server1 in
+    let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in
+    assert(2 = List.length e);
+    assert(1 = List.length c);
+
+    let server1 = compact ~prev_index:12 server1 in
+    let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in
+    assert(2 = List.length e);
+    assert(0 = List.length c);
       (* The log interval ]12;20] is no longer required to be compacted
        *)
   end;
