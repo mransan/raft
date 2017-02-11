@@ -4,14 +4,14 @@ open Raft_pb
 open Raft_types
 open Raft_log
 
-module Types     = Raft_types
+module Types = Raft_types
 module Candidate = Raft_role.Candidate
-module Follower  = Raft_role.Follower
-module Leader    = Raft_role.Leader
+module Follower = Raft_role.Follower
+module Leader = Raft_role.Leader
 module Timeout_event = Raft_helper.Timeout_event
 module Log = Raft_log
 
-module Logic     = Raft_logic
+module Logic = Raft_logic
 
 let default_configuration = {
   nb_of_server = 3;
@@ -21,7 +21,6 @@ let default_configuration = {
      *)
   hearbeat_timeout = 0.02;
   max_nb_logs_per_message = 10;
-  log_interval_size = 5;
 }
 
 let recent_log_length {log = {recent_entries; _ }; _ } =

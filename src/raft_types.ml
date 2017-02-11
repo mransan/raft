@@ -8,7 +8,6 @@ type configuration = {
   election_timeout_range : float;
   hearbeat_timeout : float;
   max_nb_logs_per_message : int;
-  log_interval_size : int;
 }
 
 type timeout_type =

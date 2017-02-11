@@ -82,12 +82,19 @@ type new_log_response =
         from a valid [Leader]
       *)
 
-val handle_add_log_entries: Raft_types.state -> (bytes * string) list -> time -> new_log_response
+val handle_add_log_entries: 
+  Raft_types.state -> 
+  (bytes * string) list -> 
+  time -> 
+  new_log_response
 (** [handle_add_log_entry state data now] processes [data] and return the follow
     up response. See [new_log_response] for more information.
   *)
 
-val next_timeout_event : Raft_types.state -> time -> Raft_types.timeout_event
+val next_timeout_event : 
+  Raft_types.state -> 
+  time -> 
+  Raft_types.timeout_event
 (** [next_timeout_event state now] returns the timeout information
     that the serve should implement.
 

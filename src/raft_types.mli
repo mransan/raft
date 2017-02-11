@@ -4,11 +4,20 @@
 
 type configuration = {
   nb_of_server : int;
+    (** Number of servers for the RAFT clusters, servers are then 
+        identified with 0 indexing *)
   election_timeout : float;
+    (** Average duration time for which a server will wait before starting 
+        a new election when the leader is not sending messages. *)
   election_timeout_range : float;
+    (** Duration range for the election timeout. The effective election
+        timeout is randomly chosen between timeout +|- range/2. 
+        This value must be strickly less than [2 *. election_timeout] *)
   hearbeat_timeout : float;
+    (** Duration between heartbeat sent by the leader. [hearbeat_timeout] 
+        must be much less than [election_timeout] *)
   max_nb_logs_per_message : int;
-  log_interval_size : int;
+    (** Limit the number of log entries per append entries message  *)
 }
 
 type timeout_type =
