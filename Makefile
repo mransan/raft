@@ -21,7 +21,7 @@ lib.byte:
 LIB_FILES+=raft_pb 
 LIB_FILES+=raft_helper
 LIB_FILES+=raft_logic
-LIB_FILES+=raft_state
+LIB_FILES+=raft_types
 LIB_FILES+=raft_role
 LIB_FILES+=raft_log
 

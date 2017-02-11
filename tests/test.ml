@@ -1619,12 +1619,6 @@ let ()  =
     (* The 2 logs have not been commited.
      *)
 
-  assert(None = server1.log.past_entries );
-    (* Only 3 logs have been commited, this is less than
-     * the [log_interval_size] so the global_cache
-     * is still empty.
-     *)
-
   assert(2 = List.length data45_msgs);
 
   List.iter (fun (msg, _) ->
@@ -1885,7 +1879,7 @@ let ()  =
   *)
 
   assert(12 = server1.log.log_size);
-  assert(8  = recent_log_length server1);
+  assert(12  = recent_log_length server1);
   assert(1  = List.length notifications);
     (* New commited logs means notification back!
      *)
@@ -1942,15 +1936,8 @@ let ()  =
   in
   assert(20 = server1.commit_index);
   assert(12 = server2.commit_index);
-  assert(9  = recent_log_length server1);
-    (* 20 - 5 - 7 + 1
-     * where 20: total number of log
-     * where 5 : logs in first global cache interval
-     * where 7 : logs in second global cache interval
-     * where +1: because the last cached index is not removed from
-     *           the logs.
-     *)
-  assert(16 = recent_log_length server2);
+  assert(20 = recent_log_length server1);
+  assert(20 = recent_log_length server2);
 
   assert(20 = server1.log.log_size);
   assert(20 = server2.log.log_size);
@@ -2071,79 +2058,5 @@ let ()  =
   | _ -> assert(false);
   end;
   *)
-
-
-  (*
-   * Compaction test!
-   *
-   * The compaction algorithm will look at where the next
-   * indices for all followers are with respect to the intervals
-   * of the global cache.
-   *
-   * server2 next index = 21 (it has replicated all logs)
-   * server0 next index = 4  (server0 was down ever since server1
-   *   became leader and therefore its next index is still set to the
-   *   initial value : log size @ election time + 1
-   *
-   * The compaction will then recommend that the log interval to which
-   * next indices belong to are kept expanded. Additionally the log intervals
-   * following those should also be kept expanded to allow some headroom.
-   *
-   * In our current global cache:
-   * - next index 21 : does not belong to any log interval -> no effect
-   * - next index 4  : belong to the right most log interval -> both ]0;5] and
-   *   ]5;12] should be kept expanded
-   * -> ]12;20] should be compacted.
-   *
-   *)
-  let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in
-
-  assert(e = []);
-    (* No compaction required *)
-  assert(1 = List.length c);
-
-  begin match c with
-  | {prev_index = 12; prev_term = 3; last_index = 20; _ }::[] -> ()
-  | _ -> assert(false)
-  end;
-
-
-
-  begin
-    let compact ~prev_index state =
-      let interval = Log.Past_entries.find ~index:(prev_index + 1) state.log in
-      let interval = {interval with
-        rev_log_entries = Compacted {record_id = "test"}}
-      in
-      {state with log = Log.Past_entries.replace interval state.log}
-    in
-
-    (* This section gradually compact all the logs from left (earlier) to
-     * right (later) and make sure the compaction
-     * algorithm works well.
-     *)
-
-    let server1 = compact ~prev_index:0 server1 in
-    let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in
-    assert(1 = List.length e);
-      (* The log interval that we have intentionally compacted above
-       * is correctly selected for expansion.
-       *)
-    assert(1 = List.length c);
-      (* The log interval ]12;20] should still be compacted.
-       *)
-
-    let server1 = compact ~prev_index:5 server1 in
-    let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in
-    assert(2 = List.length e);
-    assert(1 = List.length c);
-
-    let server1 = compact ~prev_index:12 server1 in
-    let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in
-    assert(2 = List.length e);
-    assert(0 = List.length c);
-      (* The log interval ]12;20] is no longer required to be compacted
-       *)
-  end;
 
   ()

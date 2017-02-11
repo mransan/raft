@@ -1,6 +1,5 @@
 (** raft.proto Generated Types and Encoding *)
 
-
 (** {2 Types} *)
 
 type request_vote_request = {

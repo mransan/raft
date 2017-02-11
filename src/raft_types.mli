@@ -113,10 +113,3 @@ val current_leader: state -> int option
 val notifications : state -> state -> notification list
 (** [notifications before after] computes the notification between 2 states
   *)
-
-type compaction_report = {
-  to_be_compacted : Raft_log.log_interval list;
-  to_be_expanded : Raft_log.log_interval list;
-}
-
-val compaction : state -> compaction_report

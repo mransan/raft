@@ -294,12 +294,6 @@ let handle_request_vote_response state response now =
 let update_state leader_commit receiver_last_log_index log state =
   if leader_commit > state.Types.commit_index
   then
-    let log =
-      let open Types in
-      let prev_commit_index = state.commit_index in
-      let log_interval_size = state.configuration.log_interval_size in
-      Log.service ~prev_commit_index ~log_interval_size log
-    in
     let commit_index = min leader_commit receiver_last_log_index in
     {state with Types.log; commit_index}
   else
@@ -485,14 +479,7 @@ let handle_append_entries_response state response now =
           if Configuration.is_majority configuration (nb_of_replications + 1) &&
              receiver_last_log_index > state.Types.commit_index
           then
-            let log =
-              let open Types in
-              let prev_commit_index = state.commit_index in
-              let log_interval_size = state.configuration.log_interval_size in
-              let log = state.log in
-              Log.service ~prev_commit_index ~log_interval_size log
-            in
-            {state with Types.commit_index = receiver_last_log_index; log }
+            {state with Types.commit_index = receiver_last_log_index; (*log*) }
           else
             state
         in
