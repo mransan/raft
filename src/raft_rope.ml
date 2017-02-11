@@ -17,7 +17,7 @@ and 'a tree =
 
 and 'a t = 'a tree option
 
-let empty  = None
+let empty = None
 
 let fold f e0 = function
   | None -> e0
@@ -86,7 +86,7 @@ let rope_height = function
  *)
 let add ~prev ~last ~data t =
 
-  let new_leaf = Interval {leaf_data=data;leaf_prev=prev; leaf_last=last}  in
+  let new_leaf = Interval {leaf_data = data;leaf_prev = prev; leaf_last = last}  in
 
   let rec aux = function
     | Interval x ->
@@ -111,7 +111,7 @@ let add ~prev ~last ~data t =
           append_last = last}
       else begin
         assert(lhs_height > rhs_height);
-        Append {append_height; append_lhs ; append_rhs = aux append_rhs ; append_last= last}
+        Append {append_height; append_lhs ; append_rhs = aux append_rhs ; append_last = last}
       end
   in
   match t with

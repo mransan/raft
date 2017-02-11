@@ -44,7 +44,7 @@ val term_of_index : int -> t -> int
 (** {2 Modifiers} *)
 
 val add_log_datas : int -> (bytes * string) list -> t -> t
-(** [add_log_datas current_term datas state] adds [datas] to the log of the 
+(** [add_log_datas current_term datas state] adds [datas] to the log of the
     [state].
 
     Note that the logs are in chronological order
@@ -64,11 +64,11 @@ val add_log_entries : rev_log_entries:Raft_pb.log_entry list -> t -> t
   *)
 
 val remove_log_since : prev_log_index:int -> prev_log_term:int -> t -> t
-(** [remove_log_since ~prev_log_index ~prev_log_term log] removes all the 
-    entries which are after the log_entry defined by [prev_log_index] and 
+(** [remove_log_since ~prev_log_index ~prev_log_term log] removes all the
+    entries which are after the log_entry defined by [prev_log_index] and
     [prev_log_term].
 
-    If [log] does not contain any log_entry defined by [prev_log_index] and 
+    If [log] does not contain any log_entry defined by [prev_log_index] and
     [prev_log_term] then [Not_found] is raised.
   *)
 

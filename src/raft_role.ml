@@ -1,13 +1,13 @@
 open Raft_pb
 
-module Log= Raft_log
+module Log = Raft_log
 module Types = Raft_types
 
 module Follower = struct
 
   let create ~configuration ~now ~id () =
     let {
-      Types.election_timeout = t ;
+      Types.election_timeout = t;
       election_timeout_range = r; _ } = configuration in
     let timeout = t +. (Random.float r -. (r /. 2.)) in
     {
@@ -28,7 +28,7 @@ module Follower = struct
       Types.configuration = {
         Types.election_timeout = t;
         election_timeout_range = r; _}; _} = state in
-    let election_deadline  = now +. t +. (Random.float r -. (r /. 2.)) in
+    let election_deadline = now +. t +. (Random.float r -. (r /. 2.)) in
 
     let role = match state.Types.role with
       | Types.Follower follower_state ->

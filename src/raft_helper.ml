@@ -1,4 +1,4 @@
-module Types  = Raft_types
+module Types = Raft_types
 module Leader = Raft_role.Leader
 
 module Configuration = struct
@@ -12,7 +12,7 @@ module Timeout_event = struct
 
   let existing_election_wait election_deadline now =
     Types.({
-      timeout      = election_deadline -. now;
+      timeout = election_deadline -. now;
       timeout_type = New_leader_election;
     })
 

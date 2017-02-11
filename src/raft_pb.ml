@@ -102,7 +102,7 @@ let rec default_request_vote_request
   ?candidate_id:((candidate_id:int) = 0)
   ?candidate_last_log_index:((candidate_last_log_index:int) = 0)
   ?candidate_last_log_term:((candidate_last_log_term:int) = 0)
-  () : request_vote_request  = {
+  () : request_vote_request = {
   candidate_term;
   candidate_id;
   candidate_last_log_index;
@@ -120,7 +120,7 @@ let rec default_request_vote_response
   ?voter_id:((voter_id:int) = 0)
   ?voter_term:((voter_term:int) = 0)
   ?vote_granted:((vote_granted:bool) = false)
-  () : request_vote_response  = {
+  () : request_vote_response = {
   voter_id;
   voter_term;
   vote_granted;
@@ -137,7 +137,7 @@ let rec default_log_entry
   ?term:((term:int) = 0)
   ?data:((data:bytes) = Bytes.create 0)
   ?id:((id:string) = "")
-  () : log_entry  = {
+  () : log_entry = {
   index;
   term;
   data;
@@ -158,7 +158,7 @@ let rec default_append_entries_request
   ?prev_log_term:((prev_log_term:int) = 0)
   ?rev_log_entries:((rev_log_entries:log_entry list) = [])
   ?leader_commit:((leader_commit:int) = 0)
-  () : append_entries_request  = {
+  () : append_entries_request = {
   leader_term;
   leader_id;
   prev_log_index;
@@ -178,7 +178,7 @@ and default_append_entries_request_mutable () : append_entries_request_mutable =
 
 let rec default_append_entries_response_success_data
   ?receiver_last_log_index:((receiver_last_log_index:int) = 0)
-  () : append_entries_response_success_data  = {
+  () : append_entries_response_success_data = {
   receiver_last_log_index;
 }
 
@@ -188,7 +188,7 @@ and default_append_entries_response_success_data_mutable () : append_entries_res
 
 let rec default_append_entries_response_log_failure_data
   ?receiver_last_log_index:((receiver_last_log_index:int) = 0)
-  () : append_entries_response_log_failure_data  = {
+  () : append_entries_response_log_failure_data = {
   receiver_last_log_index;
 }
 
@@ -202,7 +202,7 @@ and default_append_entries_response
   ?receiver_id:((receiver_id:int) = 0)
   ?receiver_term:((receiver_term:int) = 0)
   ?result:((result:append_entries_response_result) = Success (default_append_entries_response_success_data ()))
-  () : append_entries_response  = {
+  () : append_entries_response = {
   receiver_id;
   receiver_term;
   result;

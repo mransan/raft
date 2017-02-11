@@ -1,11 +1,11 @@
 open Raft_pb
 
-module Types         = Raft_types
-module Follower      = Raft_role.Follower
-module Candidate     = Raft_role.Candidate
-module Leader        = Raft_role.Leader
+module Types = Raft_types
+module Follower = Raft_role.Follower
+module Candidate = Raft_role.Candidate
+module Leader = Raft_role.Leader
 module Configuration = Raft_helper.Configuration
-module Log           = Raft_log
+module Log = Raft_log
 module Timeout_event = Raft_helper.Timeout_event
 
 type time = float
@@ -122,7 +122,7 @@ end (* Log_entry_util *)
 (** {2 Request Vote} *)
 
 let make_request_vote_request state =
-  let index, term  = Log.last_log_index_and_term state.Types.log in
+  let index, term = Log.last_log_index_and_term state.Types.log in
   {
     candidate_term = state.Types.current_term;
     candidate_id = state.Types.id;
@@ -185,10 +185,10 @@ let handle_request_vote_request state request now =
             Types.election_timeout; _
           }; _} = state in
 
-        let state ={state with
+        let state = {state with
           Types.role = Types.Follower {
-            Types.voted_for         = Some candidate_id;
-            Types.current_leader    = None;
+            Types.voted_for = Some candidate_id;
+            Types.current_leader = None;
             Types.election_deadline = now +. election_timeout;
           }
         } in
@@ -260,7 +260,7 @@ let handle_request_vote_response state response now =
                 Types.unsent_entries;_
               } = follower in
               let prev_log_index = next_index - 1 in
-              let unsent_entries, req  = Log_entry_util.make_append_entries prev_log_index unsent_entries state in
+              let unsent_entries, req = Log_entry_util.make_append_entries prev_log_index unsent_entries state in
               let msg_to_send = (Append_entries_request req, server_id) in
               aux ({follower with Types.unsent_entries;}::followers) (msg_to_send::msgs_to_send) tl
           in
@@ -321,7 +321,7 @@ let handle_append_entries_request state request now =
     (* This request is coming from a legetimate leader,
      * let's ensure that this server is a follower.
      *)
-    let state  =
+    let state =
       Follower.become ~current_leader:leader_id ~term:leader_term ~now state
     in
 
@@ -501,7 +501,7 @@ let handle_append_entries_response state response now =
        *)
       let leader_state = Leader.decrement_next_index ~log_failure ~receiver_id state leader_state in
       let leader_state, msgs_to_send = Log_entry_util.compute_append_entries state leader_state now in
-      let state  = Types.({state with role = Leader leader_state}) in
+      let state = Types.({state with role = Leader leader_state}) in
       (state,msgs_to_send)
 
     | Term_failure  ->
@@ -572,7 +572,7 @@ let fold_over_servers f e0 state =
 
 let handle_new_election_timeout state now =
   let state' = Candidate.become ~now state in
-  let msgs  =
+  let msgs =
     fold_over_servers (fun acc server_id ->
       let request = make_request_vote_request state' in
       (Request_vote_request request, server_id) :: acc

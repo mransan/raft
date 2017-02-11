@@ -312,7 +312,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server2, request_vote_msgs, notifications=
+  let server2, request_vote_msgs, notifications =
     Raft_logic.handle_new_election_timeout server2 now
   in
 
@@ -605,8 +605,8 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server1, msgs, notifications=
-    let msg =  msg_for_server hb_msgs 1 in
+  let server1, msgs, notifications =
+    let msg = msg_for_server hb_msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
 
@@ -722,7 +722,7 @@ let ()  =
          * Contains the log entry to be synchronized.
          *)
       begin match r.rev_log_entries with
-      | {index = 1; term =1; _} :: [] -> ()
+      | {index = 1; term = 1; _} :: [] -> ()
       | _ -> assert(false)
       end;
       assert(r.leader_commit = 0);
@@ -787,7 +787,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server0, _, notifications=
+  let server0, _, notifications =
     let msg = msg_for_server msgs 0  in
     Raft_logic.handle_message server0 msg now
   in
@@ -927,7 +927,7 @@ let ()  =
 
   begin match msgs with
   | (Append_entries_response r, 0) :: [] -> (
-    assert(r.receiver_id  = 1);
+    assert(r.receiver_id = 1);
     assert(r.receiver_term = 1);
     assert(r.result = Success {receiver_last_log_index = 2; });
      (* server1 notifies the [Leader] about the last log it has
@@ -946,7 +946,7 @@ let ()  =
 
   let now = now +. 0.001 in
 
-  let server0, _, notifications=
+  let server0, _, notifications =
     let msg = msg_for_server msgs 0  in
     Raft_logic.handle_message server0 msg now
   in
@@ -1022,7 +1022,7 @@ let ()  =
   | _ -> assert(false)
   end;
 
-  let now =  now +. 0.001 in
+  let now = now +. 0.001 in
 
 
   (*
@@ -1113,7 +1113,7 @@ let ()  =
 
   let server0, msg_to_send, notications =
 
-    let server0, msg_to_send, notications=
+    let server0, msg_to_send, notications =
       let msg = msg_for_server server1_response 0  in
       Raft_logic.handle_message server0 msg now
     in
@@ -1249,7 +1249,7 @@ let ()  =
   List.iter (fun (r, _) ->
     match r with
     | Request_vote_request r -> (
-      assert(r.candidate_term  = 2);
+      assert(r.candidate_term = 2);
       assert(r.candidate_id = 2);
       assert(r.candidate_last_log_index = 2);
       assert(r.candidate_last_log_term = 1);
@@ -1329,7 +1329,7 @@ let ()  =
     | Request_vote_request r -> (
       assert(r.candidate_term = 3);
       assert(r.candidate_id = 1);
-      assert(r.candidate_last_log_index =3);
+      assert(r.candidate_last_log_index = 3);
       assert(r.candidate_last_log_term = 1);
     )
     | _ -> assert(false)
@@ -1635,7 +1635,7 @@ let ()  =
       assert(3 = leader_term);
       assert(1 = leader_id);
       assert(prev_log_index = 3);
-      assert(prev_log_term  = 1);
+      assert(prev_log_term = 1);
       assert(2 = List.length rev_log_entries);
       assert(3 = leader_commit);
     )
@@ -1840,7 +1840,7 @@ let ()  =
    * In our case:
    * previous commit index = 5
    * previous cached index = 0 // No cache
-   * cache size            = 5
+   * cache size = 5
    *
    * This combination triggers the addition of a log interval ]0; 5] to
    * the global cache.
@@ -1943,9 +1943,9 @@ let ()  =
 
   (* The global cache update will create a new cache entry since
    *
-   * previous commit      = 12
+   * previous commit = 12
    * previous cache index = 5
-   * log interval size    = 5
+   * log interval size = 5
    *  ->  12 - 5 >  5
    *
    * We should now have 2 log interval in the cache:
@@ -1971,7 +1971,7 @@ let ()  =
     | Interval l, Interval r ->
       let { prev_index; prev_term; last_index; rev_log_entries; } = l in
       assert(prev_index = 0);
-      assert(prev_term  = 0);
+      assert(prev_term = 0);
       assert(last_index = 5);
       begin match rev_log_entries with
       | Expanded {entries} -> assert(5 = List.length entries);
@@ -1980,7 +1980,7 @@ let ()  =
 
       let { prev_index; prev_term; last_index; rev_log_entries; } = r in
       assert(prev_index = 5);
-      assert(prev_term  = 3);
+      assert(prev_term = 3);
       assert(last_index = 12);
       begin match rev_log_entries with
       | Expanded {entries} -> assert(7 = List.length entries);

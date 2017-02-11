@@ -4,7 +4,7 @@ module Term_tree = struct
 
   module Rope = Raft_rope
 
-  type t =  {
+  type t = {
     previous_terms : int Rope.t;
     last_log_entry : log_entry;
   }
@@ -19,10 +19,10 @@ module Term_tree = struct
     | None -> 0
     | Some x -> x
 
-  (* [handle_new_log_entry term_tree log_entry] returns a new term tree taking 
+  (* [handle_new_log_entry term_tree log_entry] returns a new term tree taking
    * into account that [log_entry] is now the latest one.
    *
-   * The [term_tree] will only contain a new term interval if the [log_entry] 
+   * The [term_tree] will only contain a new term interval if the [log_entry]
    * is from a different term than the previous [log_entry].
    *)
   let handle_new_log_entry t log_entry =
@@ -49,9 +49,9 @@ module Term_tree = struct
       {t with last_log_entry = log_entry}
 
     | i when i > 0 ->
-      let prev =  last_index_of_previous_terms previous_terms in
-      let last =  last_index in
-      let data =  last_term in
+      let prev = last_index_of_previous_terms previous_terms in
+      let last = last_index in
+      let data = last_term in
       {
         previous_terms = Rope.add ~prev ~last ~data previous_terms;
         last_log_entry = log_entry
@@ -94,8 +94,8 @@ module Term_tree = struct
         last_log_entry = log_entry;
       }
 
-  let term_of_index index {previous_terms; last_log_entry} = 
-    let {term; index = last_index;_} = last_log_entry in 
+  let term_of_index index {previous_terms; last_log_entry} =
+    let {term; index = last_index;_} = last_log_entry in
     if index = 0
     then 0
     else
@@ -124,7 +124,7 @@ let sub_log_entries ?until ~since log_entries =
 
   let log_entries =
     match until with
-    | None -> log_entries 
+    | None -> log_entries
     | Some until ->
       let rec aux = function
         | ({index; _ }::_) as log_entries when index = until -> log_entries
@@ -137,7 +137,7 @@ let sub_log_entries ?until ~since log_entries =
   let rec aux rev_log_entries = function
     | [] ->
       if since = 0
-      then rev_log_entries 
+      then rev_log_entries
       else begin
         Printf.eprintf "[Raft_logic] Internal2 error invalid log index\n%!";
         failwith "[Raft_logic] Internal2 error invalid log index"
@@ -145,7 +145,7 @@ let sub_log_entries ?until ~since log_entries =
 
     | {index; _}::_ when index = since ->
       rev_log_entries
-      
+
     | hd::tl -> aux (hd::rev_log_entries) tl
   in
   aux [] log_entries
@@ -159,7 +159,7 @@ type t = {
 let empty = {
   recent_entries = [];
   log_size = 0;
-  term_tree  = Term_tree.empty
+  term_tree = Term_tree.empty
 }
 
 let last_log_index_and_term {recent_entries; _ } =
@@ -188,15 +188,15 @@ let add_log_datas current_term datas log =
 
       let handle_new_log_entry_entry = {
         index = last_log_index;
-        term; data; id; 
+        term; data; id;
       } in
 
-      let recent_entries = 
-        handle_new_log_entry_entry :: recent_entries 
+      let recent_entries =
+        handle_new_log_entry_entry :: recent_entries
       in
 
-      let term_tree = 
-        Term_tree.handle_new_log_entry term_tree handle_new_log_entry_entry 
+      let term_tree =
+        Term_tree.handle_new_log_entry term_tree handle_new_log_entry_entry
       in
 
       aux term last_log_index recent_entries (log_size + 1) term_tree tl
@@ -259,7 +259,7 @@ module Builder = struct
 
   type builder = t
 
-  let make () = empty 
+  let make () = empty
 
   let add_log_entry log log_entry =
     assert(log_entry.index > (last_log_index log));
