@@ -1,9 +1,9 @@
-module State  = Raft_state
+module Types  = Raft_types
 module Leader = Raft_role.Leader
 
 module Configuration = struct
 
-  let is_majority {State.nb_of_server; _} nb = 
+  let is_majority {Types.nb_of_server; _} nb = 
     nb > (nb_of_server / 2) 
 
 end 
@@ -11,24 +11,24 @@ end
 module Timeout_event = struct
 
   let existing_election_wait election_deadline now = 
-    State.({
+    Types.({
       timeout      = election_deadline -. now; 
       timeout_type = New_leader_election; 
     })
   
   let make_heartbeat_wait timeout = 
-    State.({
+    Types.({
       timeout = timeout; 
       timeout_type = Heartbeat;
     })
 
   let next state now = 
-    match state.State.role with
-    | State.Follower {State.election_deadline; _} ->
+    match state.Types.role with
+    | Types.Follower {Types.election_deadline; _} ->
       existing_election_wait election_deadline  now  
-    | State.Leader leader_state -> 
+    | Types.Leader leader_state -> 
       make_heartbeat_wait (Leader.min_heartbeat_timout ~now leader_state)
-    | State.Candidate {State.election_deadline; _ } -> 
+    | Types.Candidate {Types.election_deadline; _ } -> 
       existing_election_wait election_deadline  now  
 
 end 

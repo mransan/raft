@@ -25,7 +25,6 @@ type notification =
   | New_leader of int 
   | No_leader
 
-
 (** Each follower information *)
 type follower_info = {
   server_id : int; 
@@ -76,8 +75,8 @@ type role =
   | Candidate of candidate_state
   | Follower of follower_state
 
-(** State of a server *)
-type t = {
+(** Types of a server *)
+type state = {
   id : int;
   current_term : int;
   log : Raft_log.t;
@@ -88,22 +87,22 @@ type t = {
 
 (** {2 Role functionality} *)
 
-val is_follower : t -> bool
+val is_follower : state -> bool
 (** [is_follower state] returns [true] if [state] role is a follower, [false]
     otherwise. 
   *)
 
-val is_candidate : t -> bool
+val is_candidate : state -> bool
 (** [is_candidate state] returns [true] if [state] role is a candidate, [false]
     otherwise. 
   *)
 
-val is_leader : t -> bool
+val is_leader : state -> bool
 (** [is_leader state] returns [true] if [state] role is a leader, [false]
     otherwise. 
   *)
   
-val current_leader: t -> int option
+val current_leader: state -> int option
 (** [current_leader state] return the current leader for the current term. 
     
     If no leader is known then [None] is returned. 
@@ -111,7 +110,7 @@ val current_leader: t -> int option
 
 (** {2 Maintenance} *)
 
-val notifications : t -> t -> notification list 
+val notifications : state -> state -> notification list 
 (** [notifications before after] computes the notification between 2 states 
   *)
 
@@ -120,4 +119,4 @@ type compaction_report = {
   to_be_expanded : Raft_log.log_interval list;
 }
 
-val compaction : t -> compaction_report 
+val compaction : state -> compaction_report 

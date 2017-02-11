@@ -1,10 +1,10 @@
 [@@@ocaml.warning "-45"]
 
 open Raft_pb
-open Raft_state
+open Raft_types
 open Raft_log
 
-module State     = Raft_state
+module Types     = Raft_types
 module Candidate = Raft_role.Candidate
 module Follower  = Raft_role.Follower
 module Leader    = Raft_role.Leader
@@ -92,7 +92,7 @@ let ()  =
 
   let server0, msgs, notifications = Raft_logic.handle_new_election_timeout server0 now in
 
-  assert(State.is_candidate server0);
+  assert(Types.is_candidate server0);
     (* When an election timeout happens the server starts a new election
      * and become a [Candidate].
      *)
@@ -191,7 +191,7 @@ let ()  =
     Raft_logic.handle_message server0 msg now
   in
 
-  assert(State.is_leader server0);
+  assert(Types.is_leader server0);
   assert((New_leader 0)::[] = notifications);
     (*
      * Because a single vote is enough to reach a majority in a 3-server cluster,
@@ -323,7 +323,7 @@ let ()  =
      * concerned there were no leaders.
      *)
 
-  assert(State.is_candidate server2);
+  assert(Types.is_candidate server2);
   assert(1 = server2.current_term);
   assert(2 = List.length request_vote_msgs);
 
@@ -393,7 +393,7 @@ let ()  =
     Raft_logic.handle_message server2 msg now
   in
 
-  assert(State.is_candidate server2);
+  assert(Types.is_candidate server2);
   assert([] = notifications);
     (*
      * Despite the vote not being granted by server1, server2
@@ -432,7 +432,7 @@ let ()  =
     Raft_logic.handle_message server0 msg now
   in
 
-  assert(State.is_leader server0);
+  assert(Types.is_leader server0);
   assert([] = notifications);
     (*
      * Server0 is still a [Leader] and should not be affected
@@ -469,7 +469,7 @@ let ()  =
     Raft_logic.handle_message server2 msg now
   in
 
-  assert(State.is_candidate server2);
+  assert(Types.is_candidate server2);
   assert([] = notifications);
     (*
      * Yes despite all other server denying their vote, server2
@@ -544,7 +544,7 @@ let ()  =
     Raft_logic.handle_message server2 msg now
   in
 
-  assert(State.is_follower server2);
+  assert(Types.is_follower server2);
   assert(1 = server2.current_term);
   assert((New_leader 0)::[] = notifications);
     (*
@@ -611,7 +611,7 @@ let ()  =
     Raft_logic.handle_message server1 msg now
   in
 
-  assert(State.is_follower server1);
+  assert(Types.is_follower server1);
    (* No change in the role, server0 is a valid [Leader],
     * server1 stays a [Follower].
     *)
@@ -659,7 +659,7 @@ let ()  =
     Raft_logic.handle_message server0 msg now
   in
 
-  assert(State.is_leader server0);
+  assert(Types.is_leader server0);
   assert([] = notifications);
   assert([] = msgs);
 
@@ -745,7 +745,7 @@ let ()  =
     Raft_logic.handle_message server1 msg now
   in
 
-  assert(State.is_follower server1);
+  assert(Types.is_follower server1);
     (*
      * No change of role for server1, [Append_entries] only
      * re-inforce that server0 is the [Leader].
@@ -793,7 +793,7 @@ let ()  =
     Raft_logic.handle_message server0 msg now
   in
 
-  assert(State.is_leader server0);
+  assert(Types.is_leader server0);
   assert(1 = server0.commit_index);
   begin match notifications with 
   | (Committed_data [{id = "01"; _ }])::[] -> ()
@@ -834,7 +834,7 @@ let ()  =
     | Appended (state, msgs) -> (state, msgs)
   in
 
-  assert(State.is_leader server0);
+  assert(Types.is_leader server0);
 
   assert(2 = recent_log_length server0);
     (*
@@ -900,7 +900,7 @@ let ()  =
     Raft_logic.handle_message server1 msg now
   in
 
-  assert(State.is_follower server1);
+  assert(Types.is_follower server1);
 
 
   assert(2 = recent_log_length server1);
@@ -952,7 +952,7 @@ let ()  =
     Raft_logic.handle_message server0 msg now
   in
 
-  assert(State.is_leader server0);
+  assert(Types.is_leader server0);
 
   begin match notifications with 
   | (Committed_data [{id = "02"; _ }])::[] -> ()
@@ -1039,7 +1039,7 @@ let ()  =
     Raft_logic.handle_message server1 msg now
   in
 
-  assert(State.is_follower server1);
+  assert(Types.is_follower server1);
 
   begin match notifications with 
   | (Committed_data [{id = "02"; _ }])::[] -> ()
@@ -1071,7 +1071,7 @@ let ()  =
     Raft_logic.handle_message server2 msg now
   in
 
-  assert(State.is_follower server2);
+  assert(Types.is_follower server2);
   begin match notifications with 
   | (Committed_data [{id = "02"; _ }])::[] -> ()
   | _ -> assert(false)
@@ -1128,7 +1128,7 @@ let ()  =
     Raft_logic.handle_message server0 msg now
   in
 
-  assert(State.is_leader server0);
+  assert(Types.is_leader server0);
   assert(2 = server0.commit_index);
   assert(2 = recent_log_length server0);
   assert([] = notications);
@@ -1175,7 +1175,7 @@ let ()  =
     | Raft_logic.Appended (server, msgs) -> (server, msgs)
     | _ -> assert(false)
   in
-  assert(State.is_leader server0);
+  assert(Types.is_leader server0);
   assert(3 = recent_log_length server0);
     (*
      * Correctly added log since server0 is a [Leader].
@@ -1198,7 +1198,7 @@ let ()  =
     Raft_logic.handle_message server1 msg now
   in
 
-  assert(State.is_follower server1);
+  assert(Types.is_follower server1);
   assert(3 = recent_log_length server1);
     (*
      * The 3rd [log_entry] is correctly replicated.
@@ -1225,7 +1225,7 @@ let ()  =
     Raft_logic.handle_new_election_timeout server2 now
   in
 
-  assert(State.is_candidate server2);
+  assert(Types.is_candidate server2);
     (*
      * Server2 started a new election.
      *)
@@ -1272,7 +1272,7 @@ let ()  =
     Raft_logic.handle_message server1 msg now
   in
 
-  assert(State.is_follower server1);
+  assert(Types.is_follower server1);
   assert(2 = server1.current_term);
     (*
      * The sender (ie server2) term was greater than the current
@@ -1321,7 +1321,7 @@ let ()  =
 
   assert([] = notifications);
 
-  assert(State.is_candidate server1);
+  assert(Types.is_candidate server1);
   assert(3 = server1.current_term);
   assert(2 =  List.length msgs);
 
@@ -1349,7 +1349,7 @@ let ()  =
     Raft_logic.handle_message server2 msg now
   in
 
-  assert(State.is_follower server2);
+  assert(Types.is_follower server2);
     (*
      * server1 [current_term] is greater than the one
      * in server2 (3 versus 2).
@@ -1396,7 +1396,7 @@ let ()  =
   in
 
   assert((New_leader 1)::[] = notifications);
-  assert(State.is_leader server1);
+  assert(Types.is_leader server1);
     (*
      * One vote is enough to become a [Leader].
      *)
@@ -1446,7 +1446,7 @@ let ()  =
   in
 
   assert((New_leader 1)::[] = notifications);
-  assert(State.is_follower server2);
+  assert(Types.is_follower server2);
   assert(3 = server2.current_term);
 
   assert(1 = List.length msgs);
@@ -1484,7 +1484,7 @@ let ()  =
     Raft_logic.handle_message server1 msg now
   in
 
-  assert(State.is_leader server1);
+  assert(Types.is_leader server1);
   assert(3 = server1.current_term);
 
   assert([] = notifications);
@@ -1525,7 +1525,7 @@ let ()  =
     Raft_logic.handle_message server2 msg now
   in
 
-  assert(State.is_follower server2);
+  assert(Types.is_follower server2);
   assert(3 = server2.current_term);
 
   assert(3 = recent_log_length server2);
@@ -1570,7 +1570,7 @@ let ()  =
     Raft_logic.handle_message server1 msg now
   in
 
-  assert(State.is_leader server1);
+  assert(Types.is_leader server1);
   assert(3 = server1.current_term);
 
   begin match notifications with 
@@ -1663,7 +1663,7 @@ let ()  =
     Raft_logic.handle_message server2 msg now
   in
 
-  assert(State.is_follower server2);
+  assert(Types.is_follower server2);
   assert(3 = server2.current_term);
 
   assert(5 = recent_log_length server2);
@@ -1796,7 +1796,7 @@ let ()  =
     Raft_logic.handle_message server2 msg now
   in
 
-  assert(State.is_follower server2);
+  assert(Types.is_follower server2);
   assert(3 = server2.current_term);
 
   assert(12 = recent_log_length server2); 
@@ -1836,7 +1836,7 @@ let ()  =
     Raft_logic.handle_message server1 msg now
   in
 
-  assert(State.is_leader server1);
+  assert(Types.is_leader server1);
   assert(12 = server1.commit_index);
   
   (* 
@@ -2096,7 +2096,7 @@ let ()  =
    * -> ]12;20] should be compacted.
    *
    *)
-  let {to_be_expanded = e; to_be_compacted = c} = State.compaction server1 in  
+  let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in  
 
   assert(e = []);
     (* No compaction required *)
@@ -2124,7 +2124,7 @@ let ()  =
      *)
 
     let server1 = compact ~prev_index:0 server1 in 
-    let {to_be_expanded = e; to_be_compacted = c} = State.compaction server1 in  
+    let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in  
     assert(1 = List.length e); 
       (* The log interval that we have intentionally compacted above
        * is correctly selected for expansion.
@@ -2134,12 +2134,12 @@ let ()  =
        *)
     
     let server1 = compact ~prev_index:5 server1 in  
-    let {to_be_expanded = e; to_be_compacted = c} = State.compaction server1 in  
+    let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in  
     assert(2 = List.length e); 
     assert(1 = List.length c); 
     
     let server1 = compact ~prev_index:12 server1 in  
-    let {to_be_expanded = e; to_be_compacted = c} = State.compaction server1 in  
+    let {to_be_expanded = e; to_be_compacted = c} = Types.compaction server1 in  
     assert(2 = List.length e); 
     assert(0 = List.length c); 
       (* The log interval ]12;20] is no longer required to be compacted

@@ -25,11 +25,11 @@ type message_to_send = Raft_pb.message * server_id
 (** {2 Protocol Implementation} *)
 
 val make_initial_state :
-  configuration:Raft_state.configuration ->
+  configuration:Raft_types.configuration ->
   now:time ->
   id:int ->
   unit ->
-  Raft_state.t
+  Raft_types.state
 (** [make_initial_state ~configuration ~now ~id ()] creates an initial server
     state.
   
@@ -38,31 +38,31 @@ val make_initial_state :
  *)
 
 val handle_message :
-  Raft_state.t ->
+  Raft_types.state ->
   Raft_pb.message ->
   time ->
-  Raft_state.t * (message_to_send list) * Raft_state.notification list 
+  Raft_types.state * (message_to_send list) * Raft_types.notification list 
 (** [handle_message state message now] handle an incoming Raft message. 
   *)
 
 val handle_new_election_timeout :
-  Raft_state.t ->
+  Raft_types.state ->
   time ->
-  Raft_state.t * (message_to_send list) * Raft_state.notification list 
+  Raft_types.state * (message_to_send list) * Raft_types.notification list 
 (** [handle_new_election_timeout state now] implements the state change to
     a Candidate along with the list of request vote message to send.
   *)
 
 val handle_heartbeat_timeout :
-  Raft_state.t ->
+  Raft_types.state ->
   time ->
-  Raft_state.t * (message_to_send list)
+  Raft_types.state * (message_to_send list)
 (** [handle_heartbeat_timeout state now] computes the necessary messages
      to send in the case of a heartbeat.
   *)
 
 type new_log_response =
-  | Appended of Raft_state.t * message_to_send list
+  | Appended of Raft_types.state * message_to_send list
     (** The new log can correctly be handled by this server (ie it is
         a valid [Leader] and new [Append_entries] request message can be
         sent to follower servers.
@@ -82,12 +82,12 @@ type new_log_response =
         from a valid [Leader]
       *)
 
-val handle_add_log_entries: Raft_state.t -> (bytes * string) list -> time -> new_log_response
+val handle_add_log_entries: Raft_types.state -> (bytes * string) list -> time -> new_log_response
 (** [handle_add_log_entry state data now] processes [data] and return the follow
     up response. See [new_log_response] for more information.
   *)
 
-val next_timeout_event : Raft_state.t -> time -> Raft_state.timeout_event
+val next_timeout_event : Raft_types.state -> time -> Raft_types.timeout_event
 (** [next_timeout_event state now] returns the timeout information
     that the serve should implement.
    

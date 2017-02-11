@@ -25,7 +25,6 @@ type notification =
   | New_leader of int 
   | No_leader
 
-
 type follower_info = {
   server_id : int;
   next_index : int;
@@ -53,7 +52,7 @@ type role =
   | Candidate of candidate_state
   | Follower of follower_state
 
-type t = {
+type state = {
   id : int;
   current_term : int;
   log : Raft_log.t;

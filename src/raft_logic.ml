@@ -1,6 +1,6 @@
 open Raft_pb
 
-module State         = Raft_state
+module Types         = Raft_types
 module Follower      = Raft_role.Follower
 module Candidate     = Raft_role.Candidate
 module Leader        = Raft_role.Leader
@@ -34,22 +34,22 @@ module Log_entry_util = struct
 
   let make_append_entries prev_log_index unsent_entries state =
 
-    let max = state.State.configuration.State.max_nb_logs_per_message in
+    let max = state.Types.configuration.Types.max_nb_logs_per_message in
 
     let unsent_entries = 
       match sub prev_log_index unsent_entries with
-      | [] -> Log.rev_log_entries_since prev_log_index state.State.log
+      | [] -> Log.rev_log_entries_since prev_log_index state.Types.log
       | unsent_entries -> unsent_entries 
     in 
     let to_send = keep_first_n unsent_entries max in 
 
     let request = {
-      leader_term = state.State.current_term;
-      leader_id = state.State.id;
+      leader_term = state.Types.current_term;
+      leader_id = state.Types.id;
       prev_log_index;
-      prev_log_term = Log.term_of_index prev_log_index state.State.log;
+      prev_log_term = Log.term_of_index prev_log_index state.Types.log;
       rev_log_entries = to_send; 
-      leader_commit = state.State.commit_index;
+      leader_commit = state.Types.commit_index;
     } in
     (unsent_entries, request)
 
@@ -60,7 +60,7 @@ module Log_entry_util = struct
 
       | follower::tl -> 
         let {
-          State.server_id;
+          Types.server_id;
           heartbeat_deadline;
           outstanding_request;
           next_index;
@@ -84,7 +84,7 @@ module Log_entry_util = struct
                *)
             else
               let prev_index = next_index - 1 in
-              let last_log_index = Log.last_log_index state.State.log in
+              let last_log_index = Log.last_log_index state.Types.log in
               if prev_index = last_log_index
               then false
                 (* The receipient has the most recent data so no need
@@ -101,12 +101,12 @@ module Log_entry_util = struct
           let follower = 
             let outstanding_request = true in 
             let heartbeat_deadline = 
-              now +. state.State.configuration.State.hearbeat_timeout 
+              now +. state.Types.configuration.Types.hearbeat_timeout 
             in 
             {follower with
-              State.unsent_entries; 
-              State.outstanding_request; 
-              State.heartbeat_deadline; 
+              Types.unsent_entries; 
+              Types.outstanding_request; 
+              Types.heartbeat_deadline; 
             } 
           in 
           let followers = follower::followers in
@@ -122,10 +122,10 @@ end (* Log_entry_util *)
 (** {2 Request Vote} *)
 
 let make_request_vote_request state =
-  let index, term  = Log.last_log_index_and_term state.State.log in
+  let index, term  = Log.last_log_index_and_term state.Types.log in
   {
-    candidate_term = state.State.current_term;
-    candidate_id = state.State.id;
+    candidate_term = state.Types.current_term;
+    candidate_id = state.Types.id;
     candidate_last_log_index = index;
     candidate_last_log_term = term;
   }
@@ -135,10 +135,10 @@ let handle_request_vote_request state request now =
   let {candidate_id; candidate_term; candidate_last_log_index;_} = request in
 
   let make_response state vote_granted =
-    {voter_term = state.State.current_term; voter_id = state.State.id ; vote_granted; }
+    {voter_term = state.Types.current_term; voter_id = state.Types.id ; vote_granted; }
   in
 
-  if candidate_term < state.State.current_term
+  if candidate_term < state.Types.current_term
   then
     (*
      * This request is coming from a candidate lagging behind ...
@@ -153,13 +153,13 @@ let handle_request_vote_request state request now =
        * it must convert to a follower and update to that term.
        *
        *)
-      if candidate_term > state.State.current_term
+      if candidate_term > state.Types.current_term
       then 
         Follower.become ~term:candidate_term ~now state
       else 
         state
     in
-    let last_log_index = Log.last_log_index state.State.log in
+    let last_log_index = Log.last_log_index state.Types.log in
     if candidate_last_log_index < last_log_index
     then
       (*
@@ -169,9 +169,9 @@ let handle_request_vote_request state request now =
        *)
       (state, make_response state false)
     else
-      let role = state.State.role in
+      let role = state.Types.role in
       match role with
-      | State.Follower {State.voted_for = None; _} ->
+      | Types.Follower {Types.voted_for = None; _} ->
         (*
          * This server has never voted before, candidate is getting the vote
          *
@@ -181,20 +181,20 @@ let handle_request_vote_request state request now =
          *)
 
         let {
-          State.configuration = {
-            State.election_timeout; _ 
+          Types.configuration = {
+            Types.election_timeout; _ 
           }; _} = state in
 
         let state ={state with
-          State.role = State.Follower {
-            State.voted_for         = Some candidate_id;
-            State.current_leader    = None;
-            State.election_deadline = now +. election_timeout;
+          Types.role = Types.Follower {
+            Types.voted_for         = Some candidate_id;
+            Types.current_leader    = None;
+            Types.election_deadline = now +. election_timeout;
           }
         } in
         (state, make_response state true)
 
-      | State.Follower {State.voted_for = Some id; _ } when id = candidate_id ->
+      | Types.Follower {Types.voted_for = Some id; _ } when id = candidate_id ->
         (*
          * This server has already voted for that candidate ... reminding him
          *
@@ -211,7 +211,7 @@ let handle_request_vote_request state request now =
 
 let handle_request_vote_response state response now =
 
-  let {State.current_term; role; configuration; _ } = state in
+  let {Types.current_term; role; configuration; _ } = state in
   let {voter_term; vote_granted; _ } = response in
 
   if voter_term > current_term
@@ -226,11 +226,11 @@ let handle_request_vote_response state response now =
 
   else
     match role, vote_granted  with
-    | State.Candidate ({State.vote_count; _ } as candidate_state) , true ->
+    | Types.Candidate ({Types.vote_count; _ } as candidate_state) , true ->
       
       let has_majority = 
         (* TODO : why not use Helper.Configuration.is_majority *) 
-        let nb_of_server = configuration.State.nb_of_server in 
+        let nb_of_server = configuration.Types.nb_of_server in 
         vote_count >= (nb_of_server / 2) 
       in
       if  has_majority
@@ -247,22 +247,22 @@ let handle_request_vote_response state response now =
          * to the other servers to both establish its leadership and
          * start synching its log with the others.
          *)
-        begin match state.State.role with
-        | State.Leader followers ->
+        begin match state.Types.role with
+        | Types.Leader followers ->
           let rec aux followers msgs_to_send = function
             | [] -> 
-              (State.({state with role = Leader followers}), msgs_to_send)
+              (Types.({state with role = Leader followers}), msgs_to_send)
 
             | follower :: tl ->
               let {
-                State.server_id; 
-                State.next_index; 
-                State.unsent_entries;_  
+                Types.server_id; 
+                Types.next_index; 
+                Types.unsent_entries;_  
               } = follower in 
               let prev_log_index = next_index - 1 in
               let unsent_entries, req  = Log_entry_util.make_append_entries prev_log_index unsent_entries state in
               let msg_to_send = (Append_entries_request req, server_id) in
-              aux ({follower with State.unsent_entries;}::followers) (msg_to_send::msgs_to_send) tl 
+              aux ({follower with Types.unsent_entries;}::followers) (msg_to_send::msgs_to_send) tl 
           in
           aux [] [] followers 
         | _ -> assert(false)
@@ -270,50 +270,50 @@ let handle_request_vote_response state response now =
       else
         (* Candidate has a new vote but not yet reached the majority
          *)
-        let new_state = State.{state with
+        let new_state = Types.{state with
           role = Candidate (Candidate.increment_vote_count candidate_state);
         } in
         (new_state, [])
 
-    | State.Candidate _ , false
+    | Types.Candidate _ , false
       (* The vote was denied, the election keeps on going until
        * its deadline.
        *)
 
-    | State.Follower _ , _
-    | State.Leader   _ , _ -> (state, [])
+    | Types.Follower _ , _
+    | Types.Leader   _ , _ -> (state, [])
       (* If the server is either Follower or Leader, it means that
        * it has changed role in between the time it sent the
        * [RequestVote] request and this response.
        * This response can therefore safely be ignored and the server
-       * keeps its current state.State.
+       * keeps its current state.Types.
        *)
 
 (** {2 Append Entries} *)
 
 let update_state leader_commit receiver_last_log_index log state = 
-  if leader_commit > state.State.commit_index
+  if leader_commit > state.Types.commit_index
   then 
     let log = 
-      let open State in 
+      let open Types in 
       let prev_commit_index = state.commit_index in 
       let log_interval_size = state.configuration.log_interval_size in 
       Log.service ~prev_commit_index ~log_interval_size log 
     in 
     let commit_index = min leader_commit receiver_last_log_index in 
-    {state with State.log; commit_index}
+    {state with Types.log; commit_index}
   else 
-    {state with State.log}
+    {state with Types.log}
 
 let handle_append_entries_request state request now =
 
   let {leader_term; leader_id; _} = request in
 
   let make_response state result =
-    {receiver_term = state.State.current_term; receiver_id = state.State.id; result;}
+    {receiver_term = state.Types.current_term; receiver_id = state.Types.id; result;}
   in
 
-  if leader_term < state.State.current_term
+  if leader_term < state.Types.current_term
   then
     (* This request is coming from a leader lagging behind...
      *
@@ -343,9 +343,9 @@ let handle_append_entries_request state request now =
     let (
       receiver_last_log_index, 
       receiver_last_log_term
-    ) = Log.last_log_index_and_term state.State.log in 
+    ) = Log.last_log_index_and_term state.Types.log in 
 
-    let commit_index = state.State.commit_index in 
+    let commit_index = state.Types.commit_index in 
 
     if prev_log_index < commit_index
     then 
@@ -363,7 +363,7 @@ let handle_append_entries_request state request now =
           (* Leader info about the receiver last log index is matching 
            * perfectly, we can append the logs. 
            *)
-          let log = Log.add_log_entries ~rev_log_entries state.State.log in 
+          let log = Log.add_log_entries ~rev_log_entries state.Types.log in 
           let receiver_last_log_index = Log.last_log_index log in 
           let state = 
             update_state leader_commit receiver_last_log_index log state 
@@ -411,7 +411,7 @@ let handle_append_entries_request state request now =
            *)
           
           match Log.remove_log_since ~prev_log_index 
-                ~prev_log_term state.State.log with
+                ~prev_log_term state.Types.log with
           | exception Not_found ->
              let failure = {
                receiver_last_log_index = commit_index; 
@@ -440,7 +440,7 @@ let handle_append_entries_response state response now =
 
   let {receiver_term; receiver_id; result} = response in
 
-  if receiver_term > state.State.current_term
+  if receiver_term > state.Types.current_term
   then
     (* Enforce invariant that if the server is lagging behind
      * it must convert to a follower and update to that term.
@@ -449,11 +449,11 @@ let handle_append_entries_response state response now =
     (state, [])
 
   else
-    match state.State.role with
-    | State.Follower _
-    | State.Candidate _ -> (state, [])
+    match state.Types.role with
+    | Types.Follower _
+    | Types.Candidate _ -> (state, [])
 
-    | State.Leader leader_state ->
+    | Types.Leader leader_state ->
 
       let leader_state =
         Leader.record_response_received ~receiver_id leader_state
@@ -466,7 +466,7 @@ let handle_append_entries_response state response now =
          * let's update our leader state about that receiver
          *)
 
-        let configuration = state.State.configuration in
+        let configuration = state.Types.configuration in
 
         let leader_state, nb_of_replications = Leader.update_receiver_last_log_index
           ~receiver_id
@@ -483,16 +483,16 @@ let handle_append_entries_response state response now =
            *
            *)
           if Configuration.is_majority configuration (nb_of_replications + 1) &&
-             receiver_last_log_index > state.State.commit_index
+             receiver_last_log_index > state.Types.commit_index
           then 
             let log = 
-              let open State in 
+              let open Types in 
               let prev_commit_index = state.commit_index in 
               let log_interval_size = state.configuration.log_interval_size in 
               let log = state.log in 
               Log.service ~prev_commit_index ~log_interval_size log 
             in 
-            {state with State.commit_index = receiver_last_log_index; log }
+            {state with Types.commit_index = receiver_last_log_index; log }
           else 
             state
         in
@@ -501,7 +501,7 @@ let handle_append_entries_response state response now =
           Log_entry_util.compute_append_entries state leader_state now 
         in
 
-        let state = State.({state with role = Leader leader_state}) in
+        let state = Types.({state with role = Leader leader_state}) in
 
         (state, msgs_to_send)
 
@@ -514,7 +514,7 @@ let handle_append_entries_response state response now =
        *)
       let leader_state = Leader.decrement_next_index ~log_failure ~receiver_id state leader_state in
       let leader_state, msgs_to_send = Log_entry_util.compute_append_entries state leader_state now in
-      let state  = State.({state with role = Leader leader_state}) in
+      let state  = Types.({state with role = Leader leader_state}) in
       (state,msgs_to_send)
 
     | Term_failure  -> 
@@ -561,7 +561,7 @@ let handle_message state message now =
     | Append_entries_response r ->
       handle_append_entries_response state r now
   in
-  (state', message_to_send , State.notifications state state')
+  (state', message_to_send , Types.notifications state state')
 
 (* Iterates over all the other server ids. (ie the ones different
  * from the state id).
@@ -569,8 +569,8 @@ let handle_message state message now =
 let fold_over_servers f e0 state =
 
   let {
-    State.id; 
-    configuration = {State.nb_of_server; _}; _
+    Types.id; 
+    configuration = {Types.nb_of_server; _}; _
   } = state in 
 
   let rec aux acc = function
@@ -591,48 +591,48 @@ let handle_new_election_timeout state now =
       (Request_vote_request request, server_id) :: acc
     ) [] state'
   in
-  (state', msgs, State.notifications state state')
+  (state', msgs, Types.notifications state state')
 
 let handle_heartbeat_timeout state now =
-  match state.State.role with
-  | State.Leader leader_state ->
+  match state.Types.role with
+  | Types.Leader leader_state ->
     let leader_state, msgs_to_send =
       Log_entry_util.compute_append_entries state leader_state now
     in
-    let state = State.({state with role = Leader leader_state}) in
+    let state = Types.({state with role = Leader leader_state}) in
     (state, msgs_to_send)
   | _ ->
     (state, [])
 
 type new_log_response =
-  | Appended of State.t * message_to_send list
+  | Appended of Types.state * message_to_send list
   | Forward_to_leader of int
   | Delay
 
 let handle_add_log_entries state datas now =
-  match state.State.role with
-  | State.Follower {State.current_leader = None ; _ }
-  | State.Candidate _ ->
+  match state.Types.role with
+  | Types.Follower {Types.current_leader = None ; _ }
+  | Types.Candidate _ ->
     Delay
     (* Server in the middle of an election with no [Leader]
      * agreed upon yet
      *)
 
-  | State.Follower {State.current_leader = Some leader_id; _ } ->
+  | Types.Follower {Types.current_leader = Some leader_id; _ } ->
     Forward_to_leader leader_id
     (* The [Leader] should be the one centralizing all the
      * new log entries.
      *)
 
-  | State.Leader leader_state ->
+  | Types.Leader leader_state ->
 
     let state = {state with 
-      State.log = Log.add_log_datas state.State.current_term datas state.State.log
+      Types.log = Log.add_log_datas state.Types.current_term datas state.Types.log
     } in 
     let leader_state, msgs_to_send = 
       Log_entry_util.compute_append_entries state leader_state now 
     in
-    let state = State.({state with role = Leader leader_state }) in
+    let state = Types.({state with role = Leader leader_state }) in
     Appended (state, msgs_to_send)
 
 let next_timeout_event = Timeout_event.next
