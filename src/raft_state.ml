@@ -2,6 +2,30 @@ open Raft_pb
 
 module Log = Raft_log
 
+type configuration = {
+  nb_of_server : int;
+  election_timeout : float;
+  election_timeout_range : float;
+  hearbeat_timeout : float;
+  max_nb_logs_per_message : int;
+  log_interval_size : int;
+}
+
+type timeout_type =
+  | New_leader_election 
+  | Heartbeat 
+
+type timeout_event = {
+  timeout : float;
+  timeout_type : timeout_type;
+}
+
+type notification =
+  | Committed_data of log_entry list
+  | New_leader of int 
+  | No_leader
+
+
 type follower_info = {
   server_id : int;
   next_index : int;
@@ -35,7 +59,7 @@ type t = {
   log : Raft_log.t;
   commit_index : int;
   role : role;
-  configuration : Raft_pb.configuration;
+  configuration : configuration;
 }
 
 let is_follower {role; _} = 

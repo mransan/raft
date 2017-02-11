@@ -3,7 +3,7 @@
 module Follower : sig 
 
   val create : 
-    configuration:Raft_pb.configuration -> 
+    configuration:Raft_state.configuration -> 
     now:float -> 
     id:int -> 
     unit -> 

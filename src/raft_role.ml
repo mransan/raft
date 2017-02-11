@@ -6,7 +6,9 @@ module State = Raft_state
 module Follower = struct 
 
   let create ~configuration ~now ~id () = 
-    let {election_timeout = t ; election_timeout_range = r; _ } = configuration in 
+    let {
+      State.election_timeout = t ; 
+      election_timeout_range = r; _ } = configuration in 
     let timeout = t +. (Random.float r -. (r /. 2.)) in
     {
       State.current_term = 0; 
@@ -22,7 +24,10 @@ module Follower = struct
     }
 
   let become ?current_leader ~term ~now state = 
-    let {State.configuration = {election_timeout = t; election_timeout_range = r; _}; _} = state in 
+    let {
+      State.configuration = {
+        State.election_timeout = t; 
+        election_timeout_range = r; _}; _} = state in 
     let election_deadline  = now +. t +. (Random.float r -. (r /. 2.)) in
 
     let role = match state.State.role with
@@ -56,7 +61,9 @@ end
 module Candidate = struct 
 
   let become ~now state = 
-    let {election_timeout = t; election_timeout_range = r; _ } = state.State.configuration in 
+    let {
+      State.election_timeout = t; 
+      election_timeout_range = r; _ } = state.State.configuration in 
     let timeout = t +. (Random.float r -. (r /. 2.)) in
     let role = State.(Candidate {
       vote_count = 1; 
@@ -78,7 +85,9 @@ module Leader = struct
 
     let last_log_index = Log.last_log_index state.State.log in
     
-    let {nb_of_server; hearbeat_timeout; _} = state.State.configuration in 
+    let {
+      State.nb_of_server; 
+      hearbeat_timeout; _} = state.State.configuration in 
   
     let rec aux followers = function
       | (-1) -> followers

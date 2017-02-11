@@ -2,6 +2,30 @@
 
 (** {2 Type} *)
 
+type configuration = {
+  nb_of_server : int;
+  election_timeout : float;
+  election_timeout_range : float;
+  hearbeat_timeout : float;
+  max_nb_logs_per_message : int;
+  log_interval_size : int;
+}
+
+type timeout_type =
+  | New_leader_election 
+  | Heartbeat 
+
+type timeout_event = {
+  timeout : float;
+  timeout_type : timeout_type;
+}
+
+type notification =
+  | Committed_data of Raft_pb.log_entry list
+  | New_leader of int 
+  | No_leader
+
+
 (** Each follower information *)
 type follower_info = {
   server_id : int; 
@@ -59,7 +83,7 @@ type t = {
   log : Raft_log.t;
   commit_index : int;
   role : role;
-  configuration : Raft_pb.configuration;
+  configuration : configuration;
 }
 
 (** {2 Role functionality} *)
@@ -87,7 +111,7 @@ val current_leader: t -> int option
 
 (** {2 Maintenance} *)
 
-val notifications : t -> t -> Raft_pb.notification list 
+val notifications : t -> t -> notification list 
 (** [notifications before after] computes the notification between 2 states 
   *)
 

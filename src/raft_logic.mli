@@ -25,7 +25,7 @@ type message_to_send = Raft_pb.message * server_id
 (** {2 Protocol Implementation} *)
 
 val make_initial_state :
-  configuration:Raft_pb.configuration ->
+  configuration:Raft_state.configuration ->
   now:time ->
   id:int ->
   unit ->
@@ -41,14 +41,14 @@ val handle_message :
   Raft_state.t ->
   Raft_pb.message ->
   time ->
-  Raft_state.t * (message_to_send list) * Raft_pb.notification list 
+  Raft_state.t * (message_to_send list) * Raft_state.notification list 
 (** [handle_message state message now] handle an incoming Raft message. 
   *)
 
 val handle_new_election_timeout :
   Raft_state.t ->
   time ->
-  Raft_state.t * (message_to_send list) * Raft_pb.notification list 
+  Raft_state.t * (message_to_send list) * Raft_state.notification list 
 (** [handle_new_election_timeout state now] implements the state change to
     a Candidate along with the list of request vote message to send.
   *)
@@ -87,7 +87,7 @@ val handle_add_log_entries: Raft_state.t -> (bytes * string) list -> time -> new
     up response. See [new_log_response] for more information.
   *)
 
-val next_timeout_event : Raft_state.t -> time -> Raft_pb.timeout_event
+val next_timeout_event : Raft_state.t -> time -> Raft_state.timeout_event
 (** [next_timeout_event state now] returns the timeout information
     that the serve should implement.
    

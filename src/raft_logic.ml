@@ -34,7 +34,7 @@ module Log_entry_util = struct
 
   let make_append_entries prev_log_index unsent_entries state =
 
-    let max = state.State.configuration.max_nb_logs_per_message in
+    let max = state.State.configuration.State.max_nb_logs_per_message in
 
     let unsent_entries = 
       match sub prev_log_index unsent_entries with
@@ -101,7 +101,7 @@ module Log_entry_util = struct
           let follower = 
             let outstanding_request = true in 
             let heartbeat_deadline = 
-              now +. state.State.configuration.hearbeat_timeout 
+              now +. state.State.configuration.State.hearbeat_timeout 
             in 
             {follower with
               State.unsent_entries; 
@@ -180,7 +180,11 @@ let handle_request_vote_request state request now =
          *
          *)
 
-        let {State.configuration = {election_timeout; _ }; _} = state in
+        let {
+          State.configuration = {
+            State.election_timeout; _ 
+          }; _} = state in
+
         let state ={state with
           State.role = State.Follower {
             State.voted_for         = Some candidate_id;
@@ -223,7 +227,12 @@ let handle_request_vote_response state response now =
   else
     match role, vote_granted  with
     | State.Candidate ({State.vote_count; _ } as candidate_state) , true ->
-      let has_majority = vote_count >= (configuration.nb_of_server / 2) in
+      
+      let has_majority = 
+        (* TODO : why not use Helper.Configuration.is_majority *) 
+        let nb_of_server = configuration.State.nb_of_server in 
+        vote_count >= (nb_of_server / 2) 
+      in
       if  has_majority
       then
         (*
@@ -285,10 +294,11 @@ let handle_request_vote_response state response now =
 let update_state leader_commit receiver_last_log_index log state = 
   if leader_commit > state.State.commit_index
   then 
-    let log = Log.service 
-      ~prev_commit_index:state.State.commit_index 
-      ~configuration:state.State.configuration 
-      log 
+    let log = 
+      let open State in 
+      let prev_commit_index = state.commit_index in 
+      let log_interval_size = state.configuration.log_interval_size in 
+      Log.service ~prev_commit_index ~log_interval_size log 
     in 
     let commit_index = min leader_commit receiver_last_log_index in 
     {state with State.log; commit_index}
@@ -475,10 +485,12 @@ let handle_append_entries_response state response now =
           if Configuration.is_majority configuration (nb_of_replications + 1) &&
              receiver_last_log_index > state.State.commit_index
           then 
-            let log = Log.service 
-              ~prev_commit_index:state.State.commit_index 
-              ~configuration:state.State.configuration 
-              state.State.log
+            let log = 
+              let open State in 
+              let prev_commit_index = state.commit_index in 
+              let log_interval_size = state.configuration.log_interval_size in 
+              let log = state.log in 
+              Log.service ~prev_commit_index ~log_interval_size log 
             in 
             {state with State.commit_index = receiver_last_log_index; log }
           else 
@@ -554,7 +566,13 @@ let handle_message state message now =
 (* Iterates over all the other server ids. (ie the ones different
  * from the state id).
  *)
-let fold_over_servers f e0 {State.id; configuration = {nb_of_server;_ }; _ } =
+let fold_over_servers f e0 state =
+
+  let {
+    State.id; 
+    configuration = {State.nb_of_server; _}; _
+  } = state in 
+
   let rec aux acc = function
     | -1 -> acc
     | server_id  ->

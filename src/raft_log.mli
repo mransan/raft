@@ -89,7 +89,7 @@ val remove_log_since : prev_log_index:int -> prev_log_term:int -> t -> t
     then [Not_found] is raised.
   *)
 
-val service : prev_commit_index:int -> configuration:Raft_pb.configuration -> t -> t
+val service : prev_commit_index:int -> log_interval_size:int -> t -> t
 (** [service ~prev_commit_index state]
     If a large enough number of [log_entry]s have been added to the [state]
     log between :

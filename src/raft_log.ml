@@ -375,12 +375,12 @@ let remove_log_since ~prev_log_index ~prev_log_term log =
     in 
     {log with recent_entries; log_size; term_tree} 
 
-let service ~prev_commit_index ~configuration log = 
+let service ~prev_commit_index ~log_interval_size log = 
 
   let past_entries = log.past_entries in 
   let since = last_past_entry_index past_entries in 
 
-  if prev_commit_index - since < configuration.log_interval_size
+  if prev_commit_index - since < log_interval_size
   then log
   else 
     (* 
