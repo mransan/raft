@@ -2,6 +2,12 @@
 
 (** {2 Type} *)
 
+type time = float
+(** Monotonic time *)
+
+type server_id = int
+(** server id *)
+
 type configuration = {
   nb_of_server : int;
     (** Number of servers for the RAFT clusters, servers are then
@@ -121,4 +127,5 @@ val current_leader: state -> int option
 
 val notifications : state -> state -> notification list
 (** [notifications before after] computes the notification between 2 states
-  *)
+    TODO: move from this module
+ *)

@@ -2,6 +2,10 @@ open Raft_pb
 
 module Log = Raft_log
 
+type time = float
+
+type server_id = int
+
 type configuration = {
   nb_of_server : int;
   election_timeout : float;

@@ -43,14 +43,14 @@ let msg_for_server msgs id =
   | exception Not_found -> assert(false)
 
 let request_response ~from ~to_ ~now requests =
-  let to_, responses, _ =
+  let {Logic.state = to_; messages_to_send = responses ; _} =
     let msg = msg_for_server requests (to_.id) in
     Raft_logic.handle_message to_ msg now
   in
 
   let now = now +. 0.001 in
 
-  let from, msgs, _ =
+  let {Logic.state = from; messages_to_send = msgs; _} = 
     let msg = msg_for_server responses (from.id) in
     Raft_logic.handle_message from msg now
   in
@@ -89,7 +89,10 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server0, msgs, notifications = Raft_logic.handle_new_election_timeout server0 now in
+  let {
+    Logic.state = server0;
+    messages_to_send = msgs; 
+    notifications} = Raft_logic.handle_new_election_timeout server0 now in
 
   assert(Types.is_candidate server0);
     (* When an election timeout happens the server starts a new election
@@ -128,7 +131,7 @@ let ()  =
 
   let now = now +. 0.001 in
 
-  let server1, msgs, notifications =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -185,7 +188,7 @@ let ()  =
    *)
 
   let now = now +. 0.001 in
-  let server0, msgs, notifications =
+  let {Logic.state = server0; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 0 in
     Raft_logic.handle_message server0 msg now
   in
@@ -255,7 +258,7 @@ let ()  =
    *)
 
   let now = now +. 0.001 in
-  let server1, msgs, notifications =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -312,7 +315,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server2, request_vote_msgs, notifications =
+  let {Logic.state = server2; messages_to_send = request_vote_msgs; notifications} =
     Raft_logic.handle_new_election_timeout server2 now
   in
 
@@ -346,7 +349,7 @@ let ()  =
    *)
 
   let now = now +. 0.001 in
-  let server1, msgs, notifications =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     let msg = msg_for_server request_vote_msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -387,7 +390,7 @@ let ()  =
 
   let now = now +. 0.001 in
 
-  let server2, msgs, notifications =
+  let {Logic.state = server2; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 2 in
     Raft_logic.handle_message server2 msg now
   in
@@ -426,7 +429,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server0, msgs, notifications =
+  let {Logic.state = server0; messages_to_send = msgs; notifications} =
     let msg = msg_for_server request_vote_msgs 0 in
     Raft_logic.handle_message server0 msg now
   in
@@ -463,7 +466,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server2, msgs, notifications =
+  let {Logic.state = server2; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 2 in
     Raft_logic.handle_message server2 msg now
   in
@@ -496,7 +499,9 @@ let ()  =
    * trigger new messages.
    *)
 
-  let server0, msgs = Raft_logic.handle_heartbeat_timeout server0 now in
+  let {Logic.state = server0; messages_to_send = msgs; _ } =
+    Raft_logic.handle_heartbeat_timeout server0 now 
+  in
 
   assert([] = msgs);
     (*
@@ -507,7 +512,9 @@ let ()  =
 
   let now = now +. default_configuration.hearbeat_timeout in
 
-  let server0, hb_msgs = Raft_logic.handle_heartbeat_timeout server0 now in
+  let {Logic.state = server0; messages_to_send = hb_msgs; _ } =
+      Raft_logic.handle_heartbeat_timeout server0 now 
+  in
 
   assert(2 = List.length hb_msgs);
     (*
@@ -538,7 +545,7 @@ let ()  =
    *)
 
   let now = now +. 0.001 in
-  let server2, msgs, notifications =
+  let {Logic.state = server2; messages_to_send = msgs; notifications} =
     let msg = msg_for_server hb_msgs 2 in
     Raft_logic.handle_message server2 msg now
   in
@@ -591,7 +598,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server0, msgs, notifications =
+  let {Logic.state = server0; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 0 in
     Raft_logic.handle_message server0 msg now
   in
@@ -605,7 +612,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server1, msgs, notifications =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     let msg = msg_for_server hb_msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -653,7 +660,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server0, msgs, notifications =
+  let {Logic.state = server0; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 0 in
     Raft_logic.handle_message server0 msg now
   in
@@ -678,7 +685,7 @@ let ()  =
   let server0, data1_msgs =
     let open Raft_logic in
     match new_log_result with
-    | Appended (state, msgs) -> (state, msgs)
+    | Appended {Logic.state; messages_to_send; _ } -> (state, messages_to_send)
       (*
        * server0 is the [Leader] and is therefore expected to
        * handle the new log entry.
@@ -739,7 +746,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server1, msgs, notifications =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     let msg = msg_for_server data1_msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -787,7 +794,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server0, _, notifications =
+  let {Logic.state = server0; messages_to_send = _ ; notifications} =
     let msg = msg_for_server msgs 0  in
     Raft_logic.handle_message server0 msg now
   in
@@ -830,7 +837,7 @@ let ()  =
     let open Raft_logic in
     match new_log_result with
     | Delay | Forward_to_leader _ -> assert(false)
-    | Appended (state, msgs) -> (state, msgs)
+    | Appended {Logic.state; messages_to_send; _ } -> (state, messages_to_send)
   in
 
   assert(Types.is_leader server0);
@@ -894,7 +901,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server1, msgs, notifications =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     let msg = msg_for_server data2_msg 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -946,7 +953,7 @@ let ()  =
 
   let now = now +. 0.001 in
 
-  let server0, _, notifications =
+  let {Logic.state = server0; messages_to_send = _; notifications} =
     let msg = msg_for_server msgs 0  in
     Raft_logic.handle_message server0 msg now
   in
@@ -978,7 +985,9 @@ let ()  =
 
   let now = now +. default_configuration.hearbeat_timeout in
 
-  let server0, msgs = Raft_logic.handle_heartbeat_timeout server0 now in
+  let {Logic.state = server0; messages_to_send = msgs; _ } =
+    Raft_logic.handle_heartbeat_timeout server0 now 
+  in
 
   assert(2 = List.length msgs);
 
@@ -1027,16 +1036,21 @@ let ()  =
 
   (*
    * Let's send the heartbeat msg to server1. As previously asserted
-   * this heartbeat message should contain no additional log but the commit_index (set to
-   * 2) will be new information to server1.
+   * this heartbeat message should contain no additional log but the 
+   * commit_index (set to 2) will be new information to server1.
    *
    * --------------------------------------------------------------------------
    *)
 
-  let server1, server1_response, notifications =
+  let result = 
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now
-  in
+  in 
+
+  let {
+    Logic.state = server1; 
+    messages_to_send = server1_response; 
+    notifications} = result in 
 
   assert(Types.is_follower server1);
 
@@ -1065,7 +1079,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server2, server2_response, _ =
+  let {Logic.state = server2; messages_to_send = server2_response ; _} =
     let msg = msg_for_server msgs 2 in
     Raft_logic.handle_message server2 msg now
   in
@@ -1111,14 +1125,14 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server0, msg_to_send, notications =
+  let {Logic.state = server0; messages_to_send; notifications} =
 
-    let server0, msg_to_send, notications =
+    let {Logic.state = server0; messages_to_send; notifications} =
       let msg = msg_for_server server1_response 0  in
       Raft_logic.handle_message server0 msg now
     in
-    assert([] = msg_to_send);
-    assert([] = notications);
+    assert([] = messages_to_send);
+    assert([] = notifications);
       (* Server1 has replicated the 2 logs it has nothing
        * left.
        *)
@@ -1130,13 +1144,13 @@ let ()  =
   assert(Types.is_leader server0);
   assert(2 = server0.commit_index);
   assert(2 = recent_log_length server0);
-  assert([] = notications);
+  assert([] = notifications);
 
   (*
    * Both servers have replicated the 2 logs, no outstanding
    * logs to be sent.
    *)
-  assert(0 = List.length msg_to_send);
+  assert(0 = List.length messages_to_send);
 
 
   (*
@@ -1171,7 +1185,8 @@ let ()  =
 
   let server0, msgs =
     match new_log_result with
-    | Raft_logic.Appended (server, msgs) -> (server, msgs)
+    | Logic.Appended {Logic.state; messages_to_send; _ } -> 
+        (state, messages_to_send)
     | _ -> assert(false)
   in
   assert(Types.is_leader server0);
@@ -1192,7 +1207,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server1, _ , notifications =
+  let {Logic.state = server1; messages_to_send = _; notifications} =
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -1220,7 +1235,7 @@ let ()  =
 
   let now = now +. default_configuration.election_timeout  in
 
-  let server2, msgs, notifications =
+  let {Logic.state = server2; messages_to_send = msgs; notifications} =
     Raft_logic.handle_new_election_timeout server2 now
   in
 
@@ -1266,7 +1281,7 @@ let ()  =
 
   let now = now +. 0.001 in
 
-  let server1, msgs, notification =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -1279,7 +1294,7 @@ let ()  =
      * increments its current term.
      *)
 
-  assert(No_leader::[] = notification);
+  assert(No_leader::[] = notifications);
     (*
      * The change of term means that there are no current [Leader]
      * for it yet.
@@ -1314,7 +1329,7 @@ let ()  =
 
   let now = now +. default_configuration.election_timeout in
 
-  let server1, msgs, notifications =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     Raft_logic.handle_new_election_timeout server1 now
   in
 
@@ -1343,7 +1358,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server2, msgs, notifications =
+  let {Logic.state = server2; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 2 in
     Raft_logic.handle_message server2 msg now
   in
@@ -1389,7 +1404,7 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let server1, msgs, notifications =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -1439,7 +1454,7 @@ let ()  =
 
   let now = now +.  0.001 in
 
-  let server2, msgs, notifications =
+  let {Logic.state = server2; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 2 in
     Raft_logic.handle_message server2 msg now
   in
@@ -1478,7 +1493,7 @@ let ()  =
 
   let now = now +. 0.001 in
 
-  let server1, msgs, notifications =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -1519,7 +1534,7 @@ let ()  =
 
   let now = now +. 0.001 in
 
-  let server2, msgs, notifications =
+  let {Logic.state = server2; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 2 in
     Raft_logic.handle_message server2 msg now
   in
@@ -1564,7 +1579,7 @@ let ()  =
 
   let now = now +. 0.001  in
 
-  let server1, msgs, notifications =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -1607,7 +1622,7 @@ let ()  =
   let server1, data45_msgs =
     let open Raft_logic in
     match new_log_result with
-    | Appended (state, msgs) -> (state, msgs)
+    | Appended {Logic.state; messages_to_send; _ } -> (state, messages_to_send)
     | Delay | Forward_to_leader _ -> assert(false)
   in
 
@@ -1651,7 +1666,7 @@ let ()  =
 
   let now = now +. 0.001  in
 
-  let server2, msgs, notifications =
+  let {Logic.state = server2; messages_to_send = msgs; notifications} =
     let msg = msg_for_server data45_msgs 2 in
     Raft_logic.handle_message server2 msg now
   in
@@ -1704,7 +1719,7 @@ let ()  =
 
   let now = now +. 0.001  in
 
-  let server1, msgs, notifications =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -1735,7 +1750,7 @@ let ()  =
   let server1, data7_msgs =
     let open Raft_logic in
     match new_log_result with
-    | Appended (state, msgs) -> (state, msgs)
+    | Appended {Logic.state; messages_to_send; _ } -> (state, messages_to_send)
     | Delay | Forward_to_leader _ -> assert(false)
   in
 
@@ -1762,7 +1777,7 @@ let ()  =
   let server1, data7to12_msgs =
     let open Raft_logic in
     match new_log_result with
-    | Appended (state, msgs) -> (state, msgs)
+    | Appended {Logic.state; messages_to_send; _ } -> (state, messages_to_send)
     | Delay | Forward_to_leader _ -> assert(false)
   in
 
@@ -1784,7 +1799,7 @@ let ()  =
    * Let's send the [Append_entries] to server2
    *)
 
-  let server2, msgs, notifications =
+  let {Logic.state = server2; messages_to_send = msgs; notifications} =
     let msg = msg_for_server data7to12_msgs 2 in
     Raft_logic.handle_message server2 msg now
   in
@@ -1824,7 +1839,7 @@ let ()  =
   | _ -> assert(false)
   end;
 
-  let server1, msgs, notifications =
+  let {Logic.state = server1; messages_to_send = msgs; notifications} =
     let msg = msg_for_server msgs 1 in
     Raft_logic.handle_message server1 msg now
   in
@@ -1926,7 +1941,7 @@ let ()  =
   let server1, data20_msgs =
     let open Raft_logic in
     match new_log_result with
-    | Appended (state, msgs) -> (state, msgs)
+    | Appended {Logic.state; messages_to_send; _ } -> (state, messages_to_send)
     | Delay | Forward_to_leader _ -> assert(false)
   in
 
@@ -2002,7 +2017,7 @@ let ()  =
   let server1, data21_msgs =
     let open Raft_logic in
     match new_log_result with
-    | Appended (state, msgs) -> (state, msgs)
+    | Appended {Logic.state; messages_to_send; _ } -> (state, messages_to_send)
     | Delay | Forward_to_leader _ -> assert(false)
   in
 

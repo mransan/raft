@@ -12,21 +12,20 @@
 
 (** {2 Types} *)
 
-type time = float
-(** Monotonic time *)
-
-type server_id = int
-(** server id *)
-
-type message_to_send = Raft_pb.message * server_id
+type message_to_send = Raft_pb.message * Raft_types.server_id
 (** message to send to the given server *)
 
+type result = {
+  state : Raft_types.state;  
+  messages_to_send : message_to_send list; 
+  notifications : Raft_types.notification list;
+}
 
 (** {2 Protocol Implementation} *)
 
 val make_initial_state :
   configuration:Raft_types.configuration ->
-  now:time ->
+  now:Raft_types.time ->
   id:int ->
   unit ->
   Raft_types.state
@@ -40,37 +39,37 @@ val make_initial_state :
 val handle_message :
   Raft_types.state ->
   Raft_pb.message ->
-  time ->
-  Raft_types.state * (message_to_send list) * Raft_types.notification list
+  Raft_types.time ->
+  result 
 (** [handle_message state message now] handle an incoming Raft message.
   *)
 
 val handle_new_election_timeout :
   Raft_types.state ->
-  time ->
-  Raft_types.state * (message_to_send list) * Raft_types.notification list
+  Raft_types.time ->
+  result 
 (** [handle_new_election_timeout state now] implements the state change to
     a Candidate along with the list of request vote message to send.
   *)
 
 val handle_heartbeat_timeout :
   Raft_types.state ->
-  time ->
-  Raft_types.state * (message_to_send list)
+  Raft_types.time ->
+  result 
 (** [handle_heartbeat_timeout state now] computes the necessary messages
      to send in the case of a heartbeat.
   *)
 
 type new_log_response =
-  | Appended of Raft_types.state * message_to_send list
+  | Appended of result 
     (** The new log can correctly be handled by this server (ie it is
         a valid [Leader] and new [Append_entries] request message can be
         sent to follower servers.
       *)
   | Forward_to_leader of int
     (** If the current server is not a [Leader], the new log entry should
-        not be handled by this server but rather forwarded to the current [Leader]
-        which id is returned.
+        not be handled by this server but rather forwarded to the current 
+        [Leader] which id is returned.
       *)
 
   | Delay
@@ -85,7 +84,7 @@ type new_log_response =
 val handle_add_log_entries:
   Raft_types.state ->
   (bytes * string) list ->
-  time ->
+  Raft_types.time ->
   new_log_response
 (** [handle_add_log_entry state data now] processes [data] and return the follow
     up response. See [new_log_response] for more information.
@@ -93,7 +92,7 @@ val handle_add_log_entries:
 
 val next_timeout_event :
   Raft_types.state ->
-  time ->
+  Raft_types.time ->
   Raft_types.timeout_event
 (** [next_timeout_event state now] returns the timeout information
     that the serve should implement.

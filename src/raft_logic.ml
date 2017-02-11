@@ -8,11 +8,19 @@ module Configuration = Raft_helper.Configuration
 module Log = Raft_log
 module Timeout_event = Raft_helper.Timeout_event
 
-type time = float
-
-type server_id = int
-
 type message_to_send = message * int
+
+type result = {
+  state : Raft_types.state;  
+  messages_to_send : message_to_send list; 
+  notifications : Raft_types.notification list;
+}
+
+let make_result ?(messages_to_send = []) ?(notifications = []) state = {
+  state;
+  messages_to_send; 
+  notifications; 
+}
 
 module Log_entry_util = struct
 
@@ -532,7 +540,7 @@ let make_initial_state ~configuration ~now ~id () =
   Follower.create ~configuration ~now ~id ()
 
 let handle_message state message now =
-  let state', message_to_send =
+  let state', messages_to_send =
     match message with
     | Request_vote_request ({candidate_id; _ } as r) ->
       let state, response = handle_request_vote_request state r now in
@@ -548,7 +556,8 @@ let handle_message state message now =
     | Append_entries_response r ->
       handle_append_entries_response state r now
   in
-  (state', message_to_send , Types.notifications state state')
+  let notifications = Types.notifications state state' in 
+  make_result ~messages_to_send ~notifications state'
 
 (* Iterates over all the other server ids. (ie the ones different
  * from the state id).
@@ -572,27 +581,28 @@ let fold_over_servers f e0 state =
 
 let handle_new_election_timeout state now =
   let state' = Candidate.become ~now state in
-  let msgs =
+  let messages_to_send =
     fold_over_servers (fun acc server_id ->
       let request = make_request_vote_request state' in
       (Request_vote_request request, server_id) :: acc
     ) [] state'
   in
-  (state', msgs, Types.notifications state state')
+  let notifications = Types.notifications state state' in 
+  make_result ~messages_to_send ~notifications state'
 
 let handle_heartbeat_timeout state now =
   match state.Types.role with
   | Types.Leader leader_state ->
-    let leader_state, msgs_to_send =
+    let leader_state, messages_to_send =
       Log_entry_util.compute_append_entries state leader_state now
     in
     let state = Types.({state with role = Leader leader_state}) in
-    (state, msgs_to_send)
+    make_result ~messages_to_send state
   | _ ->
-    (state, [])
+    make_result state
 
 type new_log_response =
-  | Appended of Types.state * message_to_send list
+  | Appended of result 
   | Forward_to_leader of int
   | Delay
 
@@ -613,13 +623,16 @@ let handle_add_log_entries state datas now =
 
   | Types.Leader leader_state ->
 
-    let state = {state with
-      Types.log = Log.add_log_datas state.Types.current_term datas state.Types.log
-    } in
-    let leader_state, msgs_to_send =
+    let state = Types.({state with
+      log = Log.add_log_datas state.current_term datas state.log
+    }) in
+
+    let leader_state, messages_to_send =
       Log_entry_util.compute_append_entries state leader_state now
     in
+    
     let state = Types.({state with role = Leader leader_state }) in
-    Appended (state, msgs_to_send)
+    let result = make_result ~messages_to_send state in 
+    Appended result 
 
 let next_timeout_event = Timeout_event.next
