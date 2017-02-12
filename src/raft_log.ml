@@ -1,4 +1,13 @@
-open Raft_pb
+type log_entry = {
+  index : int;
+  term : int;
+  data : bytes;
+  id : string;
+}
+
+let pp_log_entry fmt {index; term; id; _} =
+  Format.fprintf fmt "{index: %i; term: %i, id: %s}"
+   index term id 
 
 module Term_tree = struct
 
@@ -126,7 +135,7 @@ module IntMap = Map.Make(struct
 end) 
 
 type t = {
-  recent_entries : Raft_pb.log_entry IntMap.t;
+  recent_entries : log_entry IntMap.t;
   log_size : int;
   term_tree : term_tree;
 } 

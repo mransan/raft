@@ -1,18 +1,16 @@
-open Raft_pb
-
 module Log = Raft_log
 module Types = Raft_types
 
 module Follower = struct
 
-  let create ~configuration ~now ~id () =
+  let create ~configuration ~now ~server_id () =
     let {
       Types.election_timeout = t;
       election_timeout_range = r; _ } = configuration in
     let timeout = t +. (Random.float r -. (r /. 2.)) in
     {
       Types.current_term = 0;
-      id;
+      server_id;
       log = Log.empty;
       commit_index = 0;
       role = Types.(Follower {
@@ -44,7 +42,7 @@ module Follower = struct
         }
       | Types.Candidate _ when state.Types.current_term = term ->
         Types.Follower {
-          Types.voted_for = Some state.Types.id;
+          Types.voted_for = Some state.Types.server_id;
           Types.current_leader;
           Types.election_deadline;
         }
@@ -65,10 +63,10 @@ module Candidate = struct
       Types.election_timeout = t;
       election_timeout_range = r; _ } = state.Types.configuration in
     let timeout = t +. (Random.float r -. (r /. 2.)) in
-    let role = Types.(Candidate {
-      vote_count = 1;
-      election_deadline = now +. timeout;
-    }) in
+    let role = Types.Candidate {
+      Types.vote_count = 1;
+      Types.election_deadline = now +. timeout;
+    } in
     {state with
      Types.role;
      Types.current_term = state.Types.current_term + 1;
@@ -92,20 +90,15 @@ module Leader = struct
     let rec aux followers = function
       | (-1) -> followers
       |  i   ->
-        if i = state.Types.id
+        if i = state.Types.server_id
         then
           aux followers (i -1)
         else
           let next_index = last_log_index + 1 in
           let match_index = 0  in
-          let unsent_entries = [] in
-            (* The cache is expected to be empty... which is fine since it will
-             * get filled at when a new log entry will be
-             * added.
-             *)
 
           let follower:Types.follower_info = {
-            Types.server_id = i;
+            Types.follower_id = i;
             next_index;
             match_index;
             outstanding_request = false;
@@ -129,54 +122,51 @@ module Leader = struct
    * Reusable function to update the index of a particular
    * receiver id.
    *)
-  let update_index ~receiver_id ~f leader_state =
+  let update_follower ~follower_id ~f leader_state =
 
     List.map (fun follower ->
-      if follower.Types.server_id = receiver_id
+      if follower.Types.follower_id = follower_id 
       then (f follower)
       else follower
     ) leader_state
 
-  let update_receiver_last_log_index ~receiver_id ~log_index leader_state =
+  let update_follower_last_log_index ~follower_id ~index followers =
 
-    let leader_state = update_index ~receiver_id ~f:(fun index ->
-      let {Types.next_index; match_index; _} = index in
-      let upd_next_index = log_index + 1 in
-      let upd_match_index = log_index in
+    let followers = update_follower ~follower_id ~f:(fun follower ->
+      let {Types.next_index; match_index; _} = follower  in
+      let upd_next_index = index + 1 in
+      let upd_match_index = index in
       if upd_match_index > match_index && upd_next_index > next_index
       then
-        {index with Types.next_index = log_index + 1; match_index = log_index}
+        {follower with Types.next_index = index + 1; match_index = index}
       else
-        (*
-         * It is possible to receive out of order responses from the other
+        (* It is possible to receive out of order responses from the other
          * raft servers.
          *
-         * In such a case we don't want to decrement the next index of the server
-         * since the server is expected to never remove previously saved log entries.
+         * In such a case we don't want to decrement the next index 
+         * of the server since the server is expected to never remove 
+         * previously saved log entries.
          *)
-        index
-    ) leader_state
+        follower
+    ) followers 
     in
 
     (* Calculate the number of server which also have replicated that
        log entry
      *)
     let nb_of_replications = List.fold_left (fun n {Types.match_index; _ } ->
-      if match_index >= log_index
+      if match_index >= index 
       then n + 1
       else n
-    ) 0 leader_state in
+    ) 0 followers in
 
-    (leader_state, nb_of_replications)
+    (followers, nb_of_replications)
 
-  let decrement_next_index ~log_failure ~receiver_id state leader_state =
-    let {receiver_last_log_index; _ }= log_failure in
-
+  let decrement_next_index ~follower_last_log_index ~follower_id state followers =
     let latest_log_index = Log.last_log_index state.Types.log  in
 
-    assert(receiver_last_log_index <= latest_log_index);
-      (*
-       * This is an invariant. The server cannot have replicated more logs
+    assert(follower_last_log_index <= latest_log_index);
+      (* This is an invariant. The server cannot have replicated more logs
        * than the Leader.
        *
        * However due to message re-ordering it is possible to receive a [LogFailure]
@@ -190,20 +180,20 @@ module Leader = struct
        * - [Server] return a failure since it has replicated x + 1 and cannot
        *   remove that log entry since it is coming from the current term leader.
        *)
-    update_index ~receiver_id ~f:(fun index ->
+    update_follower ~follower_id ~f:(fun index ->
       {index with
-       Types.next_index = receiver_last_log_index + 1;
-       Types.match_index = receiver_last_log_index}
-    )  leader_state
+       Types.next_index = follower_last_log_index + 1;
+       Types.match_index = follower_last_log_index}
+    )  followers 
 
-  let record_response_received ~receiver_id leader_state =
+  let record_response_received ~follower_id followers =
 
-    update_index
-      ~receiver_id
+    update_follower
+      ~follower_id
       ~f:(fun index ->
         {index with Types.outstanding_request = false;}
       )
-      leader_state
+      followers 
 
   let min_heartbeat_timout ~now followers =
 

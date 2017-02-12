@@ -12,7 +12,7 @@
 
 (** {2 Types} *)
 
-type message_to_send = Raft_pb.message * Raft_types.server_id
+type message_to_send = Raft_types.message * Raft_types.server_id
 (** message to send to the given server *)
 
 type result = {
@@ -26,7 +26,7 @@ type result = {
 val make_initial_state :
   configuration:Raft_types.configuration ->
   now:Raft_types.time ->
-  id:int ->
+  server_id:int ->
   unit ->
   Raft_types.state
 (** [make_initial_state ~configuration ~now ~id ()] creates an initial server
@@ -38,7 +38,7 @@ val make_initial_state :
 
 val handle_message :
   Raft_types.state ->
-  Raft_pb.message ->
+  Raft_types.message ->
   Raft_types.time ->
   result 
 (** [handle_message state message now] handle an incoming Raft message.

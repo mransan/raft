@@ -5,7 +5,7 @@ module Follower : sig
   val create :
     configuration:Raft_types.configuration ->
     now:float ->
-    id:int ->
+    server_id:int ->
     unit ->
     Raft_types.state
   (** [create ~current_leader ~current_term ~voted_for ~log ~configuration ~id ()] creates an initial
@@ -65,9 +65,9 @@ module Leader : sig
     *)
 
 
-  val update_receiver_last_log_index :
-    receiver_id:int ->
-    log_index:int ->
+  val update_follower_last_log_index :
+    follower_id:int ->
+    index:int ->
     Raft_types.leader_state ->
     (Raft_types.leader_state * int)
   (** [update_receiver_last_log_index leader_state receiver_id last_log_index] updates the leader
@@ -80,7 +80,7 @@ module Leader : sig
     *)
 
   val record_response_received :
-    receiver_id:int ->
+    follower_id:int ->
     Raft_types.leader_state ->
     Raft_types.leader_state
   (** [record_response_received ~server_id leader_state] keeps track of the
@@ -88,8 +88,8 @@ module Leader : sig
     *)
 
   val decrement_next_index :
-    log_failure:Raft_pb.append_entries_response_log_failure_data ->
-    receiver_id:int ->
+    follower_last_log_index:int ->
+    follower_id:int ->
     Raft_types.state ->
     Raft_types.leader_state ->
     Raft_types.leader_state

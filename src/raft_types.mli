@@ -1,13 +1,14 @@
 (** RAFT Server state Utilities, agnostic of the role the server has *)
 
-(** {2 Type} *)
+(** {2 Common types } *)
 
 type time = float
 (** Monotonic time *)
 
 type server_id = int
-(** server id *)
+(** Server id *)
 
+(** Configuration *)
 type configuration = {
   nb_of_server : int;
     (** Number of servers for the RAFT clusters, servers are then
@@ -26,28 +27,57 @@ type configuration = {
     (** Limit the number of log entries per append entries message  *)
 }
 
-type timeout_type =
-  | New_leader_election
-  | Heartbeat
+(** {2 Protocol Messages} *) 
 
-type timeout_event = {
-  timeout : float;
-  timeout_type : timeout_type;
+type request_vote_request = {
+  candidate_term : int;
+  candidate_id : server_id;
+  candidate_last_log_index : int;
+  candidate_last_log_term : int;
 }
 
-type notification =
-  | Committed_data of Raft_pb.log_entry list
-  | New_leader of int
-  | No_leader
+type request_vote_response = {
+  voter_id : server_id;
+  voter_term : int;
+  vote_granted : bool;
+}
+
+type append_entries_request = {
+  leader_term : int;
+  leader_id : server_id;
+  prev_log_index : int;
+  prev_log_term : int;
+  rev_log_entries : Raft_log.log_entry list;
+  leader_commit : int;
+}
+
+type append_entries_response_result =
+  | Success of int (* receiver_last_log_index *) 
+  | Log_failure of int (* receiver_last_log_index *)
+  | Term_failure
+
+and append_entries_response = {
+  receiver_id : int;
+  receiver_term : int;
+  result : append_entries_response_result;
+}
+
+type message =
+  | Request_vote_request of request_vote_request
+  | Request_vote_response of request_vote_response
+  | Append_entries_request of append_entries_request
+  | Append_entries_response of append_entries_response
+
+(** {2 Protocol State} *)
 
 (** Each follower information *)
 type follower_info = {
-  server_id : int;
+  follower_id : int;
     (** Id of the follower *)
   next_index : int;
-    (** Which [Raft_pb.log_entry] should be sent next. *)
+    (** Which [Raft_types.log_entry] should be sent next. *)
   match_index : int;
-    (** The last replicated [Raft_pb.log_entry] for this follower *)
+    (** The last replicated [Raft_types.log_entry] for this follower *)
   heartbeat_deadline : float;
     (** The time at which a heartbeat should be sent next *)
   outstanding_request : bool;
@@ -89,13 +119,29 @@ type role =
 
 (** Types of a server *)
 type state = {
-  id : int;
+  server_id : int;
   current_term : int;
   log : Raft_log.t;
   commit_index : int;
   role : role;
   configuration : configuration;
 }
+
+(** {2 API types} *)
+
+type timeout_type =
+  | New_leader_election
+  | Heartbeat
+
+type timeout_event = {
+  timeout : float;
+  timeout_type : timeout_type;
+}
+
+type notification =
+  | Committed_data of Raft_log.log_entry list
+  | New_leader of int
+  | No_leader
 
 (** {2 Role functionality} *)
 

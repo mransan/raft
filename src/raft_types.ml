@@ -1,5 +1,3 @@
-open Raft_pb
-
 module Log = Raft_log
 
 type time = float
@@ -14,6 +12,45 @@ type configuration = {
   max_nb_logs_per_message : int;
 }
 
+type request_vote_request = {
+  candidate_term : int;
+  candidate_id : int;
+  candidate_last_log_index : int;
+  candidate_last_log_term : int;
+}
+
+type request_vote_response = {
+  voter_id : int;
+  voter_term : int;
+  vote_granted : bool;
+}
+
+type append_entries_request = {
+  leader_term : int;
+  leader_id : int;
+  prev_log_index : int;
+  prev_log_term : int;
+  rev_log_entries : Log.log_entry list;
+  leader_commit : int;
+}
+
+type append_entries_response_result =
+  | Success of int
+  | Log_failure of int
+  | Term_failure
+
+and append_entries_response = {
+  receiver_id : int;
+  receiver_term : int;
+  result : append_entries_response_result;
+}
+
+type message =
+  | Request_vote_request of request_vote_request
+  | Request_vote_response of request_vote_response
+  | Append_entries_request of append_entries_request
+  | Append_entries_response of append_entries_response
+
 type timeout_type =
   | New_leader_election
   | Heartbeat
@@ -24,12 +61,12 @@ type timeout_event = {
 }
 
 type notification =
-  | Committed_data of log_entry list
+  | Committed_data of Log.log_entry list
   | New_leader of int
   | No_leader
 
 type follower_info = {
-  server_id : int;
+  follower_id : int;
   next_index : int;
   match_index : int;
   heartbeat_deadline : float;
@@ -55,7 +92,7 @@ type role =
   | Follower of follower_state
 
 type state = {
-  id : int;
+  server_id : int;
   current_term : int;
   log : Raft_log.t;
   commit_index : int;
@@ -96,7 +133,7 @@ let notifications before after =
 
     | Candidate _  , Leader _ ->
       (* Case of the server becoming a leader *)
-      (New_leader after.id)::notifications
+      (New_leader after.server_id)::notifications
 
     | Follower {current_leader = Some bleader; _ },
       Follower {current_leader = Some aleader; _ } when bleader = aleader ->
@@ -131,16 +168,16 @@ let notifications before after =
     let sub, last_commit, _ = Log.IntMap.split acommit_index sub in 
     let sub = match last_commit with 
       | None -> assert(false) 
-      | Some ({index; _ } as log_entry) -> 
+      | Some ({Log.index; _ } as log_entry) -> 
         Log.IntMap.add index log_entry sub 
     in 
-    let committed_entries = List.map snd (Log.IntMap.bindings sub) in  
+    let committed_entries:Raft_log.log_entry list = List.map snd (Log.IntMap.bindings sub) in  
     (Committed_data committed_entries)::notifications
   else
     notifications
 
-let current_leader {id; role; _} =
+let current_leader {server_id; role; _} =
     match role with
     | Follower {current_leader; _ }-> current_leader
     | Candidate _ -> None
-    | Leader _ -> Some id
+    | Leader _ -> Some server_id

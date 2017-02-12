@@ -1,6 +1,5 @@
 [@@@ocaml.warning "-45"]
 
-open Raft_pb
 open Raft_types
 open Raft_log
 
@@ -29,11 +28,9 @@ let recent_log_length {log = {recent_entries; _ }; _ } =
 let recent_log_hd {log = {recent_entries; _ }; _ } =
   snd @@  IntMap.max_binding recent_entries 
 
-let initial_state
-  ~now
-  id =
-
-  Raft_logic.make_initial_state ~configuration:default_configuration ~now ~id ()
+let initial_state ~now server_id  =
+  let configuration = default_configuration in 
+  Raft_logic.make_initial_state ~configuration ~now ~server_id ()
 
 let now = 0.
 
@@ -44,14 +41,14 @@ let msg_for_server msgs id =
 
 let request_response ~from ~to_ ~now requests =
   let {Logic.state = to_; messages_to_send = responses ; _} =
-    let msg = msg_for_server requests (to_.id) in
+    let msg = msg_for_server requests (to_.server_id) in
     Raft_logic.handle_message to_ msg now
   in
 
   let now = now +. 0.001 in
 
   let {Logic.state = from; messages_to_send = msgs; _} = 
-    let msg = msg_for_server responses (from.id) in
+    let msg = msg_for_server responses (from.server_id) in
     Raft_logic.handle_message from msg now
   in
   (from, to_, msgs, now)
@@ -298,7 +295,7 @@ let ()  =
   | (Append_entries_response r, 0) :: [] -> (
     assert(r.receiver_id = 1);
     assert(r.receiver_term = 1);
-    assert(r.result = Success {receiver_last_log_index = 0});
+    assert(r.result = Success 0); 
   )
   | _ -> assert(false)
   end;
@@ -587,7 +584,7 @@ let ()  =
     assert(server_id = 0);
     assert(r.receiver_id = 2);
     assert(r.receiver_term = 1);
-    assert(r.result = Success { receiver_last_log_index = 0 });
+    assert(r.result = Success 0);
   )
   | _ -> assert(false)
   end;
@@ -636,7 +633,7 @@ let ()  =
   | (Append_entries_response r, 0)::[] -> (
     assert(r.receiver_id = 1);
     assert(r.receiver_term = 1);
-    assert(r.result = Success { receiver_last_log_index = 0 });
+    assert(r.result = Success 0); 
   )
   | _ -> assert(false)
   end;
@@ -780,7 +777,7 @@ let ()  =
   | (Append_entries_response r, 0) :: [] -> (
     assert(r.receiver_id = 1);
     assert(r.receiver_term = 1);
-    assert(r.result = Success { receiver_last_log_index = 1; });
+    assert(r.result = Success 1);
      (*
       * server1 has correctly replicated the log entry which has index1.
       *)
@@ -936,7 +933,7 @@ let ()  =
   | (Append_entries_response r, 0) :: [] -> (
     assert(r.receiver_id = 1);
     assert(r.receiver_term = 1);
-    assert(r.result = Success {receiver_last_log_index = 2; });
+    assert(r.result = Success 2); 
      (* server1 notifies the [Leader] about the last log it has
       * replicated.
       *)
@@ -1110,7 +1107,7 @@ let ()  =
   | (Append_entries_response r, 0)::[] -> (
     assert(r.receiver_id = 2);
     assert(r.receiver_term = 1);
-    assert(r.result = Success {receiver_last_log_index = 2; });
+    assert(r.result = Success 2);
       (*
        * server2 has successfully replicated the 2 log entries
        *)
@@ -1463,9 +1460,7 @@ let ()  =
   | (Append_entries_response r, 1)::[] -> (
     assert(r.receiver_id = 2);
     assert(r.receiver_term = 3);
-    assert(r.result = Log_failure {
-      receiver_last_log_index = 2;
-    });
+    assert(r.result = Log_failure 2);      
       (*
        * server2 did not replicate the 3rd [log_entry] that server1
        * did during [term = 1].
@@ -1552,7 +1547,7 @@ let ()  =
   | (Append_entries_response r, 1) :: [] -> (
     assert(r.receiver_id = 2);
     assert(r.receiver_term = 3);
-    assert(r.result = Success { receiver_last_log_index = 3});
+    assert(r.result = Success 3);
       (*
        * Confirmation that the replication of the log has
        * been successful.
@@ -1685,7 +1680,7 @@ let ()  =
     } = r in
     assert(2 = receiver_id);
     assert(3 = receiver_term);
-    assert(Success {receiver_last_log_index = 5} = result);
+    assert(Success 5 = result);
   )
   | _ -> assert(false);
   end;
@@ -1815,7 +1810,7 @@ let ()  =
     } = r in
     assert(2 = receiver_id);
     assert(3 = receiver_term);
-    assert(Success {receiver_last_log_index = 12} = result);
+    assert(Success 12  = result);
   | _ -> assert(false)
   end;
 

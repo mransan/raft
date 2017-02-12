@@ -1,5 +1,11 @@
 (** All Log related logic *)
 
+type log_entry = {
+  index : int;
+  term : int;
+  data : bytes;
+  id : string;
+}
 
 type term_tree
 
@@ -8,7 +14,7 @@ val pp_term_tree : Format.formatter -> term_tree -> unit
 module IntMap : Map.S with type key = int
 
 type t = {
-  recent_entries : Raft_pb.log_entry IntMap.t;
+  recent_entries : log_entry IntMap.t;
   log_size : int;
   term_tree : term_tree;
 }
@@ -29,7 +35,7 @@ val last_log_index: t ->  int
 (** [last_log_index state] return the index of the last log entry.
   *)
 
-val log_entries_since : since:int -> max:int -> t -> Raft_pb.log_entry list
+val log_entries_since : since:int -> max:int -> t -> log_entry list
 (** [rev_log_entries_since index log] returns the log entries in
     reverse order (ie the earliest log is at the front) from (but excluding)
     [since] and until the latest log entry in [log].
@@ -58,7 +64,7 @@ val add_log_datas : int -> (bytes * string) list -> t -> t
     left to the caller.
   *)
 
-val add_log_entries : rev_log_entries:Raft_pb.log_entry list -> t -> t
+val add_log_entries : rev_log_entries:log_entry list -> t -> t
 (** [add_log_entries rev_log_entries log] appends [rev_log_entries] to the
     [log]. The assumption is that the entries are in reverse order so
     the last log_entry in [rev_log_entries] will be the first log_entry in [log]
@@ -80,7 +86,7 @@ module Builder : sig
 
   val make : unit -> builder
 
-  val add_log_entry : builder -> Raft_pb.log_entry -> builder
+  val add_log_entry : builder -> log_entry -> builder
 
   val to_log : builder -> t
 
