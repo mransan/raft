@@ -108,7 +108,6 @@ module Leader = struct
             Types.server_id = i;
             next_index;
             match_index;
-            unsent_entries;
             outstanding_request = false;
             heartbeat_deadline = now +. hearbeat_timeout;
               (*

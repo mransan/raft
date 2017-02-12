@@ -24,10 +24,10 @@ let default_configuration = {
 }
 
 let recent_log_length {log = {recent_entries; _ }; _ } =
-  List.length recent_entries
+  IntMap.cardinal recent_entries
 
 let recent_log_hd {log = {recent_entries; _ }; _ } =
-  List.hd recent_entries
+  snd @@  IntMap.max_binding recent_entries 
 
 let initial_state
   ~now
@@ -195,11 +195,8 @@ let ()  =
 
   assert(Types.is_leader server0);
   assert((New_leader 0)::[] = notifications);
-    (*
-     * Because a single vote is enough to reach a majority in a 3-server cluster,
-     * server0 becomes a [Leader].
-     *)
-
+    (* Because a single vote is enough to reach a majority in a 3-server cluster,
+     * server0 becomes a [Leader].  *)
 
   assert(1 = server0.current_term);
     (*
@@ -218,8 +215,9 @@ let ()  =
 
         assert(server_index.next_index = 1);
         assert(server_index.match_index = 0);
-        assert(server_index.heartbeat_deadline = now +. default_configuration.hearbeat_timeout);
-        assert(server_index.outstanding_request = false);
+        assert(server_index.heartbeat_deadline = 
+               now +. default_configuration.hearbeat_timeout);
+        assert(server_index.outstanding_request = true);
 
       ) followers;
   )
@@ -297,7 +295,7 @@ let ()  =
      *)
 
   begin match msgs with
-  | (Append_entries_response r , 0) :: [] -> (
+  | (Append_entries_response r, 0) :: [] -> (
     assert(r.receiver_id = 1);
     assert(r.receiver_term = 1);
     assert(r.result = Success {receiver_last_log_index = 0});
@@ -315,8 +313,10 @@ let ()  =
    * --------------------------------------------------------------------------
    *)
 
-  let {Logic.state = server2; messages_to_send = request_vote_msgs; notifications} =
-    Raft_logic.handle_new_election_timeout server2 now
+  let {
+    Logic.state = server2; 
+    messages_to_send = request_vote_msgs; 
+    notifications} = Raft_logic.handle_new_election_timeout server2 now
   in
 
   assert([] = notifications);
@@ -699,8 +699,8 @@ let ()  =
      * The new log entry should have been appended to the current empty log.
      *)
 
-  begin match server0.log.recent_entries with
-  | {index = 1; term = 1; _ } :: []  -> ()
+  begin match recent_log_hd server0 with 
+  | {index = 1; term = 1; _ } -> ()
     (*
      * Log should start as 1 and be set to the current
      * term (ie 1.)
@@ -1411,22 +1411,16 @@ let ()  =
 
   assert((New_leader 1)::[] = notifications);
   assert(Types.is_leader server1);
-    (*
-     * One vote is enough to become a [Leader].
-     *)
+    (* One vote is enough to become a [Leader].  *)
 
   assert(3 = server1.current_term);
-    (*
-     * [current_term] should be the same after becoming
-     * a [Leader].
-     *)
+    (* [current_term] should be the same after becoming
+     * a [Leader].  *)
 
   assert(2 = List.length msgs);
-    (*
-     * Imediately after becoming a [Leader], the server
+    (* Imediately after becoming a [Leader], the server
      * will send [Append_entries] to establish its
-     * leadership.
-     *)
+     * leadership.  *)
 
   List.iter (fun (r, _) ->
     match r with
@@ -1436,20 +1430,17 @@ let ()  =
       assert(r.prev_log_index = 3);
       assert(r.prev_log_term = 1);
       assert(r.rev_log_entries = []);
-        (*
-         * Initially the [Leader] believes that all other servers
-         * have replicated the same [log_entry]s as itself.
-         *)
+        (* Initially the [Leader] believes that all other servers
+         * have replicated the same [log_entry]s as itself.  *)
       assert(r.leader_commit = 2);
     )
     | _ -> assert(false)
   ) msgs;
 
-  (*
-   * Let's now propagate the first [Append_entries] from server1  which shall
+  (* Let's now propagate the first [Append_entries] from server1  which shall
    * establish its leadership.
    *
-   * --------------------------------------------------------------------------
+   * -----------------------------------------------------------------------
    *)
 
   let now = now +.  0.001 in
@@ -1600,17 +1591,6 @@ let ()  =
 
   assert([] = msgs);
 
-
-  (*
-   * Let's now add 2 log entry at a time which would
-   * make a total of 5 log entries.
-   *
-   * We have set the log_interval_size to be 5, which mean that
-   * a new log interval should be added to the cache after those
-   * 2 entries were commited.
-   *
-   *)
-
   let new_log_result =
     let datas = [
       (Bytes.of_string "Message04", "04");
@@ -1630,10 +1610,12 @@ let ()  =
   assert(5 = Log.last_log_index server1.log);
 
   assert(3 = server1.commit_index);
-    (* The 2 logs have not been commited.
-     *)
+    (* The 2 logs have not been commited.  *)
 
-  assert(2 = List.length data45_msgs);
+  assert(1 = List.length data45_msgs);
+    (* Only one message needs to be sent since server0 has still an outstanding
+     * request. (ie server1 the leader never received any `append entries 
+     * response` from that server *)
 
   List.iter (fun (msg, _) ->
 
@@ -1657,11 +1639,10 @@ let ()  =
     | _ -> assert(false);
   ) data45_msgs;
 
-  (*
-   * Server0 is still crashed, server2 is good so let's send the latest [Append_entries]
-   * request.
+  (* Server0 is still crashed, server2 is good so let's send the latest 
+   * [Append_entries] request.
    *
-   * --------------------------------------------------------------------------
+   * ------------------------------------------------------------------
    *)
 
   let now = now +. 0.001  in
@@ -1677,12 +1658,11 @@ let ()  =
   assert(5 = recent_log_length server2);
     (* The last 2 logs where succesfully replicated
      *)
-  begin match server2.log.recent_entries with
-  | {data; _ } :: _ ->
+  begin match recent_log_hd server2 with
+  | {data; _ } ->
     assert((Bytes.of_string "Message05") = data);
     (* Let's make sure the order was properly replicated.
      *)
-  | _ -> assert(false);
   end;
 
   assert(3 = server2.commit_index);

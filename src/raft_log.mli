@@ -5,8 +5,10 @@ type term_tree
 
 val pp_term_tree : Format.formatter -> term_tree -> unit
 
+module IntMap : Map.S with type key = int
+
 type t = {
-  recent_entries : Raft_pb.log_entry list;
+  recent_entries : Raft_pb.log_entry IntMap.t;
   log_size : int;
   term_tree : term_tree;
 }
@@ -27,7 +29,7 @@ val last_log_index: t ->  int
 (** [last_log_index state] return the index of the last log entry.
   *)
 
-val rev_log_entries_since : int -> t -> Raft_pb.log_entry list
+val log_entries_since : since:int -> max:int -> t -> Raft_pb.log_entry list
 (** [rev_log_entries_since index log] returns the log entries in
     reverse order (ie the earliest log is at the front) from (but excluding)
     [since] and until the latest log entry in [log].

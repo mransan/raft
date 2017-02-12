@@ -34,7 +34,6 @@ type follower_info = {
   match_index : int;
   heartbeat_deadline : float;
   outstanding_request : bool;
-  unsent_entries : log_entry list;
 }
 
 type leader_state = follower_info list
@@ -123,32 +122,20 @@ let notifications before after =
 
   if acommit_index > bcommit_index
   then
-    let rec aux rev_log_entries = function
-      | ({index;_ } as log_entry)::tl ->
-          if index > acommit_index
-          then aux rev_log_entries tl
-          else
-            if index = bcommit_index
-            then rev_log_entries
-            else aux (log_entry :: rev_log_entries) tl
-      | [] ->
-        assert(bcommit_index = 0);
-        (* If commit_index is different than 0 then this means
-         * that we could not identify all the [log_entry] which
-         * have been commited between [before] and [after].
-         *
-         * One of the reason could be that the [log_entry]s are not
-         * in the [log] but rather in the [global_cache].
-         * This should be prevented by the fact that [Rev_log_cache.update_global_cache]
-         * only move the [log_entry] to the cache wihch are prior to the
-         * previous commit index (ie the one of [before].
-         *
-         * The other is a plain bug, all entries between 2 commit_index should be
-         * in the log.
-         *)
-        rev_log_entries
-    in
-    (Committed_data (aux [] after.log.Log.recent_entries))::notifications
+    let recent_entries = after.log.Log.recent_entries in 
+    let _, prev_commit, sub = Log.IntMap.split bcommit_index recent_entries in 
+    begin match prev_commit with 
+    | None -> assert(bcommit_index = 0)
+    | Some _ -> ()
+    end;
+    let sub, last_commit, _ = Log.IntMap.split acommit_index sub in 
+    let sub = match last_commit with 
+      | None -> assert(false) 
+      | Some ({index; _ } as log_entry) -> 
+        Log.IntMap.add index log_entry sub 
+    in 
+    let committed_entries = List.map snd (Log.IntMap.bindings sub) in  
+    (Committed_data committed_entries)::notifications
   else
     notifications
 
@@ -157,4 +144,3 @@ let current_leader {id; role; _} =
     | Follower {current_leader; _ }-> current_leader
     | Candidate _ -> None
     | Leader _ -> Some id
-

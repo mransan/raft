@@ -119,62 +119,45 @@ end  (* Term_tree *)
 type term_tree = Term_tree.t
 
 let pp_term_tree = Term_tree.pp
-
-let sub_log_entries ?until ~since log_entries =
-
-  let log_entries =
-    match until with
-    | None -> log_entries
-    | Some until ->
-      let rec aux = function
-        | ({index; _ }::_) as log_entries when index = until -> log_entries
-        | _::tl -> aux tl
-        | [] -> []
-      in
-      aux log_entries
-  in
-
-  let rec aux rev_log_entries = function
-    | [] ->
-      if since = 0
-      then rev_log_entries
-      else begin
-        Printf.eprintf "[Raft_logic] Internal2 error invalid log index\n%!";
-        failwith "[Raft_logic] Internal2 error invalid log index"
-      end
-
-    | {index; _}::_ when index = since ->
-      rev_log_entries
-
-    | hd::tl -> aux (hd::rev_log_entries) tl
-  in
-  aux [] log_entries
+   
+module IntMap = Map.Make(struct 
+  type t = int 
+  let compare (x:int) (y:int) = Pervasives.compare x y
+end) 
 
 type t = {
-  recent_entries : log_entry list;
+  recent_entries : Raft_pb.log_entry IntMap.t;
   log_size : int;
   term_tree : term_tree;
-}
+} 
 
 let empty = {
-  recent_entries = [];
+  recent_entries = IntMap.empty;
   log_size = 0;
   term_tree = Term_tree.empty
 }
 
 let last_log_index_and_term {recent_entries; _ } =
-  match recent_entries with
-  | {index;term; _}::_ -> (index, term)
-  | [] -> (0, 0)
+  match IntMap.max_binding recent_entries  with
+  | (_ , {index;term; _}) -> (index, term)
+  | exception Not_found -> (0, 0)
 
 let last_log_index log =
   fst @@ last_log_index_and_term log
 
-let rev_log_entries_since since log =
+let log_entries_since ~since ~max log =
   let {recent_entries ; _} = log in
-  match recent_entries with
-  | []  -> []
-  | _::_ -> sub_log_entries ~since recent_entries
+  if recent_entries = IntMap.empty
+  then [] 
+     (* TODO questionable, shoudl all cases go to the sub function *) 
+  else 
+    let _, prev, sub = IntMap.split since recent_entries in 
+    begin match prev with 
+    | None -> assert (since = 0) 
+    | _ -> () 
+    end;
+    let sub, _, _ = IntMap.split (since + max + 1) sub in 
+    List.map snd (IntMap.bindings sub)
 
 let term_of_index index {term_tree; _} =
   Term_tree.term_of_index index term_tree
@@ -186,17 +169,17 @@ let add_log_datas current_term datas log =
     | (data, id)::tl ->
       let last_log_index = last_log_index + 1 in
 
-      let handle_new_log_entry_entry = {
+      let new_log_entry = {
         index = last_log_index;
         term; data; id;
       } in
 
-      let recent_entries =
-        handle_new_log_entry_entry :: recent_entries
-      in
+      let recent_entries = 
+        IntMap.add last_log_index new_log_entry recent_entries 
+      in 
 
       let term_tree =
-        Term_tree.handle_new_log_entry term_tree handle_new_log_entry_entry
+        Term_tree.handle_new_log_entry term_tree new_log_entry
       in
 
       aux term last_log_index recent_entries (log_size + 1) term_tree tl
@@ -220,39 +203,43 @@ let add_log_entries ~rev_log_entries log =
 
     | hd::tl ->
       let term_tree = Term_tree.handle_new_log_entry term_tree hd in
-      aux (log_size + 1) term_tree (hd::recent_entries) tl
+      let recent_entries = IntMap.add hd.index hd recent_entries in 
+      aux (log_size + 1) term_tree recent_entries tl
   in
 
   aux log.log_size log.term_tree log.recent_entries rev_log_entries
 
 let remove_log_since ~prev_log_index ~prev_log_term log =
 
-  let rec aux log_size = function
-    | [] ->
-      if prev_log_index = 0
-      then ([], 0)
-      else raise Not_found
+  let {recent_entries; log_size; term_tree; } = log in 
+  if prev_log_index > (last_log_index log)
+  then raise Not_found 
+  else 
 
-    | ({index; term; _ }::_ as recent_entries) when index = prev_log_index &&
-                                                     term = prev_log_term ->
-      (recent_entries, log_size)
+    let before, e, after = IntMap.split prev_log_index recent_entries in 
+    let recent_entries, log_size = 
+      match e with
+      | None -> 
+        if prev_log_index = 0 
+        then (before, log_size - (IntMap.cardinal after))  
+        else raise Not_found 
+      | Some ({term; index; _} as log_entry) -> 
+        if term = prev_log_term
+        then (
+          IntMap.add index log_entry before, 
+          log_size - (IntMap.cardinal after) 
+        ) 
+        else raise Not_found
+    in 
 
-    | {index; _ }::_ when index = prev_log_index ->
-      raise Not_found
-
-    |  _::tl -> aux (log_size - 1) tl
-  in
-
-  match log.recent_entries with
-  | {index; _}::_ when prev_log_index > index ->
-    raise Not_found
-
-  | _ ->
-    let recent_entries, log_size = aux log.log_size log.recent_entries in
-    let term_tree = match recent_entries with
-      | [] -> Term_tree.empty
-      | hd::_ -> Term_tree.handle_log_removal log.term_tree hd
+    let term_tree = 
+      if IntMap.empty = recent_entries 
+      then Term_tree.empty 
+      else 
+        Term_tree.handle_log_removal term_tree 
+            (snd @@ IntMap.max_binding recent_entries)
     in
+
     {recent_entries; log_size; term_tree}
 
 module Builder = struct
@@ -264,7 +251,7 @@ module Builder = struct
   let add_log_entry log log_entry =
     assert(log_entry.index > (last_log_index log));
     {
-      recent_entries = log_entry :: log.recent_entries;
+      recent_entries = IntMap.add log_entry.index log_entry log.recent_entries; 
       log_size = log.log_size + 1;
       term_tree = Term_tree.handle_new_log_entry log.term_tree log_entry;
     }

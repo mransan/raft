@@ -54,9 +54,6 @@ type follower_info = {
     (** Whether or not the follower has an outstanding request (ie if
         no response was received since the last time an append entries
         request was sent. *)
-  unsent_entries : Raft_pb.log_entry list;
-    (** The log entries which were previously not sent due to throttling. This
-        acts as a cache to avoid recomputing those.*)
 }
 
 (** Leader state *)
