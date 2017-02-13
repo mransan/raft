@@ -1,5 +1,5 @@
 OCB_INC   = -I src -I tests
-OCB_FLAGS = -use-ocamlfind -pkgs ocaml-protoc
+OCB_FLAGS = -use-ocamlfind 
 OCB       = ocamlbuild $(OCB_FLAGS) $(OCB_INC)
 
 .PHONY: test gen lib.native lib.byte lib.install lib.uninstall clean doc 
@@ -8,9 +8,6 @@ test:
 	$(OCB) test.native
 	export OCAMLRUNPARAM="b" && ./test.native 
 
-gen:
-	ocaml-protoc -ml_out src src/raft.proto
-
 lib.native:
 	$(OCB) raft.cmxa
 	$(OCB) raft.cmxs
@@ -18,10 +15,9 @@ lib.native:
 lib.byte:
 	$(OCB) raft.cma
 
-LIB_FILES+=raft_pb 
 LIB_FILES+=raft_helper
 LIB_FILES+=raft_logic
-LIB_FILES+=raft_state
+LIB_FILES+=raft_types
 LIB_FILES+=raft_role
 LIB_FILES+=raft_log
 

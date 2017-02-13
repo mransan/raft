@@ -1,7 +1,6 @@
-Raft_pb
 Raft_helper
 Raft_logic
-Raft_state
+Raft_types
 Raft_role
 Raft_log
 Raft_rope
