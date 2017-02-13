@@ -1,0 +1,40 @@
+ifneq ($(LIB_DEPS),)
+	LIB_DEPS:=-pkgs $(LIB_DEPS)
+endif
+
+OCB_INC   = -I src -I tests
+OCB_FLAGS = -use-ocamlfind $(LIB_DEPS) 
+OCB       = ocamlbuild $(OCB_FLAGS) $(OCB_INC)
+
+.PHONY: lib.native lib.byte lib.install lib.uninstall clean 
+
+lib.native:
+	$(OCB) $(LIB_NAME).cmxa
+	$(OCB) $(LIB_NAME).cmxs
+
+lib.byte:
+	$(OCB) $(LIB_NAME).cma
+
+LIB_BUILD     =_build/src/
+LIB_INSTALL   = META 
+LIB_INSTALL  +=$(patsubst %,$(LIB_BUILD)/%.mli,$(LIB_FILES))
+LIB_INSTALL  +=$(patsubst %,$(LIB_BUILD)/%.cmi,$(LIB_FILES))
+LIB_INSTALL  +=$(patsubst %,$(LIB_BUILD)/%.annot,$(LIB_FILES))
+LIB_INSTALL  +=$(patsubst %,$(LIB_BUILD)/%.cmo,$(LIB_FILES))
+LIB_INSTALL  +=$(LIB_BUILD)/$(LIB_NAME).cma 
+
+LIB_INSTALL  +=-optional  
+LIB_INSTALL  +=$(patsubst %,$(LIB_BUILD)/%.cmx,$(LIB_FILES))
+LIB_INSTALL  +=$(patsubst %,$(LIB_BUILD)/%.cmt,$(LIB_FILES))
+LIB_INSTALL  +=$(LIB_BUILD)/$(LIB_NAME).cmxa 
+LIB_INSTALL  +=$(LIB_BUILD)/$(LIB_NAME).cmxs
+LIB_INSTALL  +=$(LIB_BUILD)/$(LIB_NAME).a
+
+lib.install:
+	ocamlfind install $(LIB_NAME) $(LIB_INSTALL)
+
+lib.uninstall:
+	ocamlfind remove $(LIB_NAME)
+
+clean:
+	$(OCB) -clean
