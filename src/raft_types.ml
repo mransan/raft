@@ -60,8 +60,7 @@ type timeout_event = {
   timeout_type : timeout_type;
 }
 
-type notification =
-  | Committed_data of Log.log_entry list
+type leader_change = 
   | New_leader of int
   | No_leader
 
@@ -114,67 +113,6 @@ let is_leader {role; _ } =
   match role with
   | Leader _ -> true
   | _ -> false
-
-let notifications before after =
-
-  let { commit_index = bcommit_index; role = brole; _ } = before in
-  let { commit_index = acommit_index; role = arole; _ } = after in
-
-  let notifications = [] in
-
-  let notifications =
-    match brole, arole with
-    | Follower _   , Leader _
-    | Leader _     , Candidate _ ->
-      (* Impossible transition which would violate the rules of the
-       * RAFT protocol
-       *)
-      assert(false)
-
-    | Candidate _  , Leader _ ->
-      (* Case of the server becoming a leader *)
-      (New_leader after.server_id)::notifications
-
-    | Follower {current_leader = Some bleader; _ },
-      Follower {current_leader = Some aleader; _ } when bleader = aleader ->
-      notifications
-      (* No leader change, following the same leader *)
-
-    | _, Follower{current_leader = Some aleader;_} ->
-      (New_leader aleader)::notifications
-      (* There is a new leader *)
-
-    | Follower {current_leader = Some _; _}, Candidate _
-    | Follower {current_leader = Some _; _}, Follower  {current_leader = None; _}
-    | Leader  _                            , Follower  {current_leader = None; _} ->
-      (No_leader::notifications)
-
-    | Leader _                             , Leader _
-    | Candidate _                          , Candidate _
-    | Candidate _                          , Follower {current_leader = None;_}
-    | Follower {current_leader = None; _}  , Follower {current_leader = None;_}
-    | Follower {current_leader = None; _}  , Candidate _ ->
-      notifications
-  in
-
-  if acommit_index > bcommit_index
-  then
-    let recent_entries = after.log.Log.recent_entries in 
-    let _, prev_commit, sub = Log.IntMap.split bcommit_index recent_entries in 
-    begin match prev_commit with 
-    | None -> assert(bcommit_index = 0)
-    | Some _ -> ()
-    end;
-    let sub, last_commit, _ = Log.IntMap.split acommit_index sub in 
-    let sub = match last_commit with 
-      | None -> assert(false) 
-      | Some ({Log.index; _ } as log_entry) -> 
-        Log.IntMap.add index log_entry sub 
-    in 
-    let committed_entries:Raft_log.log_entry list = List.map snd (Log.IntMap.bindings sub) in  
-    (Committed_data committed_entries)::notifications
-  else
-    notifications
 
 let current_leader {server_id; role; _} =
     match role with

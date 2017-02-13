@@ -1,5 +1,6 @@
 module Types = Raft_types
 module Leader = Raft_role.Leader
+module Log = Raft_log
 
 module Configuration = struct
 
@@ -32,3 +33,67 @@ module Timeout_event = struct
       existing_election_wait election_deadline  now
 
 end
+
+let leader_change before after =
+  let open Types in 
+
+  let { role = brole; _ } = before in
+  let { role = arole; _ } = after in
+
+  match brole, arole with
+  | Follower _   , Leader _
+  | Leader _     , Candidate _ ->
+    (* Impossible transition which would violate the rules of the
+     * RAFT protocol
+     *)
+    assert(false)
+
+  | Candidate _  , Leader _ ->
+    (* Case of the server becoming a leader *)
+    Some (New_leader after.server_id)
+
+  | Follower {current_leader = Some bleader; _ },
+    Follower {current_leader = Some aleader; _ } when bleader = aleader ->
+    None
+    (* No leader change, following the same leader *)
+
+  | _, Follower{current_leader = Some aleader;_} ->
+    Some (New_leader aleader)
+    (* There is a new leader *)
+
+  | Follower {current_leader = Some _; _}, Candidate _
+  | Follower {current_leader = Some _; _}, Follower  {current_leader = None; _}
+  | Leader  _                            , Follower  {current_leader = None; _} ->
+    Some No_leader
+
+  | Leader _                             , Leader _
+  | Candidate _                          , Candidate _
+  | Candidate _                          , Follower {current_leader = None;_}
+  | Follower {current_leader = None; _}  , Follower {current_leader = None;_}
+  | Follower {current_leader = None; _}  , Candidate _ ->
+    None
+
+let committed_logs before after = 
+  let open Types in 
+
+  let { commit_index = bcommit_index;  _ } = before in
+  let { commit_index = acommit_index;  _ } = after in
+
+  if acommit_index > bcommit_index
+  then
+    let recent_entries = after.log.Log.recent_entries in 
+    let _, prev_commit, sub = Log.IntMap.split bcommit_index recent_entries in 
+    begin match prev_commit with 
+    | None -> assert(bcommit_index = 0)
+    | Some _ -> ()
+    end;
+    let sub, last_commit, _ = Log.IntMap.split acommit_index sub in 
+    let sub = match last_commit with 
+      | None -> assert(false) 
+      | Some ({Log.index; _ } as log_entry) -> 
+        Log.IntMap.add index log_entry sub 
+    in 
+    let committed_entries:Raft_log.log_entry list = List.map snd (Log.IntMap.bindings sub) in  
+    committed_entries
+  else
+    []

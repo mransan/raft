@@ -138,8 +138,7 @@ type timeout_event = {
   timeout_type : timeout_type;
 }
 
-type notification =
-  | Committed_data of Raft_log.log_entry list
+type leader_change = 
   | New_leader of int
   | No_leader
 
@@ -166,9 +165,3 @@ val current_leader: state -> int option
     If no leader is known then [None] is returned.
   *)
 
-(** {2 Maintenance} *)
-
-val notifications : state -> state -> notification list
-(** [notifications before after] computes the notification between 2 states
-    TODO: move from this module
- *)

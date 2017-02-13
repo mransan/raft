@@ -5,19 +5,23 @@ module Leader = Raft_role.Leader
 module Configuration = Raft_helper.Configuration
 module Log = Raft_log
 module Timeout_event = Raft_helper.Timeout_event
+module Helper = Raft_helper
 
 type message_to_send = Types.message * Types.server_id
 
 type result = {
   state : Raft_types.state;  
   messages_to_send : message_to_send list; 
-  notifications : Raft_types.notification list;
+  leader_change : Raft_types.leader_change option;
+  committed_logs : Raft_log.log_entry list;
 }
 
-let make_result ?(msgs_to_send = []) ?(notifications = []) state = {
+let make_result ?(msgs_to_send = []) ?leader_change 
+                ?(committed_logs = []) state = {
   state;
   messages_to_send = msgs_to_send;
-  notifications; 
+  leader_change; 
+  committed_logs;
 }
 
 module Log_entry_util = struct
@@ -58,28 +62,27 @@ module Log_entry_util = struct
           if force || now >= heartbeat_deadline
           then true
             (* The heartbeat deadline is past due, the [Leader] must
-             * sent an [Append_entries] request.
-             *)
+             * sent an [Append_entries] request.  *)
           else
             if outstanding_request
             then false
-              (* In case of outstanding request there is no point
-               * in sending request to that server.
-               * Even if the outstanding request was lost and it would
-               * be good to send a new request, this would happen
-               * at the next heartbeat.
-               *)
+              (* In case of an outstanding request there is no point
+               * in sending a new request to that server.
+               * Even if the outstanding request was lost and it could be 
+               * beneficial to send a new request, this would happen
+               * at the next heartbeat. We assume it's more likely that 
+               * the server is down and therefore there is no need to keep 
+               * on sending the same request over and over. *)
             else
               let prev_index = next_index - 1 in
               let last_log_index = Log.last_log_index state.Types.log in
               if prev_index = last_log_index
               then false
-                (* The receipient has the most recent data so no need
-                 * to send a request.
-                 *)
+                (* The receipient has the most recent log entry and the 
+                 * heartbeat deadline has not expired, no need to send a 
+                 * new heartbeat. *)
               else true
-                (* The recipient has missing data.
-                 *)
+                (* The recipient is missing recent log entries *)
         in
 
         if shoud_send_request
@@ -136,45 +139,33 @@ let handle_request_vote_request state request now =
 
   if candidate_term < state.Types.current_term
   then
-    (*
-     * This request is coming from a candidate lagging behind ...
-     * no vote for him.
-     *
-     *)
+    (* This request is coming from a candidate lagging behind ...
+     * no vote for him. *)
     (state, make_response state false)
   else
     let state =
-      (*
-       * Enforce invariant that if this server is lagging behind
-       * it must convert to a follower and update to that term.
-       *
-       *)
+      (* Enforce invariant that if this server is lagging behind
+       * it must convert to a follower and update to that term. *)
       if candidate_term > state.Types.current_term
-      then
-        Follower.become ~term:candidate_term ~now state
-      else
-        state
+      then Follower.become ~term:candidate_term ~now state
+      else state
     in
+
     let last_log_index = Log.last_log_index state.Types.log in
+
     if candidate_last_log_index < last_log_index
     then
-      (*
-       * Enforce the safety constraint by denying vote if this server
-       * last log is more recent than the candidate one.
-       *
-       *)
+      (* Enforce the safety constraint by denying vote if this server
+       * last log is more recent than the candidate one.*)
       (state, make_response state false)
     else
       let role = state.Types.role in
       match role with
       | Types.Follower {Types.voted_for = None; _} ->
-        (*
-         * This server has never voted before, candidate is getting the vote
+        (* This server has never voted before, candidate is getting the vote
          *
          * In accordance to the `Rules for Servers`, the follower must
-         * reset its election deadline when granting its vote.
-         *
-         *)
+         * reset its election deadline when granting its vote. *)
 
         let {
           Types.configuration = {
@@ -190,19 +181,13 @@ let handle_request_vote_request state request now =
         } in
         (state, make_response state true)
 
-      | Types.Follower {Types.voted_for = Some id; _ } when id = candidate_id ->
-        (*
-         * This server has already voted for that candidate ... reminding him
-         *
-         *)
+      | Types.Follower {Types.voted_for = Some id; _} when id = candidate_id ->
+        (* This server has already voted for that candidate... reminding him *)
         (state, make_response state true)
 
       | _ ->
-        (*
-         * Server has previously voted for another candidate or
-         * itself
-         *
-         *)
+        (* Server has previously voted for another candidate or
+         * itself *)
         (state, make_response state false)
 
 let handle_request_vote_response state response now =
@@ -371,7 +356,7 @@ let handle_append_entries_request state request now =
           (state, make_response state failure)
         else
           (* Because it is a new Leader, this followe can safely remove all
-           * the logs from previous terms which were not commited.  *)
+           * the logs from previous terms which were not committed.  *)
 
           match Log.remove_log_since ~prev_log_index
                 ~prev_log_term state.Types.log with
@@ -503,12 +488,12 @@ let handle_message state message now =
     | Types.Append_entries_response r ->
       handle_append_entries_response state r now
   in
-  let notifications = Types.notifications state state' in 
-  make_result ~msgs_to_send ~notifications state'
+  let leader_change = Helper.leader_change state state' in 
+  let committed_logs = Helper.committed_logs state state' in
+  make_result ~msgs_to_send ?leader_change ~committed_logs state'
 
 (* Iterates over all the other server ids. (ie the ones different
- * from the state id).
- *)
+ * from the state id).  *)
 let fold_over_servers f e0 state =
 
   let {
@@ -534,8 +519,9 @@ let handle_new_election_timeout state now =
       (Types.Request_vote_request request, server_id) :: acc
     ) [] state'
   in
-  let notifications = Types.notifications state state' in 
-  make_result ~msgs_to_send ~notifications state'
+  let leader_change = Helper.leader_change state state' in 
+  let committed_logs = Helper.committed_logs state state' in
+  make_result ~msgs_to_send ?leader_change ~committed_logs state'
 
 let handle_heartbeat_timeout state now =
   match state.Types.role with
