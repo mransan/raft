@@ -20,5 +20,4 @@ remove:  [make "lib.uninstall"]
 depends: [
   "ocamlfind"  {build}
   "ocamlbuild" {build}
-  "ocaml-protoc"
 ]
