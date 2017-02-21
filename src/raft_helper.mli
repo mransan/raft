@@ -1,7 +1,6 @@
 (** Helper function for manipualting Protobuf Generated types.
  *)
 
-
 module Configuration : sig
 
   val is_majority : Raft_types.configuration -> int -> bool
@@ -24,6 +23,11 @@ val leader_change :
  *)
 
 val committed_logs :
+  Raft_types.state -> 
+  Raft_types.state -> 
+  Raft_log.log_entry list
+
+val added_logs :
   Raft_types.state -> 
   Raft_types.state -> 
   Raft_log.log_entry list

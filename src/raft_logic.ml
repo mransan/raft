@@ -14,14 +14,16 @@ type result = {
   messages_to_send : message_to_send list; 
   leader_change : Raft_types.leader_change option;
   committed_logs : Raft_log.log_entry list;
+  added_logs : Raft_log.log_entry list; 
 }
 
 let make_result ?(msgs_to_send = []) ?leader_change 
-                ?(committed_logs = []) state = {
+                ?(committed_logs = []) ?(added_logs = []) state = {
   state;
   messages_to_send = msgs_to_send;
   leader_change; 
   committed_logs;
+  added_logs;
 }
 
 module Log_entry_util = struct
@@ -490,7 +492,8 @@ let handle_message state message now =
   in
   let leader_change = Helper.leader_change state state' in 
   let committed_logs = Helper.committed_logs state state' in
-  make_result ~msgs_to_send ?leader_change ~committed_logs state'
+  let added_logs = Helper.added_logs state state' in
+  make_result ~msgs_to_send ?leader_change ~added_logs ~committed_logs state'
 
 (* Iterates over all the other server ids. (ie the ones different
  * from the state id).  *)
@@ -521,7 +524,8 @@ let handle_new_election_timeout state now =
   in
   let leader_change = Helper.leader_change state state' in 
   let committed_logs = Helper.committed_logs state state' in
-  make_result ~msgs_to_send ?leader_change ~committed_logs state'
+  let added_logs = Helper.added_logs state state' in
+  make_result ~msgs_to_send ?leader_change ~added_logs ~committed_logs state'
 
 let handle_heartbeat_timeout state now =
   match state.Types.role with
@@ -554,16 +558,16 @@ let handle_add_log_entries state datas now =
 
   | Types.Leader leader_state ->
 
-    let state = Types.({state with
+    let state' = Types.({state with
       log = Log.add_log_datas state.current_term datas state.log
     }) in
 
     let leader_state, msgs_to_send =
-      Log_entry_util.compute_append_entries state leader_state now
+      Log_entry_util.compute_append_entries state' leader_state now
     in
     
-    let state = Types.({state with role = Leader leader_state }) in
-    let result = make_result ~msgs_to_send state in 
-    Appended result 
+    let state' = Types.({state' with role = Leader leader_state }) in
+    let added_logs = Helper.added_logs state state' in
+    Appended (make_result ~msgs_to_send ~added_logs state')
 
 let next_timeout_event = Timeout_event.next

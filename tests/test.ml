@@ -138,6 +138,7 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs; 
   } = res in
 
   assert(1 = server1.current_term);
@@ -147,6 +148,7 @@ let ()  =
 
   assert(None = leader_change);
   assert([] = committed_logs);
+  assert([] = added_logs);
 
   begin match server1.role with
   | Follower {voted_for; current_leader; election_deadline; } -> begin
@@ -204,6 +206,7 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
   
   assert(Types.is_leader server0);
@@ -211,6 +214,7 @@ let ()  =
     (* Because a single vote is enough to reach a majority in a 3-server cluster,
      * server0 becomes a [Leader].  *)
   assert(committed_logs = []);
+  assert(added_logs = []);
 
   assert(1 = server0.current_term);
     (*
@@ -275,10 +279,12 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Some (New_leader 0)= leader_change);
   assert([] = committed_logs);
+  assert(added_logs = []);
 
   begin match server1.role with
   | Follower f -> (
@@ -328,11 +334,13 @@ let ()  =
     Logic.state = server2; 
     messages_to_send = request_vote_msgs; 
     leader_change; 
-    committed_logs;} = Raft_logic.handle_new_election_timeout server2 now
+    committed_logs;
+    added_logs} = Raft_logic.handle_new_election_timeout server2 now
   in
 
   assert(None = leader_change);
   assert([] = committed_logs);
+  assert(added_logs = []);
 
   assert(Types.is_candidate server2);
     (* Server2 never got an [Append_entries] request which would have
@@ -372,10 +380,12 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(None = leader_change);
   assert([] = committed_logs);
+  assert(added_logs = []);
 
   begin match server1.role with
   | Follower f -> (
@@ -418,11 +428,11 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_candidate server2);
   assert(None = leader_change);
-  assert([] = committed_logs);
     (*
      * Despite the vote not being granted by server1, server2
      * should continue to be a [Candidate] until either
@@ -437,6 +447,8 @@ let ()  =
      *   case it will become a [Follower].
      *)
 
+  assert([] = committed_logs);
+  assert(added_logs = []);
   assert(1 = server2.current_term);
     (* No new election should have been started.
      *)
@@ -462,18 +474,18 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_leader server0);
   assert(None = leader_change);
-  assert([] = committed_logs);
-    (*
-     * Server0 is still a [Leader] and should not be affected
+    (* Server0 is still a [Leader] and should not be affected
      * by a Candidate for the same term.
      *
-     * (This would be different if the Candidate was for a later term)
-     *)
+     * (This would be different if the Candidate was for a later term) *)
   assert(1 = List.length msgs);
+  assert([] = committed_logs);
+  assert(added_logs = []);
 
   begin match List.hd msgs with
   | (Request_vote_response r, 2) -> (
@@ -506,6 +518,7 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_candidate server2);
@@ -515,6 +528,7 @@ let ()  =
 
   assert(None = leader_change);
   assert([] = committed_logs);
+  assert(added_logs = []);
 
   assert([] = msgs);
     (* No new message from server2 for this elections. All [Request_vote]
@@ -589,18 +603,18 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_follower server2);
   assert(1 = server2.current_term);
   assert(Some (New_leader 0)= leader_change);
   assert([] = committed_logs);
-    (*
-     * Receiving an [Append_entries] request with a term at least equal
+  assert(added_logs = []);
+    (* Receiving an [Append_entries] request with a term at least equal
      * or supperior to one [current_term] means that the sender is a valid
      * [Leader] for that term and therefore the recipient must become a
-     * [Follower].
-     *)
+     * [Follower].  *)
 
   begin match server2.role with
   | Follower fs -> (
@@ -644,10 +658,12 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
   assert(None = leader_change);
   assert([] = committed_logs);
   assert([] = msgs);
+  assert(added_logs = []);
 
   (*
    * Server1 was already a follower and aware of server0 leadership
@@ -666,6 +682,7 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_follower server1);
@@ -675,10 +692,10 @@ let ()  =
 
   assert(None = leader_change);
   assert([] = committed_logs);
+  assert(added_logs = []);
     (* The heartbeat message from server0 did not bring new
      * information (ie server1 already new server0 was the
-     * [Leader].)
-     *)
+     * [Leader].) *)
 
   assert(1 = List.length msgs);
    (* Single [Append_entries_response] expected.
@@ -722,11 +739,13 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_leader server0);
   assert(None = leader_change);
   assert([] = committed_logs);
+  assert(added_logs = []);
   assert([] = msgs);
 
   let now = now +. 0.001 in
@@ -746,11 +765,18 @@ let ()  =
     let open Raft_logic in
     match new_log_result with
     | Appended result -> 
-        let {Logic.state; messages_to_send; committed_logs; _} = result in 
+        let {
+          Logic.state; 
+          messages_to_send; 
+          committed_logs; 
+          added_logs;_} = result in 
         assert([] = committed_logs); 
+        begin match added_logs with
+        | [{id="01"; index = 1; term = 1; _}] -> () 
+        | _ -> assert(false)
+        end; 
         (state, messages_to_send)
-      (*
-       * server0 is the [Leader] and is therefore expected to
+      (* server0 is the [Leader] and is therefore expected to
        * handle the new log entry.
        *)
 
@@ -758,8 +784,7 @@ let ()  =
   in
 
   assert(1 = recent_log_length server0);
-    (* The new log entry should have been appended to the current empty log.
-     *)
+    (* The new log entry should have been appended to the current empty log.*)
 
   begin match recent_log_hd server0 with 
   | {index = 1; term = 1; _ } -> ()
@@ -770,12 +795,10 @@ let ()  =
   end;
 
   assert(2 = List.length data1_msgs);
-    (*
-     * Both [Follower]s have no outstanding request and have also less
+    (* Both [Follower]s have no outstanding request and have also less
      * log entries than the [Leader], therefore they
      * should get a new [Append_entries] request message with the new
-     * log
-     *)
+     * log *)
 
   List.iter (fun (msg, _) ->
     match msg with
@@ -816,19 +839,21 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_follower server1);
-    (*
-     * No change of role for server1, [Append_entries] only
+    (* No change of role for server1, [Append_entries] only
      * re-inforce that server0 is the [Leader].
      *)
 
+  begin match added_logs with
+  | [{id = "01"; index = 1; term = 1; _}] -> () 
+  | _ -> assert(false)
+  end;
   assert(1 = recent_log_length server1);
-    (*
-     * The [log_entry] with index 1 has been replicated
-     * on server1.
-     *)
+    (* The [log_entry] with index 1 has been replicated
+     * on server1. *)
 
   assert(0 = server1.commit_index);
   assert(None = leader_change);
@@ -840,17 +865,14 @@ let ()  =
      *
      * Therefore the [commit_index] is still 0.
      *
-     * It will be updated upon receiving the next [Append_entries_request]
-     *)
+     * It will be updated upon receiving the next [Append_entries_request] *)
 
   begin match msgs with
   | (Append_entries_response r, 0) :: [] -> (
     assert(r.receiver_id = 1);
     assert(r.receiver_term = 1);
     assert(r.result = Success 1);
-     (*
-      * server1 has correctly replicated the log entry which has index1.
-      *)
+     (* server1 has correctly replicated the log entry which has index1. *)
   )
   | _ -> assert(false)
   end;
@@ -858,7 +880,7 @@ let ()  =
   (*
    * Let's handle this succesfully response in server0 [Leader].
    *
-   * --------------------------------------------------------------------------
+   * --------------------------------------------------------------------
    *)
 
   let res = 
@@ -871,15 +893,17 @@ let ()  =
     messages_to_send = _; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_leader server0);
   assert(1 = server0.commit_index);
   assert(None = leader_change);
+  assert(added_logs = []);
+    (* The log with index1 was already added so added_log is empty *)
   begin match committed_logs with
   | {id = "01"; _ }::[] -> ()
-    (*
-     * server1 has replicated the log successfully so this means
+    (* server1 has replicated the log successfully so this means
      * that a majority of servers have done the replication.
      * The [Leader] commit_index can now be updated to that latest
      * log index (ie 1).
@@ -912,7 +936,13 @@ let ()  =
     let open Raft_logic in
     match new_log_result with
     | Delay | Forward_to_leader _ -> assert(false)
-    | Appended {Logic.state; messages_to_send; _ } -> (state, messages_to_send)
+    | Appended {Logic.state; messages_to_send; added_logs; _ } -> begin 
+      begin match added_logs with
+      | [{id = "02"; index = 2; term = 1; _}] -> ()
+      | _ -> assert(false)
+      end;
+      (state, messages_to_send)
+    end 
   in
 
   assert(Types.is_leader server0);
@@ -932,8 +962,7 @@ let ()  =
 
   assert(1 = server0.commit_index);
     (* The new log entry (with index [2]) should not be committed
-     * since no request/response interaction has yet been done.
-     *)
+     * since no request/response interaction has yet been done.  *)
 
   assert(1 = List.length data2_msg);
     (* Since server2 has an outstanding request, it should not
@@ -966,7 +995,7 @@ let ()  =
    * Let's propagate this [Append_entries] request to server1 for
    * replication.
    *
-   * --------------------------------------------------------------------------
+   * -------------------------------------------------------------------
    *)
 
   let res = 
@@ -979,6 +1008,7 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_follower server1);
@@ -997,11 +1027,16 @@ let ()  =
     (* The [Append_entries] request contained the [commit_index]
      * of the [Leader] (1 in this case) and therefore server1 has
      * updated its own.  *)
+  begin match added_logs with
+  | {id = "02"; index = 2; term = 1; _}::[] -> () 
+  | _ -> assert(false) 
+  end;
+    (* The new log number 2 is now added in this follower .. but not commited
+     * as verified previously. *)
 
   assert(1 = List.length msgs);
     (* Only a single response to server0 should be
-     * sent back.
-     *)
+     * sent back. *)
 
   begin match List.hd msgs with
   | (Append_entries_response r, 0) -> (
@@ -1034,6 +1069,7 @@ let ()  =
     messages_to_send = _; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_leader server0);
@@ -1046,27 +1082,32 @@ let ()  =
   | _ -> assert(false)
   end;
     (* A successfull replication is enough for a majority.  *)
+  assert(added_logs = []);
 
   (*
    * Let's now look at what happens after a heartbeat timeout.
    *
-   * For server1, the [Leader] should only sent an empty [Append_entries_request]
-   * since it knows that server1 has successfully replicated all of its logs.
+   * For server1, the [Leader] should only sent an empty 
+   * [Append_entries_request] since it knows that server1 has successfully 
+   * replicated all of its logs.
    *
    * For server2 however, none of the log have been replicated. In fact as far
-   * as server0 [Leader] is concerned there is still an outstanding request. Realistically
-   * this request could either have been lost or server2 or the response could have never been
-   * received by server0. In either case (right now it's the first one) RAFT should work!
+   * as server0 [Leader] is concerned there is still an outstanding request. 
+   * Realistically this request could either have been lost or server2 or 
+   * the response could have never been received by server0. 
+   *
+   * In either case (right now it's the first one) RAFT should work!
    *
    * --------------------------------------------------------------------------
    *)
 
   let now = now +. default_configuration.hearbeat_timeout in
 
-  let {Logic.state = server0; messages_to_send = msgs; _ } =
+  let {Logic.state = server0; messages_to_send = msgs; added_logs; _ } =
     Raft_logic.handle_heartbeat_timeout server0 now 
   in
 
+  assert(added_logs = []);
   assert(2 = List.length msgs);
 
   begin match msg_for_server msgs 1 with
@@ -1075,11 +1116,9 @@ let ()  =
     assert(r.leader_id = 0);
     assert(r.prev_log_term = 1);
     assert(r.rev_log_entries = []);
-      (*
-       * As expected no new log entry should be sent
+      (* As expected no new log entry should be sent
        * since they all have been previously and [server1]
-       * replied successfully.
-       *)
+       * replied successfully.  *)
 
     assert(r.prev_log_index = 2);
       (* Confirmation of the above statement, server0 [Leader]
@@ -1099,15 +1138,13 @@ let ()  =
     assert(r.prev_log_index = 0);
       (* Confirmation of the above statement, server0 [Leader]
        * has never received confirmation that server2 has replicated
-       * the data.
-       *)
+       * the data.  *)
     assert(r.leader_commit = 2);
   )
   | _ -> assert(false)
   end;
 
   let now = now +. 0.001 in
-
 
   (*
    * Let's send the heartbeat msg to server1. As previously asserted
@@ -1126,6 +1163,7 @@ let ()  =
     messages_to_send = server1_response; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_follower server1);
@@ -1136,14 +1174,14 @@ let ()  =
   | _ -> assert(false)
   end;
   assert(2 = server1.commit_index);
-   (* server1 is updating its commit index based on latest
-    * [leader_commit] value of 2 in the request it received.  *)
+    (* server1 is updating its commit index based on latest
+     * [leader_commit] value of 2 in the request it received.  *)
+  
+  assert(added_logs = []);
+    (* All logs have already been replicated in server 1. *)
 
   assert(1 = List.length server1_response);
-   (*
-    * Only a single response is expected.
-    *)
-
+   (* Only a single response is expected.  *)
 
   (*
    * Let's send the heartbeat msg to server2. As previously asserted
@@ -1164,6 +1202,7 @@ let ()  =
     messages_to_send = server2_response; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_follower server2);
@@ -1171,32 +1210,27 @@ let ()  =
   | {id = "01"; _ }::{id = "02"; _}::[] -> ()
   | _ -> assert(false)
   end;
+  assert(added_logs = committed_logs); 
+    (* The 2 previous logs were never replicated to the server 2 before 
+     * this heartbeat message *)
   assert(None = leader_change);
   assert(2 = server2.commit_index);
-   (*
-    * server2 is updating its commit index based on latest
-    * [leader_commit] value of 2 in the request it received.
-    *)
+   (* server2 is updating its commit index based on latest
+    * [leader_commit] value of 2 in the request it received. *)
 
   assert(2 = recent_log_length server2);
-   (*
-    * server2 should have caught up with server0 and replicated
-    * all the logs in the cache (ie 1)
-    *)
+   (* server2 should have caught up with server0 and replicated
+    * all the logs in the cache (ie 1) *)
 
   assert(1 = List.length server2_response);
-   (*
-    * Only a single response is expected.
-    *)
+   (* Only a single response is expected.  *)
 
   begin match server2_response with
   | (Append_entries_response r, 0)::[] -> (
     assert(r.receiver_id = 2);
     assert(r.receiver_term = 1);
     assert(r.result = Success 2);
-      (*
-       * server2 has successfully replicated the 2 log entries
-       *)
+      (* server2 has successfully replicated the 2 log entries *)
   )
   | _ -> assert(false)
   end;
@@ -1219,11 +1253,13 @@ let ()  =
       messages_to_send; 
       leader_change;
       committed_logs; 
+      added_logs;
     } = res in
     
     assert([] = messages_to_send);
     assert(None = leader_change);
     assert([] = committed_logs);
+    assert(added_logs = []);
       (* Server1 has replicated the 2 logs it has nothing
        * left.  *)
 
@@ -1236,6 +1272,7 @@ let ()  =
     messages_to_send; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_leader server0);
@@ -1243,6 +1280,7 @@ let ()  =
   assert(2 = recent_log_length server0);
   assert(None = leader_change);
   assert([] = committed_logs);
+  assert(added_logs = []);
 
   (*
    * Both servers have replicated the 2 logs, no outstanding
@@ -1264,13 +1302,13 @@ let ()  =
    *
    * We will simulate and test the above assumption.
    *
-   * --------------------------------------------------------------------------
+   * ----------------------------------------------------------------------
    *)
 
   (*
    * let's add 3rd [log_entry].
    *
-   * --------------------------------------------------------------------------
+   * ----------------------------------------------------------------------
    *)
 
   let now = now +. 0.002 in
@@ -1280,29 +1318,28 @@ let ()  =
     Raft_logic.handle_add_log_entries server0 [(data, "03") ] now
   in
 
-
   let server0, msgs =
     match new_log_result with
-    | Logic.Appended {Logic.state; messages_to_send; _ } -> 
+    | Logic.Appended {Logic.state; messages_to_send; added_logs; _ } -> 
+        begin match added_logs with
+        | {id = "03"; index = 3; term = 1; _ } :: [] -> () 
+        | _ -> assert(false)
+        end;
         (state, messages_to_send)
     | _ -> assert(false)
   in
   assert(Types.is_leader server0);
   assert(3 = recent_log_length server0);
-    (*
-     * Correctly added log since server0 is a [Leader].
-     *)
+    (* Correctly added log since server0 is a [Leader].  *)
 
   assert(2 = List.length msgs);
-    (*
-     * 2 [Append_entries] requests, one for each of the other
-     * 2 servers.
-     *)
+    (* 2 [Append_entries] requests, one for each of the other
+     * 2 servers. *)
 
   (*
    * Let's send the [Append_entries] request to server1 Only.
    *
-   * --------------------------------------------------------------------------
+   * ---------------------------------------------------------------------
    *)
 
   let res = 
@@ -1315,21 +1352,22 @@ let ()  =
     messages_to_send = _; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_follower server1);
   assert(3 = recent_log_length server1);
-    (*
-     * The 3rd [log_entry] is correctly replicated.
-     *)
+    (* * The 3rd [log_entry] is correctly replicated.  *)
 
   assert(None = leader_change);
   assert([] = committed_logs);
   assert(2  = server1.commit_index);
-    (*
-     * No change since the [commit_index] was still
-     * 2 in the [Append_entries] request.
-     *)
+    (* No change since the [commit_index] was still
+     * 2 in the [Append_entries] request.  *)
+  begin match added_logs with
+  | {id = "03"; index = 3; term =1 ; _ } :: [] -> () 
+  | _ -> assert(false)
+  end;
 
   (*
    * Now let's assume server0 [Leader] has crashed.
@@ -1345,7 +1383,8 @@ let ()  =
     Logic.state = server2; 
     messages_to_send = msgs; 
     leader_change;
-    committed_logs} = Raft_logic.handle_new_election_timeout server2 now
+    committed_logs;
+    added_logs} = Raft_logic.handle_new_election_timeout server2 now
   in
 
   assert(Types.is_candidate server2);
@@ -1357,17 +1396,14 @@ let ()  =
      * means that there are no longer a [Leader].
      *)
   assert([] = committed_logs);
+  assert(added_logs = []);
 
   assert(2 = server2.current_term);
-    (*
-     * Each new election increments the term
-     *)
+    (* Each new election increments the term *)
 
   assert(2 = List.length msgs);
-    (*
-     * 2 [Request_vote] request for each of the other 2
-     * servers.
-     *)
+    (* 2 [Request_vote] request for each of the other 2
+     * servers.  *)
 
   List.iter (fun (r, _) ->
     match r with
@@ -1384,7 +1420,7 @@ let ()  =
   (*
    * Let's now communicate the [Request_vote] requset to server1
    *
-   * --------------------------------------------------------------------------
+   * ----------------------------------------------------------------------
    *)
 
   let now = now +. 0.001 in
@@ -1399,40 +1435,34 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_follower server1);
   assert(2 = server1.current_term);
-    (*
-     * The sender (ie server2) term was greater than the current
+    (* The sender (ie server2) term was greater than the current
      * term of server1, it should then
-     * increments its current term.
-     *)
+     * increments its current term. *)
 
   assert(Some No_leader = leader_change);
-    (*
-     * The change of term means that there are no current [Leader]
-     * for it yet.
-     *)
+    (* The change of term means that there are no current [Leader]
+     * for it yet.  *)
   assert([] = committed_logs);
+  assert(added_logs = []);
 
   assert(1 = List.length msgs);
-    (*
-     * [Request_vote] response to server2.
-     *)
+    (* [Request_vote] response to server2.  *)
 
   begin match msgs with
   | (Request_vote_response r, 2)::[] -> (
     assert(r.voter_id = 1);
     assert(r.voter_term = 2);
     assert(r.vote_granted = false);
-     (*
-      * [server1] has more [log_entry] than [server2] and therefore
+     (* [server1] has more [log_entry] than [server2] and therefore
       * rejects [server2] candidacy.
       *
       * This is to ensure the safety property of the RAFT protocol
-      * so that no committed entries are later invalidated.
-      *)
+      * so that no committed entries are later invalidated.  *)
   )
   | _  -> assert(false)
   end;
@@ -1449,11 +1479,13 @@ let ()  =
     Logic.state = server1; 
     messages_to_send = msgs; 
     leader_change; 
-    committed_logs} = Raft_logic.handle_new_election_timeout server1 now
+    committed_logs; 
+    added_logs} = Raft_logic.handle_new_election_timeout server1 now
   in
 
   assert(None = leader_change);
   assert([] = committed_logs);
+  assert(added_logs = []);
 
   assert(Types.is_candidate server1);
   assert(3 = server1.current_term);
@@ -1488,6 +1520,7 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_follower server2);
@@ -1502,9 +1535,9 @@ let ()  =
 
   assert(None = leader_change);
   assert([] = committed_logs);
+  assert(added_logs = []);
     (* Server2 already knew there was no [Leader] since it was a candidate
-     * in the previous term and never got elected.
-     *)
+     * in the previous term and never got elected.  *)
 
   assert(1 = List.length msgs);
 
@@ -1513,10 +1546,8 @@ let ()  =
     assert(r.voter_id = 2);
     assert(r.voter_term = 3);
     assert(r.vote_granted = true);
-      (*
-       * Vote is indeed granted since server1 has a greater
-       * [last_log_index].
-       *)
+      (* Vote is indeed granted since server1 has a greater
+       * [last_log_index].  *)
   )
   | _ -> assert(false)
   end;
@@ -1527,7 +1558,7 @@ let ()  =
    * Let's now handle the successful vote response from
    * server2.
    *
-   * --------------------------------------------------------------------------
+   * ----------------------------------------------------------------------
    *)
 
   let res = 
@@ -1540,10 +1571,12 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Some (New_leader 1) = leader_change);
   assert([] = committed_logs);
+  assert(added_logs = []);
   assert(Types.is_leader server1);
     (* One vote is enough to become a [Leader].  *)
 
@@ -1589,17 +1622,18 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Some (New_leader 1) = leader_change);
   assert([] = committed_logs);
   assert(Types.is_follower server2);
   assert(3 = server2.current_term);
+  assert(added_logs = []);
+    (* See explanation below as to why the 3rd log entry was not replicated *)
 
   assert(1 = List.length msgs);
-    (*
-     * Single response to server1.
-     *)
+    (* Single response to server1.  *)
 
   begin match msgs with
   | (Append_entries_response r, 1)::[] -> (
@@ -1634,6 +1668,7 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_leader server1);
@@ -1641,13 +1676,12 @@ let ()  =
 
   assert(None = leader_change);
   assert([] = committed_logs);
+  assert(added_logs = []);
 
   assert(1 = List.length msgs);
   assert(2 = server1.commit_index);
-    (*
-     * A new request for server2 has been computed which
-     * should now contain the 3rd [log_entry]
-     *)
+    (* A new request for server2 has been computed which
+     * should now contain the 3rd [log_entry] *)
 
   begin match msgs with
   | (Append_entries_request r, 2) :: [] -> (
@@ -1683,15 +1717,14 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_follower server2);
   assert(3 = server2.current_term);
 
   assert(3 = recent_log_length server2);
-    (*
-     * server2 has correctly replicated the 3rd [log_entry].
-     *)
+    (* server2 has correctly replicated the 3rd [log_entry].  *)
 
   assert(None = leader_change);
   assert([] = committed_logs);
@@ -1699,29 +1732,29 @@ let ()  =
     (*  The 3rd log while succesfully replicated is not  yet
      *  committed.
      *)
+  begin match added_logs with
+  | {id = "03"; index = 3; term = 1; _ }::[]  -> ()
+  | _ -> assert(false); 
+  end;
 
   assert(1 = List.length msgs);
-    (*
-     * Single response for server1.
-     *)
+    (* Single response for server1.  *)
+
   begin match msgs with
   | (Append_entries_response r, 1) :: [] -> (
     assert(r.receiver_id = 2);
     assert(r.receiver_term = 3);
     assert(r.result = Success 3);
-      (*
-       * Confirmation that the replication of the log has
-       * been successful.
-       *)
+      (* Confirmation that the replication of the log has
+       * been successful.  *)
   )
   | _ -> assert(false)
   end;
 
-  (*
-   * Let's communicate the successful [Append_entries] response back to
+  (* Let's communicate the successful [Append_entries] response back to
    * server1.
    *
-   * --------------------------------------------------------------------------
+   * ----------------------------------------------------------------------
    *)
 
   let now = now +. 0.001  in
@@ -1736,6 +1769,7 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_leader server1);
@@ -1752,6 +1786,7 @@ let ()  =
      * server than the [Leader]; this makes a majority and therefore
      * indicates that [commit_index] can be set to 3.
      *)
+  assert(added_logs = []);
 
   assert([] = msgs);
 
@@ -1766,7 +1801,11 @@ let ()  =
   let server1, data45_msgs =
     let open Raft_logic in
     match new_log_result with
-    | Appended {Logic.state; messages_to_send; _ } -> (state, messages_to_send)
+    | Appended {Logic.state; messages_to_send; added_logs; _ } -> 
+      begin 
+        assert(2 = List.length added_logs); 
+        (state, messages_to_send)
+      end
     | Delay | Forward_to_leader _ -> assert(false)
   in
 
@@ -1821,11 +1860,13 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(Types.is_follower server2);
   assert(3 = server2.current_term);
 
+  assert(2 = List.length added_logs);
   assert(5 = recent_log_length server2);
     (* The last 2 logs where succesfully replicated
      *)
@@ -1880,13 +1921,14 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs;
   } = res in
 
   assert(5 = server1.commit_index);
   assert([] = msgs);
   assert(2 = List.length committed_logs);
+  assert(added_logs = []);
   assert(None = leader_change);
-
 
   (*
    * The test of the cache is not something that a client API should
@@ -1963,6 +2005,7 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs = _;
   } = res in
 
   assert(Types.is_follower server2);
@@ -2006,6 +2049,7 @@ let ()  =
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
+    added_logs = _;
   } = res in
 
   assert(Types.is_leader server1);
