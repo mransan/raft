@@ -16,10 +16,17 @@ type t = {
   log_size : int;
 }
 
+type log_diff = {
+  added_logs : log_entry list; 
+  removed_logs : log_entry list;
+}
+
 (** {2 Creators} *)
 
 val empty : t
 (** [empty] is an empty log *)
+
+val empty_diff : log_diff 
 
 (** {2 Accessors} *)
 
@@ -42,7 +49,7 @@ val log_entries_since : since:int -> max:int -> t -> (log_entry list * int)
 
 (** {2 Modifiers} *)
 
-val add_log_datas : int -> (bytes * string) list -> t -> t
+val add_log_datas : int -> (bytes * string) list -> t -> (t * log_diff) 
 (** [add_log_datas current_term datas state] adds [datas] to the log of the
     [state].
 
@@ -55,14 +62,15 @@ val add_log_datas : int -> (bytes * string) list -> t -> t
     left to the caller.
   *)
 
-val add_log_entries : rev_log_entries:log_entry list -> t -> t
+val add_log_entries : rev_log_entries:log_entry list -> t -> (t * log_diff)
 (** [add_log_entries rev_log_entries log] appends [rev_log_entries] to the
     [log]. The assumption is that the entries are in reverse order so
     the last log_entry in [rev_log_entries] will be the first log_entry in [log]
     after this function executes.
   *)
 
-val remove_log_since : prev_log_index:int -> prev_log_term:int -> t -> t
+val remove_log_since : 
+  prev_log_index:int -> prev_log_term:int -> t -> (t * log_diff)
 (** [remove_log_since ~prev_log_index ~prev_log_term log] removes all the
     entries which are after the log_entry defined by [prev_log_index] and
     [prev_log_term].
@@ -70,6 +78,8 @@ val remove_log_since : prev_log_index:int -> prev_log_term:int -> t -> t
     If [log] does not contain any log_entry defined by [prev_log_index] and
     [prev_log_term] then [Not_found] is raised.
   *)
+
+val merge_diff : log_diff -> log_diff -> log_diff 
 
 module Builder : sig
 

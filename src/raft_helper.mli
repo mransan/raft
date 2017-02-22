@@ -26,8 +26,3 @@ val committed_logs :
   Raft_types.state -> 
   Raft_types.state -> 
   Raft_log.log_entry list
-
-val added_logs :
-  Raft_types.state -> 
-  Raft_types.state -> 
-  Raft_log.log_entry list

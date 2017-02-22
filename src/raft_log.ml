@@ -19,6 +19,13 @@ type t = {
   log_size : int;
 } 
 
+type log_diff = {
+  added_logs : log_entry list; 
+  removed_logs : log_entry list;
+}
+
+let empty_diff = { added_logs = []; removed_logs = [] }
+
 let empty = {
   recent_entries = IntMap.empty;
   log_size = 0;
@@ -50,8 +57,8 @@ let log_entries_since ~since ~max log =
 
 let add_log_datas current_term datas log =
 
-  let rec aux term last_log_index recent_entries log_size = function
-    | [] -> (recent_entries, log_size)
+  let rec aux term last_log_index recent_entries log_size added_logs = function
+    | [] -> (recent_entries, log_size, (List.rev added_logs))
     | (data, id)::tl ->
       let last_log_index = last_log_index + 1 in
 
@@ -59,12 +66,14 @@ let add_log_datas current_term datas log =
         index = last_log_index;
         term; data; id;
       } in
+      
+      let added_logs = new_log_entry :: added_logs in
 
       let recent_entries = 
         IntMap.add last_log_index new_log_entry recent_entries 
       in 
 
-      aux term last_log_index recent_entries (log_size + 1) tl
+      aux term last_log_index recent_entries (log_size + 1) added_logs tl
   in
 
   let term = current_term in
@@ -72,10 +81,13 @@ let add_log_datas current_term datas log =
   let recent_entries = log.recent_entries in
   let log_size = log.log_size in
 
-  let recent_entries, log_size =
-    aux term last_log_index recent_entries log_size datas
+  let recent_entries, log_size, added_logs =
+    aux term last_log_index recent_entries log_size [] datas
   in
-  {recent_entries; log_size}
+
+  let log_diff = { removed_logs = []; added_logs; } in 
+
+  ({recent_entries; log_size}, log_diff)
 
 let add_log_entries ~rev_log_entries log =
 
@@ -88,7 +100,12 @@ let add_log_entries ~rev_log_entries log =
       aux (log_size + 1) recent_entries tl
   in
 
-  aux log.log_size log.recent_entries rev_log_entries
+  let log_diff = {
+    added_logs = rev_log_entries; 
+    removed_logs = []; 
+  } in 
+
+  (aux log.log_size log.recent_entries rev_log_entries, log_diff) 
 
 let remove_log_since ~prev_log_index ~prev_log_term log =
 
@@ -98,22 +115,35 @@ let remove_log_since ~prev_log_index ~prev_log_term log =
   else 
 
     let before, e, after = IntMap.split prev_log_index recent_entries in 
-    let recent_entries, log_size = 
+    let recent_entries, removed_logs_map = 
       match e with
       | None -> 
         if prev_log_index = 0 
-        then (before, log_size - (IntMap.cardinal after))  
+        then (before, after)
         else raise Not_found 
       | Some ({term; index; _} as log_entry) -> 
         if term = prev_log_term
-        then (
-          IntMap.add index log_entry before, 
-          log_size - (IntMap.cardinal after) 
-        ) 
+        then (IntMap.add index log_entry before, after) 
         else raise Not_found
     in 
 
-    {recent_entries; log_size}
+    let removed_logs = List.map snd @@ IntMap.bindings removed_logs_map in
+
+    (
+      {recent_entries; log_size = log_size - List.length removed_logs}, 
+      {removed_logs; added_logs = []}
+    ) 
+
+let merge_diff lhs rhs = 
+  match lhs, rhs with
+  | {added_logs = []; removed_logs = []}, rhs -> rhs 
+  | lhs, {added_logs = []; removed_logs = []} -> lhs 
+
+  | {added_logs; removed_logs = []}, 
+    {added_logs = []; removed_logs} 
+  | {added_logs = []; removed_logs}, 
+    {added_logs; removed_logs = []} -> {added_logs; removed_logs}
+  | _ -> assert(false) 
 
 module Builder = struct
 

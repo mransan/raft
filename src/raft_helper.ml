@@ -97,19 +97,3 @@ let committed_logs before after =
     committed_entries
   else
     []
-
-let added_logs before after = 
-  let open Types in 
-
-  let {log = logb; _} = before in 
-  let {log = loga; _} = after in 
-
-  let lastb = Raft_log.last_log_index logb in 
-  let lasta = Raft_log.last_log_index loga in 
-
-  if lasta <= lastb
-  then []
-  else 
-    let {Raft_log.recent_entries; _} = loga in 
-    let _, _, added_entries = Log.IntMap.split lastb recent_entries in 
-    List.map snd (Log.IntMap.bindings added_entries)
