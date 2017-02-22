@@ -30,7 +30,7 @@ module Log_entry_util = struct
 
   let make_append_entries prev_log_index state =
 
-    let to_send = 
+    let to_send, prev_log_term = 
       let since = prev_log_index in 
       let max = state.Types.configuration.Types.max_nb_logs_per_message in 
       Log.log_entries_since ~since ~max state.Types.log
@@ -40,7 +40,7 @@ module Log_entry_util = struct
       leader_term = state.current_term;
       leader_id = state.server_id;
       prev_log_index;
-      prev_log_term = Log.term_of_index prev_log_index state.log;
+      prev_log_term;
       rev_log_entries = to_send;
       leader_commit = state.commit_index;
     }) in
@@ -344,11 +344,11 @@ let handle_append_entries_request state request now =
            * The current leader might have sent a commit message back to a
            * client believing that the log entry is replicated on this server.
            * If we remove the log entry we violate the assumption.
-           *
            *)
           (state, make_response state (Types.Success receiver_last_log_index))
 
-      else
+      else (* leader_term > receiver_last_log_term *)
+
         if prev_log_index > receiver_last_log_index
         then
           (* This is likely the case after a new election, the Leader has
@@ -357,7 +357,7 @@ let handle_append_entries_request state request now =
           let failure = Types.Log_failure receiver_last_log_index in 
           (state, make_response state failure)
         else
-          (* Because it is a new Leader, this followe can safely remove all
+          (* Because it is a new Leader, this follower can safely remove all
            * the logs from previous terms which were not committed.  *)
 
           match Log.remove_log_since ~prev_log_index

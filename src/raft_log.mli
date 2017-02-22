@@ -7,16 +7,13 @@ type log_entry = {
   id : string;
 }
 
-type term_tree
-
-val pp_term_tree : Format.formatter -> term_tree -> unit
+val pp_log_entry : Format.formatter -> log_entry -> unit 
 
 module IntMap : Map.S with type key = int
 
 type t = {
   recent_entries : log_entry IntMap.t;
   log_size : int;
-  term_tree : term_tree;
 }
 
 (** {2 Creators} *)
@@ -32,22 +29,16 @@ val last_log_index_and_term : t -> (int * int)
   *)
 
 val last_log_index: t ->  int
-(** [last_log_index state] return the index of the last log entry.
-  *)
+(** [last_log_index state] return the index of the last log entry.  *)
 
-val log_entries_since : since:int -> max:int -> t -> log_entry list
+val log_entries_since : since:int -> max:int -> t -> (log_entry list * int)
 (** [rev_log_entries_since index log] returns the log entries in
     reverse order (ie the earliest log is at the front) from (but excluding)
     [since] and until the latest log entry in [log].
 
     In other word the returned data is :
-    \]since ; last_log_index log\]
+      \]since ; since + max \]
  *)
-
-val term_of_index : int -> t -> int
-(** [term_of_index index log ] returns the term associated with [index],
-    if [index] is not part of the log then [Not_found] is raised.
-  *)
 
 (** {2 Modifiers} *)
 
