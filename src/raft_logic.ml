@@ -15,15 +15,17 @@ type result = {
   leader_change : Raft_types.leader_change option;
   committed_logs : Raft_log.log_entry list;
   added_logs : Raft_log.log_entry list; 
+  deleted_logs : Raft_log.log_entry list;
 }
 
-let make_result ?(msgs_to_send = []) ?leader_change 
+let make_result ?(msgs_to_send = []) ?leader_change ?(deleted_logs = []) 
                 ?(committed_logs = []) ?(added_logs = []) state = {
   state;
   messages_to_send = msgs_to_send;
   leader_change; 
   committed_logs;
   added_logs;
+  deleted_logs;
 }
 
 module Log_entry_util = struct
@@ -510,8 +512,9 @@ let handle_message state message now =
   in
   let leader_change = Helper.leader_change state state' in 
   let committed_logs = Helper.committed_logs state state' in
-  let {Log.added_logs; _} = log_diff in 
-  make_result ~msgs_to_send ?leader_change ~added_logs ~committed_logs state'
+  let {Log.added_logs; deleted_logs} = log_diff in 
+  make_result ~msgs_to_send ?leader_change ~added_logs 
+              ~deleted_logs ~committed_logs state'
 
 (* Iterates over all the other server ids. (ie the ones different
  * from the state id).  *)
@@ -586,7 +589,7 @@ let handle_add_log_entries state datas now =
     in
     
     let state' = Types.({state' with role = Leader leader_state }) in
-    let {Log.added_logs; _} = log_diff in 
-    Appended (make_result ~msgs_to_send ~added_logs state')
+    let {Log.added_logs; deleted_logs} = log_diff in 
+    Appended (make_result ~msgs_to_send ~added_logs ~deleted_logs state')
 
 let next_timeout_event = Timeout_event.next

@@ -140,6 +140,7 @@ let election_1 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs; 
+    deleted_logs;
   } = res in
 
   assert(1 = server1.current_term);
@@ -150,6 +151,7 @@ let election_1 {server0; server1; server2} now =
   assert(None = leader_change);
   assert([] = committed_logs);
   assert([] = added_logs);
+  assert([] = deleted_logs);
 
   begin match server1.role with
   | Follower {voted_for; current_leader; election_deadline; } -> begin
@@ -202,6 +204,7 @@ let election_1 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
   
   assert(Types.is_leader server0);
@@ -210,6 +213,7 @@ let election_1 {server0; server1; server2} now =
      * cluster, server0 becomes a [Leader].  *)
   assert(committed_logs = []);
   assert(added_logs = []);
+  assert([] = deleted_logs);
 
   assert(1 = server0.current_term);
     (* Becoming a [Leader] should not affect the term. (Only a new election).*)
@@ -269,11 +273,13 @@ let election_1 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Some (New_leader 0)= leader_change);
   assert([] = committed_logs);
   assert(added_logs = []);
+  assert([] = deleted_logs);
 
   begin match server1.role with
   | Follower f -> (
@@ -332,12 +338,14 @@ let failed_election_1 {server0; server1; server2} now =
     messages_to_send = request_vote_msgs; 
     leader_change; 
     committed_logs;
-    added_logs} = Raft_logic.handle_new_election_timeout server2 now
+    added_logs; 
+    deleted_logs; } = Raft_logic.handle_new_election_timeout server2 now
   in
 
   assert(None = leader_change);
   assert([] = committed_logs);
   assert(added_logs = []);
+  assert(deleted_logs = []);
 
   assert(Types.is_candidate server2);
     (* Server2 never got an [Append_entries] request which would have
@@ -374,11 +382,13 @@ let failed_election_1 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(None = leader_change);
   assert([] = committed_logs);
   assert(added_logs = []);
+  assert([] = deleted_logs);
 
   begin match server1.role with
   | Follower f -> (
@@ -420,6 +430,7 @@ let failed_election_1 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_candidate server2);
@@ -439,6 +450,7 @@ let failed_election_1 {server0; server1; server2} now =
 
   assert([] = committed_logs);
   assert(added_logs = []);
+  assert([] = deleted_logs);
   assert(1 = server2.current_term);
     (* No new election should have been started.
      *)
@@ -463,6 +475,7 @@ let failed_election_1 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_leader server0);
@@ -474,6 +487,7 @@ let failed_election_1 {server0; server1; server2} now =
   assert(1 = List.length msgs);
   assert([] = committed_logs);
   assert(added_logs = []);
+  assert([] = deleted_logs);
 
   begin match List.hd msgs with
   | (Request_vote_response r, 2) -> (
@@ -507,8 +521,10 @@ let failed_election_1 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
+  assert(deleted_logs = []);
   assert(Types.is_candidate server2);
     (* Yes despite all other server denying their vote, server2
      * is still a [Candidate]. It should not take any further
@@ -597,6 +613,7 @@ let leader_heartbeat_1 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_follower server2);
@@ -604,6 +621,7 @@ let leader_heartbeat_1 {server0; server1; server2} now =
   assert(Some (New_leader 0)= leader_change);
   assert([] = committed_logs);
   assert(added_logs = []);
+  assert(deleted_logs = []);
     (* Receiving an [Append_entries] request with a term at least equal
      * or supperior to one [current_term] means that the sender is a valid
      * [Leader] for that term and therefore the recipient must become a
@@ -652,11 +670,13 @@ let leader_heartbeat_1 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
   assert(None = leader_change);
   assert([] = committed_logs);
   assert([] = msgs);
   assert(added_logs = []);
+  assert(deleted_logs = []);
 
   (*
    * Send Append_entries_request Server0 -> Server1
@@ -674,6 +694,7 @@ let leader_heartbeat_1 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_follower server1);
@@ -683,6 +704,7 @@ let leader_heartbeat_1 {server0; server1; server2} now =
   assert(None = leader_change);
   assert([] = committed_logs);
   assert(added_logs = []);
+  assert(deleted_logs = []);
     (* The heartbeat message from server0 did not bring new
      * information (ie server1 already new server0 was the
      * [Leader].) *)
@@ -728,12 +750,14 @@ let leader_heartbeat_1 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_leader server0);
   assert(None = leader_change);
   assert([] = committed_logs);
   assert(added_logs = []);
+  assert(deleted_logs = []);
   assert([] = msgs);
 
   ({server0; server1; server2}, now)
@@ -766,8 +790,9 @@ let add_first_log {server0; server1; server2} now =
           Logic.state; 
           messages_to_send; 
           committed_logs; 
-          added_logs;_} = result in 
+          added_logs;deleted_logs;_} = result in 
         assert([] = committed_logs); 
+        assert(deleted_logs = []);
         begin match added_logs with
         | [{id="01"; index = 1; term = 1; _}] -> () 
         | _ -> assert(false)
@@ -834,6 +859,7 @@ let add_first_log {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_follower server1);
@@ -850,6 +876,7 @@ let add_first_log {server0; server1; server2} now =
 
   assert(0 = server1.commit_index);
   assert(None = leader_change);
+  assert(deleted_logs = []);
   assert([] = committed_logs);
     (* While server1 has successfully replicated the log entry
      * with [index = 1], it cannot assume that this latter log
@@ -886,11 +913,13 @@ let add_first_log {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_leader server0);
   assert(1 = server0.commit_index);
   assert(None = leader_change);
+  assert(deleted_logs = []);
   assert(added_logs = []);
     (* The log with index1 was already added so added_log is empty *)
   begin match committed_logs with
@@ -992,6 +1021,7 @@ let add_second_log {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_follower server1);
@@ -1017,6 +1047,7 @@ let add_second_log {server0; server1; server2} now =
     (* The new log number 2 is now added in this follower .. but not commited
      * as verified previously. *)
 
+  assert(deleted_logs = []);
   assert(1 = List.length msgs);
     (* Only a single response to server0 should be
      * sent back. *)
@@ -1051,6 +1082,7 @@ let add_second_log {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_leader server0);
@@ -1064,6 +1096,7 @@ let add_second_log {server0; server1; server2} now =
   end;
     (* A successfull replication is enough for a majority.  *)
   assert(added_logs = []);
+  assert(deleted_logs = []);
   ({server0; server1; server2}, now) 
 
 (* In this part of the test, the leader reaches its heartbeat timeout 
@@ -1138,6 +1171,7 @@ let leader_heartbeat_2 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_follower server1);
@@ -1153,6 +1187,8 @@ let leader_heartbeat_2 {server0; server1; server2} now =
   
   assert(added_logs = []);
     (* All logs have already been replicated in server 1. *)
+
+  assert(deleted_logs = []);
 
   assert(1 = List.length server1_response);
    (* Only a single response is expected.  *)
@@ -1173,6 +1209,7 @@ let leader_heartbeat_2 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_follower server2);
@@ -1183,6 +1220,7 @@ let leader_heartbeat_2 {server0; server1; server2} now =
   assert(added_logs = committed_logs); 
     (* The 2 previous logs were never replicated to the server 2 before 
      * this heartbeat message *)
+  assert(deleted_logs = []);
   assert(None = leader_change);
   assert(2 = server2.commit_index);
    (* server2 is updating its commit index based on latest
@@ -1222,12 +1260,14 @@ let leader_heartbeat_2 {server0; server1; server2} now =
       leader_change;
       committed_logs; 
       added_logs;
+      deleted_logs;
     } = res in
     
     assert([] = messages_to_send);
     assert(None = leader_change);
     assert([] = committed_logs);
     assert(added_logs = []);
+    assert(deleted_logs = []);
       (* Server1 has replicated the 2 logs it has nothing
        * left.  *)
 
@@ -1241,6 +1281,7 @@ let leader_heartbeat_2 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_leader server0);
@@ -1249,6 +1290,7 @@ let leader_heartbeat_2 {server0; server1; server2} now =
   assert(None = leader_change);
   assert([] = committed_logs);
   assert(added_logs = []);
+  assert(deleted_logs = []);
 
   (* Both servers have replicated the 2 logs, no outstanding
    * logs to be sent.  *)
@@ -1319,6 +1361,7 @@ let add_third_log {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_follower server1);
@@ -1334,6 +1377,8 @@ let add_third_log {server0; server1; server2} now =
   | {id = "03"; index = 3; term =1 ; _ } :: [] -> () 
   | _ -> assert(false)
   end;
+  
+  assert(deleted_logs = []);
 
   (* The response is not send back to server0 *)
   ({server0; server1; server2}, now)
@@ -1359,9 +1404,11 @@ let failed_election_2 {server0; server1; server2} now =
     messages_to_send = msgs; 
     leader_change;
     committed_logs;
-    added_logs} = Raft_logic.handle_new_election_timeout server2 now
+    added_logs; 
+    deleted_logs} = Raft_logic.handle_new_election_timeout server2 now
   in
 
+  assert(deleted_logs = []);
   assert(Types.is_candidate server2);
     (* Server2 started a new election. *)
 
@@ -1408,6 +1455,7 @@ let failed_election_2 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_follower server1);
@@ -1421,6 +1469,7 @@ let failed_election_2 {server0; server1; server2} now =
      * for it yet.  *)
   assert([] = committed_logs);
   assert(added_logs = []);
+  assert(deleted_logs = []);
 
   assert(1 = List.length msgs);
     (* [Request_vote] response to server2.  *)
@@ -1472,12 +1521,14 @@ let election_2 {server0; server1; server2} now =
     messages_to_send = msgs; 
     leader_change; 
     committed_logs; 
-    added_logs} = Raft_logic.handle_new_election_timeout server1 now
+    added_logs; 
+    deleted_logs} = Raft_logic.handle_new_election_timeout server1 now
   in
 
   assert(None = leader_change);
   assert([] = committed_logs);
   assert(added_logs = []);
+  assert(deleted_logs = []);
 
   assert(Types.is_candidate server1);
   assert(3 = server1.current_term);
@@ -1511,6 +1562,7 @@ let election_2 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_follower server2);
@@ -1523,6 +1575,7 @@ let election_2 {server0; server1; server2} now =
   assert(3 = server2.current_term);
 
   assert(None = leader_change);
+  assert(deleted_logs = []);
   assert([] = committed_logs);
   assert(added_logs = []);
     (* Server2 already knew there was no [Leader] since it was a candidate
@@ -1559,11 +1612,13 @@ let election_2 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Some (New_leader 1) = leader_change);
   assert([] = committed_logs);
   assert(added_logs = []);
+  assert(deleted_logs = []);
   assert(Types.is_leader server1);
     (* One vote is enough to become a [Leader].  *)
 
@@ -1608,8 +1663,10 @@ let election_2 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
+  assert(deleted_logs = []);
   assert(Some (New_leader 1) = leader_change);
   assert([] = committed_logs);
   assert(Types.is_follower server2);
@@ -1651,8 +1708,10 @@ let election_2 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
+  assert(deleted_logs = []);
   assert(Types.is_leader server1);
   assert(3 = server1.current_term);
 
@@ -1698,6 +1757,7 @@ let election_2 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_follower server2);
@@ -1706,6 +1766,7 @@ let election_2 {server0; server1; server2} now =
   assert(3 = recent_log_length server2);
     (* server2 has correctly replicated the 3rd [log_entry].  *)
 
+  assert(deleted_logs = []);
   assert(None = leader_change);
   assert([] = committed_logs);
   assert(2  = server2.commit_index);
@@ -1748,11 +1809,13 @@ let election_2 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
   assert(Types.is_leader server1);
   assert(3 = server1.current_term);
 
+  assert(deleted_logs = []);
   begin match committed_logs with
   | {id = "03"; _ }::[] -> ()
   | _ -> assert(false)
@@ -1845,8 +1908,10 @@ let add_4_and_5_logs {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
+  assert(deleted_logs = []);
   assert(Types.is_follower server2);
   assert(3 = server2.current_term);
 
@@ -1863,8 +1928,7 @@ let add_4_and_5_logs {server0; server1; server2} now =
 
   assert(3 = server2.commit_index);
     (* Replicated from server1, previous one was 2 so we
-     * can expect a notification.
-     *)
+     * can expect a notification. *)
 
   assert(None = leader_change);
   begin match committed_logs with
@@ -1904,8 +1968,10 @@ let add_4_and_5_logs {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
+  assert(deleted_logs = []);
   assert(5 = server1.commit_index);
   assert([] = msgs);
   assert(2 = List.length committed_logs);
@@ -1938,8 +2004,9 @@ let add_log_to_outdated_leader {server0; server1; server2} now =
           Logic.state; 
           messages_to_send; 
           committed_logs; 
-          added_logs;_} = result in 
+          added_logs;deleted_logs; _} = result in 
         assert([] = committed_logs); 
+        assert(deleted_logs = []);
         assert(1 = List.length added_logs); 
         begin match added_logs with
         | [{id="NC"; index = 4; term = 1; _}] -> () 
@@ -2037,7 +2104,16 @@ let leader_heartbeat_3 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
+
+  begin match deleted_logs with
+  | {index = 4; term = 1; id = "NC"; _} :: [] -> () 
+  | _ -> assert(false)
+  end;
+    (* The non commited log added by server0 in term [1] is deleted since
+     * it was never replicated anywher and server1 is now the leader
+     * in a later term *)
 
   assert(Types.is_follower server0); 
   assert(3 = server0.current_term); 
@@ -2075,8 +2151,10 @@ let leader_heartbeat_3 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
 
+  assert(deleted_logs = []);
   assert(Types.is_follower server2); 
   assert(3 = server2.current_term); 
   assert(5 = recent_log_length server2);
@@ -2113,7 +2191,9 @@ let leader_heartbeat_3 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
+  assert(deleted_logs = []);
   assert([] = msgs); 
   assert([] = committed_logs); 
   assert([] = added_logs); 
@@ -2134,7 +2214,9 @@ let leader_heartbeat_3 {server0; server1; server2} now =
     leader_change;
     committed_logs; 
     added_logs;
+    deleted_logs;
   } = res in
+  assert(deleted_logs = []);
   assert([] = msgs); 
   assert([] = committed_logs); 
   assert([] = added_logs); 

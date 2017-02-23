@@ -18,7 +18,7 @@ type t = {
 
 type log_diff = {
   added_logs : log_entry list; 
-  removed_logs : log_entry list;
+  deleted_logs : log_entry list;
 }
 
 (** {2 Creators} *)

@@ -19,6 +19,8 @@ type result = {
   committed_logs : Raft_log.log_entry list;
     (** Log entries which are now commited *)
   added_logs : Raft_log.log_entry list; 
+
+  deleted_logs  : Raft_log.log_entry list;
 }
 
 (** {2 Protocol Implementation} *)

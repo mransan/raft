@@ -21,10 +21,10 @@ type t = {
 
 type log_diff = {
   added_logs : log_entry list; 
-  removed_logs : log_entry list;
+  deleted_logs : log_entry list;
 }
 
-let empty_diff = { added_logs = []; removed_logs = [] }
+let empty_diff = { added_logs = []; deleted_logs = [] }
 
 let empty = {
   recent_entries = IntMap.empty;
@@ -85,7 +85,7 @@ let add_log_datas current_term datas log =
     aux term last_log_index recent_entries log_size [] datas
   in
 
-  let log_diff = { removed_logs = []; added_logs; } in 
+  let log_diff = { deleted_logs = []; added_logs; } in 
 
   ({recent_entries; log_size}, log_diff)
 
@@ -102,7 +102,7 @@ let add_log_entries ~rev_log_entries log =
 
   let log_diff = {
     added_logs = rev_log_entries; 
-    removed_logs = []; 
+    deleted_logs = []; 
   } in 
 
   (aux log.log_size log.recent_entries rev_log_entries, log_diff) 
@@ -115,7 +115,7 @@ let remove_log_since ~prev_log_index ~prev_log_term log =
   else 
 
     let before, e, after = IntMap.split prev_log_index recent_entries in 
-    let recent_entries, removed_logs_map = 
+    let recent_entries, deleted_logs_map = 
       match e with
       | None -> 
         if prev_log_index = 0 
@@ -127,22 +127,22 @@ let remove_log_since ~prev_log_index ~prev_log_term log =
         else raise Not_found
     in 
 
-    let removed_logs = List.map snd @@ IntMap.bindings removed_logs_map in
+    let deleted_logs = List.map snd @@ IntMap.bindings deleted_logs_map in
 
     (
-      {recent_entries; log_size = log_size - List.length removed_logs}, 
-      {removed_logs; added_logs = []}
+      {recent_entries; log_size = log_size - List.length deleted_logs}, 
+      {deleted_logs; added_logs = []}
     ) 
 
 let merge_diff lhs rhs = 
   match lhs, rhs with
-  | {added_logs = []; removed_logs = []}, rhs -> rhs 
-  | lhs, {added_logs = []; removed_logs = []} -> lhs 
+  | {added_logs = []; deleted_logs = []}, rhs -> rhs 
+  | lhs, {added_logs = []; deleted_logs = []} -> lhs 
 
-  | {added_logs; removed_logs = []}, 
-    {added_logs = []; removed_logs} 
-  | {added_logs = []; removed_logs}, 
-    {added_logs; removed_logs = []} -> {added_logs; removed_logs}
+  | {added_logs; deleted_logs = []}, 
+    {added_logs = []; deleted_logs} 
+  | {added_logs = []; deleted_logs}, 
+    {added_logs; deleted_logs = []} -> {added_logs; deleted_logs}
   | _ -> assert(false) 
 
 module Builder = struct
