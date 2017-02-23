@@ -39,20 +39,6 @@ let msg_for_server msgs id =
   | (msg, _) -> msg
   | exception Not_found -> assert(false)
 
-let request_response ~from ~to_ ~now requests =
-  let {Logic.state = to_; messages_to_send = responses ; _} =
-    let msg = msg_for_server requests (to_.server_id) in
-    Raft_logic.handle_message to_ msg now
-  in
-
-  let now = now +. 0.001 in
-
-  let {Logic.state = from; messages_to_send = msgs; _} = 
-    let msg = msg_for_server responses (from.server_id) in
-    Raft_logic.handle_message from msg now
-  in
-  (from, to_, msgs, now)
-
 type t = {
   server0 : state; 
   server1 : state; 
