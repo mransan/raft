@@ -52,7 +52,7 @@ module Log_entry_util = struct
   let compute_append_entries ?(force = false) state followers now =
 
     let rec aux followers msgs_to_send = function
-      | [] -> (followers, msgs_to_send)
+      | [] -> (List.rev followers, msgs_to_send)
 
       | follower::tl ->
         let {

@@ -145,8 +145,7 @@ module Leader = struct
          *
          * In such a case we don't want to decrement the next index 
          * of the server since the server is expected to never remove 
-         * previously saved log entries.
-         *)
+         * previously saved log entries.  *)
         follower
     ) followers 
     in
