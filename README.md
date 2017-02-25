@@ -100,7 +100,7 @@ let () =
        log
      *)
     match follower_1.log with
-    | {data; _ } :: [] -> 
+    | {data; _ } :: `` -> 
       if "Foo" = Bytes.to_string data
       then print_endline "Log successfully replicated in follower"
       else print_endline "Log replication was corrupted"
@@ -108,3 +108,78 @@ let () =
   )
   | None -> () 
 ```
+
+## Notes on implementing Log size limit ##
+
+**Problem with current implementation**
+
+> The current implementation keeps on adding `log entry`s to an in-memory 
+> log data structure and never deletes them. 
+> Eventually the process will run out of memory. 
+
+The idea would be to keep only the most recent `log entry`s in memory; keep in 
+mind that all `log entry`s are permanently recorded on disk. 
+
+**Problem with Limitting the log size**
+
+In normal mode of operations, followers are replicating the leader log 
+quickly and are never too far behind. Problem arise when one of the server is
+taken offline for a long time. In this case the follower has a lot of 
+`log entry`s to catch up on. This creates 2 major issues:
+
+* The leader does a lot of of work to make the follower catch up. The leader
+  keep sending Append Entries Request one after the othe and this usually 
+  slows down the leader process which also need to keep append new 
+  `log entry`s. 
+
+* If we limit the log size proposed above, then it is likely that if 
+  follower has been taken offline for an extended period of time the logs 
+  it needs to replicate next are not be stored in the in-memory log data 
+  structure of the leader.  
+
+**Solution overview** 
+
+First, the leader can easily detect when the follower is too far behind 
+(see notes on backlog situation detection). The next Append Entries request 
+it sends can indicate to the follower that no logs can be replicated 
+until the follower has caught up. Additionally through heartbeat Append Entries 
+request the leader can also indicates the minimum log index to be replicated 
+on the follower for it to resume the RAFT replication.
+
+In order to not disrupt the leader, a seperate process called `backlog` can 
+run on each of the RAFT server. Its sole purpose is streaming logs back to the 
+follower which is lagging behind. This multi process approach offers several 
+advantages: 
+
+* The backlog server protocol could be optimize for sending large quantity
+  of logs. For instance compression could be used and TCP is likely more 
+  suited as well. 
+
+* The backlog process won't affect the raft server (leader); it will use 
+  limited memory, and can run on a separate CPU. Furthermore it will only 
+  read past `log entry`s from the permanent storage which are immutable. 
+  Database like rocksdb allows a separate process to open the DB in a read
+  only mode, and our design could leverage fully this feature. 
+
+* The follower which is behind could use the backlog server of another follower,
+  in general the leader process is the one which consumes the most resources, 
+  so it could be better to use a follower. 
+
+**Solution Details**
+
+* Leader detecs the backlog situation when the follower sends back an 
+  Append Entries Response with `prev log index` which is smaller than the 
+  earliest `log entry` in the in-memory data structure.
+
+* Append Entries Request needs to be modified to notify the follower that it is
+  in a backlog situation.
+
+* Follower state needs to keep track of the backlog requirement (ie the 
+  earlies `log entry` to be replicated. 
+
+* `Raft_logic.result` should inform the app of the backlog requirement. This 
+  will then leveraged by the application to contact a backlog server for 
+  streaming back the missing logs. 
+  
+* Add `Raft_logic.handle_add_backlog` for the application to fill back the 
+  in memory log data structure of the follower.

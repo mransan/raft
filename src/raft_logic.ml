@@ -201,11 +201,8 @@ let handle_request_vote_response state response now =
 
   if voter_term > current_term
   then
-    (*
-     * Enforce invariant that if this server is lagging behind
-     * it must convert to a follower and update to the latest term.
-     *
-     *)
+    (* Enforce invariant that if this server is lagging behind
+     * it must convert to a follower and update to the latest term. *)
     let state = Follower.become ~term:voter_term ~now state in
     (state, [])
 
@@ -215,8 +212,8 @@ let handle_request_vote_response state response now =
 
       if  Configuration.is_majority configuration (vote_count + 1)
       then
-        (* By reaching a majority of votes, the candidate is now the new leader
-         *)
+        (* By reaching a majority of votes, the candidate is now 
+         * the new leader *)
         let state = Leader.become state now in
 
         (* As a new leader, the server must send Append entries request
@@ -235,8 +232,7 @@ let handle_request_vote_response state response now =
         | _ -> assert(false)
         end
       else
-        (* Candidate has a new vote but not yet reached the majority
-         *)
+        (* Candidate has a new vote but not yet reached the majority *)
         let new_state = Types.{state with
           role = Candidate (Candidate.increment_vote_count candidate_state);
         } in
@@ -278,8 +274,7 @@ let handle_append_entries_request state request now =
 
   if leader_term < state.Types.current_term
   then
-    (* This request is coming from a leader lagging behind...
-     *)
+    (* This request is coming from a leader lagging behind... *)
     (state, make_response state Types.Term_failure, Log.empty_diff)
 
   else
@@ -290,8 +285,7 @@ let handle_append_entries_request state request now =
       Follower.become ~current_leader ~term ~now state
     in
 
-    (* Next step is to handle the log entries from the leader.
-     *)
+    (* Next step is to handle the log entries from the leader.  *)
     let {
       Types.prev_log_index;
       prev_log_term;
@@ -350,8 +344,7 @@ let handle_append_entries_request state request now =
            *
            * The current leader might have sent a commit message back to a
            * client believing that the log entry is replicated on this server.
-           * If we remove the log entry we violate the assumption.
-           *)
+           * If we remove the log entry we violate the assumption.  *)
           let success = Types.Success  receiver_last_log_index in 
           (state, make_response state success, Log.empty_diff)
 
