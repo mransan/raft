@@ -167,6 +167,13 @@ advantages:
 
 **Solution Details**
 
+* 2 new field in configuration: max_log_size\_\{upper_bound|lower_bound}. When
+  adding new log entries will make the log size go over upper bound, then 
+  truncate the log to lower bound prior to adding the new log entries.
+
+* Implement the enforcement of the upper and lower bound value in 
+  [Raft_log](src/raft_log.mli) module
+
 * Leader detecs the backlog situation when the follower sends back an 
   Append Entries Response with `prev log index` which is smaller than the 
   earliest `log entry` in the in-memory data structure.
