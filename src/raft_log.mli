@@ -9,11 +9,21 @@ type log_entry = {
 
 val pp_log_entry : Format.formatter -> log_entry -> unit 
 
+(** In memory log size limitation parameters 
+    
+    When adding new log entries would make the size of the log go over 
+    [upper_bound], then log is truncated down to [lower_bound]. *)
+type max_log_size = {
+  upper_bound : int;
+  lower_bound : int; 
+}
+
 module IntMap : Map.S with type key = int
 
 type t = {
   recent_entries : log_entry IntMap.t;
   log_size : int;
+  max_log_size : max_log_size;
 }
 
 type log_diff = {
@@ -23,7 +33,7 @@ type log_diff = {
 
 (** {2 Creators} *)
 
-val empty : t
+val empty : max_log_size -> t
 (** [empty] is an empty log *)
 
 val empty_diff : log_diff 
@@ -32,8 +42,7 @@ val empty_diff : log_diff
 
 val last_log_index_and_term : t -> (int * int)
 (** [last_log_index_and_term state] return the [(index, term)] of the last log
-    entry.
-  *)
+    entry.  *)
 
 val last_log_index: t ->  int
 (** [last_log_index state] return the index of the last log entry.  *)
@@ -44,8 +53,7 @@ val log_entries_since : since:int -> max:int -> t -> (log_entry list * int)
     [since] and until the latest log entry in [log].
 
     In other word the returned data is :
-      \]since ; since + max \]
- *)
+      \]since ; since + max \] *)
 
 (** {2 Modifiers} *)
 
@@ -59,15 +67,13 @@ val add_log_datas : int -> (bytes * string) list -> t -> (t * log_diff)
     and should be appended first to the server logs.
 
     Any subsequent logical actions like creating Append Entries request is
-    left to the caller.
-  *)
+    left to the caller.  *)
 
 val add_log_entries : rev_log_entries:log_entry list -> t -> (t * log_diff)
 (** [add_log_entries rev_log_entries log] appends [rev_log_entries] to the
     [log]. The assumption is that the entries are in reverse order so
-    the last log_entry in [rev_log_entries] will be the first log_entry in [log]
-    after this function executes.
-  *)
+    the last log_entry in [rev_log_entries] will be the first log_entry 
+    in [log] after this function executes.  *)
 
 val remove_log_since : 
   prev_log_index:int -> prev_log_term:int -> t -> (t * log_diff)
@@ -85,7 +91,7 @@ module Builder : sig
 
   type builder
 
-  val make : unit -> builder
+  val make : max_log_size -> builder
 
   val add_log_entry : builder -> log_entry -> builder
 

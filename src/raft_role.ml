@@ -11,7 +11,7 @@ module Follower = struct
     {
       Types.current_term = 0;
       server_id;
-      log = Log.empty;
+      log = Log.empty configuration.Types.max_log_size;
       commit_index = 0;
       role = Types.(Follower {
         voted_for = None;

@@ -14,9 +14,15 @@ module IntMap = Map.Make(struct
   let compare (x:int) (y:int) = Pervasives.compare x y
 end) 
 
+type max_log_size = {
+  upper_bound : int;
+  lower_bound : int; 
+}
+
 type t = {
   recent_entries : log_entry IntMap.t;
   log_size : int;
+  max_log_size : max_log_size;
 } 
 
 type log_diff = {
@@ -26,9 +32,10 @@ type log_diff = {
 
 let empty_diff = { added_logs = []; deleted_logs = [] }
 
-let empty = {
+let empty max_log_size = {
   recent_entries = IntMap.empty;
   log_size = 0;
+  max_log_size;
 }
 
 let last_log_index_and_term {recent_entries; _ } =
@@ -55,7 +62,27 @@ let log_entries_since ~since ~max log =
     let sub, _, _ = IntMap.split (since + max + 1) sub in 
     (List.map snd (IntMap.bindings sub), prev_term)  
 
+(* Enforce that the size of the recent_entries stays within the 
+ * max log size configuration *) 
+let truncate add_size ({recent_entries; max_log_size; _} as t) = 
+  let {upper_bound; lower_bound} = max_log_size in 
+  match IntMap.min_binding recent_entries with
+  | exception Not_found -> t
+    (* when empty, no need for size limitation *)
+  | (lower_index, _) -> 
+    let (upper_index, _) = IntMap.max_binding recent_entries in 
+    let size = upper_index - lower_index + 1 in 
+    if size + add_size > upper_bound 
+    then 
+      let over = size - lower_bound in 
+      let lower_index = lower_index + over + add_size - 1 in 
+      let _, _, recent_entries = IntMap.split lower_index recent_entries in 
+      {t with recent_entries}
+    else 
+      t
+   
 let add_log_datas current_term datas log =
+  let log = truncate (List.length datas) log in 
 
   let rec aux term last_log_index recent_entries log_size added_logs = function
     | [] -> (recent_entries, log_size, (List.rev added_logs))
@@ -87,13 +114,13 @@ let add_log_datas current_term datas log =
 
   let log_diff = { deleted_logs = []; added_logs; } in 
 
-  ({recent_entries; log_size}, log_diff)
+  ({log with recent_entries; log_size}, log_diff)
 
 let add_log_entries ~rev_log_entries log =
-
+  let log = truncate (List.length rev_log_entries) log in 
   let rec aux log_size recent_entries = function
     | [] ->
-      {log_size; recent_entries}
+      {log with log_size; recent_entries}
 
     | hd::tl ->
       let recent_entries = IntMap.add hd.index hd recent_entries in 
@@ -108,8 +135,7 @@ let add_log_entries ~rev_log_entries log =
   (aux log.log_size log.recent_entries rev_log_entries, log_diff) 
 
 let remove_log_since ~prev_log_index ~prev_log_term log =
-
-  let {recent_entries; log_size; } = log in 
+  let {recent_entries; log_size; max_log_size = _ } = log in 
   if prev_log_index > (last_log_index log)
   then raise Not_found 
   else 
@@ -130,7 +156,9 @@ let remove_log_since ~prev_log_index ~prev_log_term log =
     let deleted_logs = List.map snd @@ IntMap.bindings deleted_logs_map in
 
     (
-      {recent_entries; log_size = log_size - List.length deleted_logs}, 
+      {log with 
+        recent_entries; 
+        log_size = log_size - List.length deleted_logs}, 
       {deleted_logs; added_logs = []}
     ) 
 
@@ -149,11 +177,13 @@ module Builder = struct
 
   type builder = t
 
-  let make () = empty
+  let make max_log_size = empty max_log_size 
 
   let add_log_entry log log_entry =
-    assert(log_entry.index > (last_log_index log));
-    {
+    let log = truncate 1 log in 
+    (* assert(log_entry.index > (last_log_index log));
+     *)
+    { log with
       recent_entries = IntMap.add log_entry.index log_entry log.recent_entries; 
       log_size = log.log_size + 1;
     }

@@ -25,6 +25,9 @@ type configuration = {
         must be much less than [election_timeout] *)
   max_nb_logs_per_message : int;
     (** Limit the number of log entries per append entries message  *)
+  
+  max_log_size : Raft_log.max_log_size; 
+    (** define boundaries for the "in-memory log" size limitation *)
 }
 
 (** {2 Protocol Messages} *) 

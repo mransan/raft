@@ -20,6 +20,10 @@ let default_configuration = {
      *)
   hearbeat_timeout = 0.02;
   max_nb_logs_per_message = 10;
+  max_log_size = {
+    upper_bound = 7; 
+    lower_bound = 5; 
+  }
 }
 
 let recent_log_length {log = {recent_entries; _ }; _ } =
@@ -2033,9 +2037,12 @@ let add_log_to_outdated_leader {server0; server1; server2} now =
  * heartbeat messages to both server0 and server2. Server0 is no longer
  * disconnected and receives the message, the synchronization sequence 
  * between the latest leader (server1) and the previous one (server0) is 
- * deleting non commited messages in server0. *)
+ * deleting non commited messages in server0. 
+ *
+ * At the end server1 is the leader and has 5 log entries and a commit 
+ * index of 5. Both server0 and server2 have fully replicated the 
+ * 5 log entries and their commit index is 5 as well*)
 let leader_heartbeat_3 {server0; server1; server2} now = 
-
   let now = now +. default_configuration.hearbeat_timeout in
   
   let {Logic.state = server1; messages_to_send = msgs; added_logs; _ } =
@@ -2210,6 +2217,72 @@ let leader_heartbeat_3 {server0; server1; server2} now =
 
   ({server0; server1; server2}, now)
 
+(* Prior to this test, the log size was 5, but in this test we're adding
+ * 3 new entries which means the resulting size would be 8. 8 is greated
+ * than the configured max log size upper boud and so the log size 
+ * limitation enforcement should kick in. Log entries [1] [2] [3] should 
+ * be removed from the Raft_log.recent_entries to make sure 
+ * the recent entries size is set to lower bound (ie [5]). 
+ *
+ * Intentionally at the end of this test we returned the server state
+ * unmodified, this test is solely checking the log size enforcement 
+ * and has no side effect *)
+let enforce_log_size ({server0; server1; _} as servers) now = 
+  let new_log_result =
+    let datas = [
+      (Bytes.of_string "Message06", "06");
+      (Bytes.of_string "Message07", "07");
+      (Bytes.of_string "Message08", "08");
+    ] in
+    Raft_logic.handle_add_log_entries server1 datas now
+  in
+  
+  let min_max_index server = 
+    (
+      fst @@ Log.IntMap.min_binding server.log.Log.recent_entries, 
+      fst @@ Log.IntMap.max_binding server.log.Log.recent_entries
+    ) 
+  in
+
+  let min_index, max_index = min_max_index server1 in  
+  assert(1 = min_index); 
+  assert(5 = max_index); 
+
+  let server1, msgs =
+    let open Raft_logic in
+    match new_log_result with
+    | Appended {Logic.state; messages_to_send; added_logs; _ } -> 
+      begin 
+        assert(3 = List.length added_logs); 
+        (state, messages_to_send)
+      end
+    | Delay | Forward_to_leader _ -> assert(false)
+  in
+
+  let min_index, max_index = min_max_index server1 in  
+  assert(4 = min_index); 
+  assert(8 = max_index); 
+
+  (* 
+   * Send Append_entries_request Server1 -> Server0 
+   * ---------------------------------------------- 
+   *)
+
+  let res = 
+    let msg = msg_for_server msgs 0 in
+    Raft_logic.handle_message server0 msg now
+  in
+
+  let {
+    Logic.state = server0; _
+  } = res in
+
+  let min_index, max_index = min_max_index server0 in 
+  assert(4 = min_index); 
+  assert(8 = max_index); 
+
+  (servers, now)
+
 let ()  =
 
   let servers = init () in 
@@ -2225,6 +2298,7 @@ let ()  =
   let servers, now = add_4_and_5_logs servers now in 
   let servers, now = add_log_to_outdated_leader servers now in 
   let servers, now = leader_heartbeat_3 servers now in 
+  let servers, now = enforce_log_size servers now in 
   let _ = servers and _ = now in 
 
   ()
