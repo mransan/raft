@@ -21,7 +21,6 @@ type max_log_size = {
 
 type t = {
   recent_entries : log_entry IntMap.t;
-  log_size : int;
   max_log_size : max_log_size;
 } 
 
@@ -34,7 +33,6 @@ let empty_diff = { added_logs = []; deleted_logs = [] }
 
 let empty max_log_size = {
   recent_entries = IntMap.empty;
-  log_size = 0;
   max_log_size;
 }
 
@@ -43,8 +41,10 @@ let last_log_index_and_term {recent_entries; _ } =
   | (_ , {index;term; _}) -> (index, term)
   | exception Not_found -> (0, 0)
 
-let last_log_index log =
-  fst @@ last_log_index_and_term log
+let last_log_index {recent_entries; _}  =
+  match IntMap.max_binding recent_entries  with
+  | (_ , {index; _}) -> index
+  | exception Not_found -> 0
 
 let log_entries_since ~since ~max log =
   let {recent_entries ; _} = log in
@@ -84,8 +84,8 @@ let truncate add_size ({recent_entries; max_log_size; _} as t) =
 let add_log_datas current_term datas log =
   let log = truncate (List.length datas) log in 
 
-  let rec aux term last_log_index recent_entries log_size added_logs = function
-    | [] -> (recent_entries, log_size, (List.rev added_logs))
+  let rec aux term last_log_index recent_entries added_logs = function
+    | [] -> (recent_entries, (List.rev added_logs))
     | (data, id)::tl ->
       let last_log_index = last_log_index + 1 in
 
@@ -100,31 +100,30 @@ let add_log_datas current_term datas log =
         IntMap.add last_log_index new_log_entry recent_entries 
       in 
 
-      aux term last_log_index recent_entries (log_size + 1) added_logs tl
+      aux term last_log_index recent_entries added_logs tl
   in
 
   let term = current_term in
   let last_log_index = last_log_index log in
   let recent_entries = log.recent_entries in
-  let log_size = log.log_size in
 
-  let recent_entries, log_size, added_logs =
-    aux term last_log_index recent_entries log_size [] datas
+  let recent_entries, added_logs =
+    aux term last_log_index recent_entries [] datas
   in
 
   let log_diff = { deleted_logs = []; added_logs; } in 
 
-  ({log with recent_entries; log_size}, log_diff)
+  ({log with recent_entries}, log_diff)
 
 let add_log_entries ~rev_log_entries log =
   let log = truncate (List.length rev_log_entries) log in 
-  let rec aux log_size recent_entries = function
+  let rec aux recent_entries = function
     | [] ->
-      {log with log_size; recent_entries}
+      {log with recent_entries}
 
     | hd::tl ->
       let recent_entries = IntMap.add hd.index hd recent_entries in 
-      aux (log_size + 1) recent_entries tl
+      aux recent_entries tl
   in
 
   let log_diff = {
@@ -132,10 +131,10 @@ let add_log_entries ~rev_log_entries log =
     deleted_logs = []; 
   } in 
 
-  (aux log.log_size log.recent_entries rev_log_entries, log_diff) 
+  (aux log.recent_entries rev_log_entries, log_diff) 
 
 let remove_log_since ~prev_log_index ~prev_log_term log =
-  let {recent_entries; log_size; max_log_size = _ } = log in 
+  let {recent_entries; max_log_size = _ } = log in 
   if prev_log_index > (last_log_index log)
   then raise Not_found 
   else 
@@ -157,8 +156,7 @@ let remove_log_since ~prev_log_index ~prev_log_term log =
 
     (
       {log with 
-        recent_entries; 
-        log_size = log_size - List.length deleted_logs}, 
+        recent_entries;}, 
       {deleted_logs; added_logs = []}
     ) 
 
@@ -185,7 +183,6 @@ module Builder = struct
      *)
     { log with
       recent_entries = IntMap.add log_entry.index log_entry log.recent_entries; 
-      log_size = log.log_size + 1;
     }
 
   let to_log x = x

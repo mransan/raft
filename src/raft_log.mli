@@ -22,7 +22,6 @@ module IntMap : Map.S with type key = int
 
 type t = {
   recent_entries : log_entry IntMap.t;
-  log_size : int;
   max_log_size : max_log_size;
 }
 
