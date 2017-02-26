@@ -189,4 +189,7 @@ advantages:
   streaming back the missing logs. 
   
 * Add `Raft_logic.handle_add_backlog` for the application to fill back the 
-  in memory log data structure of the follower.
+  in memory log data structure of the follower
+
+* Make sure to read the lower bound entries backward from the permanent storage
+  when starting a server

@@ -115,7 +115,7 @@ let is_leader {role; _ } =
   | _ -> false
 
 let current_leader {server_id; role; _} =
-    match role with
-    | Follower {current_leader; _ }-> current_leader
-    | Candidate _ -> None
-    | Leader _ -> Some server_id
+  match role with
+  | Follower {current_leader; _ }-> current_leader
+  | Candidate _ -> None
+  | Leader _ -> Some server_id

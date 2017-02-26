@@ -127,7 +127,6 @@ let make_request_vote_request state =
   })
 
 let handle_request_vote_request state request now =
-
   let {
     Types.candidate_id; 
     candidate_term; 
@@ -195,7 +194,6 @@ let handle_request_vote_request state request now =
         (state, make_response state false)
 
 let handle_request_vote_response state response now =
-
   let {Types.current_term; role; configuration; _ } = state in
   let {Types.voter_term; vote_granted; _ } = response in
 
@@ -261,7 +259,6 @@ let update_state leader_commit receiver_last_log_index log state =
     {state with Types.log}
 
 let handle_append_entries_request state request now =
-
   let {Types.leader_term; leader_id; _} = request in
 
   let make_response state result =
@@ -386,7 +383,6 @@ let handle_append_entries_request state request now =
             (state, make_response state success, log_diff)
 
 let handle_append_entries_response state response now =
-
   let {
     Types.receiver_term; 
     receiver_id = follower_id ; 
@@ -527,7 +523,6 @@ let fold_over_servers f e0 state =
       else aux (f acc id) next
   in
   aux e0 (nb_of_server - 1)
-
 let handle_new_election_timeout state now =
   let state' = Candidate.become ~now state in
   let msgs_to_send =
