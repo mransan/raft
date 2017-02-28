@@ -581,3 +581,6 @@ let handle_add_log_entries state datas now =
     Appended (make_result ~msgs_to_send ~added_logs ~deleted_logs state')
 
 let next_timeout_event = Timeout_event.next
+
+let committed_entries_since ~since {Types.commit_index; log; _} = 
+  fst @@ Log.log_entries_since ~since ~max:commit_index log  

@@ -93,3 +93,10 @@ val next_timeout_event :
 
     The server application is responsible for managing the main event
     loop such as listening for messaging and waking up for timeout events.  *)
+
+val committed_entries_since : 
+  since:int -> 
+  Raft_types.state -> 
+  Raft_log.log_entry list 
+(** [committed_entries_since ~since state] returns all the committed entries
+    since the log index [since] *)
