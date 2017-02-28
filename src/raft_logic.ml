@@ -583,4 +583,5 @@ let handle_add_log_entries state datas now =
 let next_timeout_event = Timeout_event.next
 
 let committed_entries_since ~since {Types.commit_index; log; _} = 
-  fst @@ Log.log_entries_since ~since ~max:commit_index log  
+  let max = commit_index - since in  
+  fst @@ Log.log_entries_since ~since ~max log  
