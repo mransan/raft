@@ -107,9 +107,7 @@ module Leader = struct
                * Here the expectation is that after becoming a leader
                * the client application will send a message to all the receivers
                * and therefore the heartbeat_deadline is set
-               * to [now + timeout] rather than [now].
-               *
-               *)
+               * to [now + timeout] rather than [now]. *)
           } in
           aux (follower::followers) (i - 1)
     in
@@ -117,11 +115,8 @@ module Leader = struct
 
     {state with Types.role = Types.(Leader followers)}
 
-
-  (*
-   * Reusable function to update the index of a particular
-   * receiver id.
-   *)
+  (* Reusable function to update the index of a particular
+   * receiver id. *)
   let update_follower ~follower_id ~f leader_state =
 
     List.map (fun follower ->
@@ -151,8 +146,7 @@ module Leader = struct
     in
 
     (* Calculate the number of server which also have replicated that
-       log entry
-     *)
+       log entry *)
     let nb_of_replications = List.fold_left (fun n {Types.match_index; _ } ->
       if match_index >= index 
       then n + 1
