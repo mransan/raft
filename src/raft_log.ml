@@ -61,6 +61,8 @@ let log_entries_since ~since ~max log =
       | Some {term; _} -> term 
     in
 
+    let max = since + max in 
+
     let log_entries = 
       try IntMap.fold (fun index log_entry log_entries -> 
         if index < max
