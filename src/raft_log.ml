@@ -46,6 +46,8 @@ let last_log_index {recent_entries; _}  =
   | (_ , {index; _}) -> index
   | exception Not_found -> 0
 
+exception Done of log_entry list 
+
 let log_entries_since ~since ~max log =
   let {recent_entries ; _} = log in
   if recent_entries = IntMap.empty
@@ -58,9 +60,19 @@ let log_entries_since ~since ~max log =
       | None -> assert (since = 0); 0  
       | Some {term; _} -> term 
     in
-      
-    let sub, _, _ = IntMap.split (since + max + 1) sub in 
-    (List.map snd (IntMap.bindings sub), prev_term)  
+
+    let log_entries = 
+      try IntMap.fold (fun index log_entry log_entries -> 
+        if index < max
+        then log_entry :: log_entries
+        else raise (Done log_entries)
+      ) sub [] 
+      with | Done log_entries -> log_entries
+    in 
+
+    (List.rev log_entries, prev_term)
+(*    let sub, _, _ = IntMap.split (since + max + 1) sub in 
+    (List.map snd (IntMap.bindings sub), prev_term)  *)
 
 (* Enforce that the size of the recent_entries stays within the 
  * max log size configuration *) 
