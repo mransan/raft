@@ -65,7 +65,7 @@ let log_entries_since ~since ~max log =
 
     let log_entries = 
       try IntMap.fold (fun index log_entry log_entries -> 
-        if index < max
+        if index <= max
         then log_entry :: log_entries
         else raise (Done log_entries)
       ) sub [] 
