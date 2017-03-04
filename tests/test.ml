@@ -19,7 +19,7 @@ let default_configuration = {
     (* To get deterministic number for testing.
      *)
   hearbeat_timeout = 0.02;
-  max_nb_logs_per_message = 10;
+  max_nb_logs_per_message = Number 10;
   max_log_size = {
     upper_bound = 7; 
     lower_bound = 5; 

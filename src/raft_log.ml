@@ -14,6 +14,23 @@ module IntMap = Map.Make(struct
   let compare (x:int) (y:int) = Pervasives.compare x y
 end) 
 
+type size = 
+  | Number of int  
+  | Bytes of int * int 
+
+let add size sum log_entry = 
+  match size with
+  | Number _ -> (sum + 1)
+  | Bytes (_, overhead) -> 
+    let {data; id; _} = log_entry in 
+    sum + overhead + 16 (* 2x64bits for index/term *) 
+        + (String.length id) + (Bytes.length data)
+
+let has_reach_max size sum =
+  match size with 
+  | Number n -> sum >= n
+  | Bytes (b,_) -> sum >= b
+
 type max_log_size = {
   upper_bound : int;
   lower_bound : int; 
@@ -46,7 +63,7 @@ let last_log_index {recent_entries; _}  =
   | (_ , {index; _}) -> index
   | exception Not_found -> 0
 
-exception Done of log_entry list 
+exception Done of (log_entry list * int) 
 
 let log_entries_since ~since ~max log =
   let {recent_entries ; _} = log in
@@ -61,15 +78,14 @@ let log_entries_since ~since ~max log =
       | Some {term; _} -> term 
     in
 
-    let max = since + max in 
-
-    let log_entries = 
-      try IntMap.fold (fun index log_entry log_entries -> 
-        if index <= max
-        then log_entry :: log_entries
-        else raise (Done log_entries)
-      ) sub [] 
-      with | Done log_entries -> log_entries
+    let log_entries, _ = 
+      try IntMap.fold (fun index log_entry (log_entries, sum) -> 
+        let sum' = add max sum log_entry in
+        if has_reach_max max sum'
+        then raise (Done (log_entries, sum))
+        else (log_entry :: log_entries, sum')
+      ) sub ([], 0) 
+      with | Done x -> x
     in 
 
     (List.rev log_entries, prev_term)

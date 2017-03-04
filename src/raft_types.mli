@@ -23,9 +23,8 @@ type configuration = {
   hearbeat_timeout : float;
     (** Duration between heartbeat sent by the leader. [hearbeat_timeout]
         must be much less than [election_timeout] *)
-  max_nb_logs_per_message : int;
+  max_nb_logs_per_message : Raft_log.size;
     (** Limit the number of log entries per append entries message  *)
-  
   max_log_size : Raft_log.max_log_size; 
     (** define boundaries for the "in-memory log" size limitation *)
 }
@@ -55,8 +54,8 @@ type append_entries_request = {
 }
 
 type append_entries_response_result =
-  | Success of int (* receiver_last_log_index *) 
-  | Log_failure of int (* receiver_last_log_index *)
+  | Success of int (** receiver last log index *) 
+  | Log_failure of int (** receiver last log index *)
   | Term_failure
 
 and append_entries_response = {

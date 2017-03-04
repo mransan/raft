@@ -9,7 +9,7 @@ type configuration = {
   election_timeout : float;
   election_timeout_range : float;
   hearbeat_timeout : float;
-  max_nb_logs_per_message : int;
+  max_nb_logs_per_message : Raft_log.size;
   max_log_size : Log.max_log_size; 
 }
 
