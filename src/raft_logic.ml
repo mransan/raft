@@ -584,4 +584,4 @@ let next_timeout_event = Timeout_event.next
 
 let committed_entries_since ~since {Types.commit_index; log; _} = 
   let max = commit_index - since in  
-  fst @@ Log.log_entries_since ~since ~max log  
+  fst @@ Log.log_entries_since ~since ~max:(Log.Number max)log  

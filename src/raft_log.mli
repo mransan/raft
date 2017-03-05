@@ -9,6 +9,10 @@ type log_entry = {
 
 val pp_log_entry : Format.formatter -> log_entry -> unit 
 
+type size = 
+  | Number of int  
+  | Bytes of int * int (* (value, overhead per entry) *) 
+
 (** In memory log size limitation parameters 
     
     When adding new log entries would make the size of the log go over 
@@ -46,7 +50,7 @@ val last_log_index_and_term : t -> (int * int)
 val last_log_index: t ->  int
 (** [last_log_index state] return the index of the last log entry.  *)
 
-val log_entries_since : since:int -> max:int -> t -> (log_entry list * int)
+val log_entries_since : since:int -> max:size -> t -> (log_entry list * int)
 (** [rev_log_entries_since index log] returns the log entries in
     reverse order (ie the earliest log is at the front) from (but excluding)
     [since] and until the latest log entry in [log].
