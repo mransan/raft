@@ -4,9 +4,9 @@ open Raft_types
 open Raft_log
 
 module Types = Raft_types
-module Candidate = Raft_role.Candidate
-module Follower = Raft_role.Follower
-module Leader = Raft_role.Leader
+module Candidate = Raft_helper.Candidate
+module Follower = Raft_helper.Follower
+module Leader = Raft_helper.Leader
 module Timeout_event = Raft_helper.Timeout_event
 module Log = Raft_log
 
@@ -34,7 +34,7 @@ let recent_log_hd {log = {recent_entries; _ }; _ } =
 
 let initial_state ~now server_id  =
   let configuration = default_configuration in 
-  Raft_logic.make_initial_state ~configuration ~now ~server_id ()
+  Raft_logic.init ~configuration ~now ~server_id ()
 
 let now = 0.
 
@@ -239,7 +239,7 @@ let election_1 {server0; server1; server2} now =
       assert(0  = r.leader_id);
       assert(0  = r.prev_log_index);
       assert(0  = r.prev_log_term);
-      assert([] = r.rev_log_entries);
+      assert([] = r.log_entries);
         (* We have not yet added any log to the [Leader] so
          * no new entries are sent to the other servers.  *)
       assert(0 = r.leader_commit);
@@ -578,7 +578,7 @@ let leader_heartbeat_1 {server0; server1; server2} now =
       assert(r.leader_id = 0);
       assert(r.prev_log_index = 0);
       assert(r.prev_log_term = 0);
-      assert(r.rev_log_entries = []);
+      assert(r.log_entries = []);
       assert(r.leader_commit = 0);
     )
     | _ -> assert(false);
@@ -818,11 +818,11 @@ let add_first_log {server0; server1; server2} now =
       assert(r.leader_id = 0);
       assert(r.prev_log_index = 0);
       assert(r.prev_log_term = 0);
-      assert(1 = List.length r.rev_log_entries);
+      assert(1 = List.length r.log_entries);
         (*
          * Contains the log entry to be synchronized.
          *)
-      begin match r.rev_log_entries with
+      begin match r.log_entries with
       | {index = 1; term = 1; _} :: [] -> ()
       | _ -> assert(false)
       end;
@@ -984,7 +984,7 @@ let add_second_log {server0; server1; server2} now =
        * will send [prev_log_index] with value 1.  *)
 
     assert(r.prev_log_term = 1);
-    assert(1 = List.length r.rev_log_entries);
+    assert(1 = List.length r.log_entries);
       (* Only the last [log_entry] should be sent to that follower,
        * since the first [log_entry] was already replicated.
        *)
@@ -1117,7 +1117,7 @@ let leader_heartbeat_2 {server0; server1; server2} now =
     assert(r.leader_term = 1);
     assert(r.leader_id = 0);
     assert(r.prev_log_term = 1);
-    assert(r.rev_log_entries = []);
+    assert(r.log_entries = []);
       (* As expected no new log entry should be sent
        * since they all have been previously and [server1]
        * replied successfully.  *)
@@ -1134,7 +1134,7 @@ let leader_heartbeat_2 {server0; server1; server2} now =
     assert(r.leader_id = 0);
     assert(r.prev_log_term = 0);
 
-    assert(List.length r.rev_log_entries = 2);
+    assert(List.length r.log_entries = 2);
     assert(r.prev_log_index = 0);
       (* this reflect the knowledge of server0 (leader) which has never
        * received an Append_entries_response from server2 indicating 
@@ -1628,7 +1628,7 @@ let election_2 {server0; server1; server2} now =
       assert(r.leader_id = 1);
       assert(r.prev_log_index = 3);
       assert(r.prev_log_term = 1);
-      assert(r.rev_log_entries = []);
+      assert(r.log_entries = []);
         (* Initially the [Leader] believes that all other servers
          * have replicated the same [log_entry]s as itself.  *)
       assert(r.leader_commit = 2);
@@ -1720,7 +1720,7 @@ let election_2 {server0; server1; server2} now =
     assert(r.leader_id = 1);
     assert(r.prev_log_index = 2);
     assert(r.prev_log_term = 1);
-    assert(1 = List.length r.rev_log_entries);
+    assert(1 = List.length r.log_entries);
      (* The missing 3rd log entry is now part of the
       * request for server2 to catch up
       *)
@@ -1867,14 +1867,14 @@ let add_4_and_5_logs {server0; server1; server2} now =
         leader_id;
         prev_log_index;
         prev_log_term;
-        rev_log_entries;
+        log_entries;
         leader_commit;
       } =  r in
       assert(3 = leader_term);
       assert(1 = leader_id);
       assert(prev_log_index = 3);
       assert(prev_log_term = 1);
-      assert(2 = List.length rev_log_entries);
+      assert(2 = List.length log_entries);
       assert(3 = leader_commit);
     )
     | _ -> assert(false);
@@ -2020,9 +2020,9 @@ let add_log_to_outdated_leader {server0; server1; server2} now =
       assert(r.leader_id = 0);
       assert(r.prev_log_index = 2);
       assert(r.prev_log_term = 1);
-      assert(2 = List.length r.rev_log_entries);
+      assert(2 = List.length r.log_entries);
         (* * Contains the log entry to be synchronized.  *)
-      begin match r.rev_log_entries with
+      begin match r.log_entries with
       | {index = 3; term = 1; _} :: {index = 4; id = "NC";_} :: [] -> ()
       | _ -> assert(false)
       end;
@@ -2057,7 +2057,7 @@ let leader_heartbeat_3 {server0; server1; server2} now =
     assert(r.leader_term = 3);
     assert(r.leader_id = 1);
     assert(r.prev_log_term = 1);
-    assert(2 = List.length r.rev_log_entries); 
+    assert(2 = List.length r.log_entries); 
       (* Because no msg was received from server0, server1 knowledge of 
        * server0 still believes its prev_log_index to be 3... the same as 
        * when it was elected a leader. Therefore for the message contains
@@ -2073,7 +2073,7 @@ let leader_heartbeat_3 {server0; server1; server2} now =
     assert(r.leader_term = 3);
     assert(r.leader_id = 1);
     assert(r.prev_log_term = 3);
-    assert(0 = List.length r.rev_log_entries); 
+    assert(0 = List.length r.log_entries); 
     assert(r.prev_log_index = 5);
       (* Server2 has replicated both log_entries 4 & 5 *)
     assert(r.leader_commit = 5);

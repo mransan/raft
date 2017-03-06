@@ -31,7 +31,7 @@ type append_entries_request = {
   leader_id : int;
   prev_log_index : int;
   prev_log_term : int;
-  rev_log_entries : Log.log_entry list;
+  log_entries : Log.log_entry list;
   leader_commit : int;
 }
 

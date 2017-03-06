@@ -1,7 +1,7 @@
 module Types = Raft_types
-module Follower = Raft_role.Follower
-module Candidate = Raft_role.Candidate
-module Leader = Raft_role.Leader
+module Follower = Raft_helper.Follower
+module Candidate = Raft_helper.Candidate
+module Leader = Raft_helper.Leader
 module Configuration = Raft_helper.Configuration
 module Log = Raft_log
 module Timeout_event = Raft_helper.Timeout_event
@@ -43,7 +43,7 @@ module Log_entry_util = struct
       leader_id = state.server_id;
       prev_log_index;
       prev_log_term;
-      rev_log_entries = to_send;
+      log_entries = to_send;
       leader_commit = state.commit_index;
     }) in
 
@@ -212,7 +212,7 @@ let handle_request_vote_response state response now =
       then
         (* By reaching a majority of votes, the candidate is now 
          * the new leader *)
-        let state = Leader.become state now in
+        let state = Leader.become ~now state in
 
         (* As a new leader, the server must send Append entries request
          * to the other servers to both establish its leadership and
@@ -286,7 +286,7 @@ let handle_append_entries_request state request now =
     let {
       Types.prev_log_index;
       prev_log_term;
-      rev_log_entries;
+      log_entries;
       leader_commit; _ } = request in
 
     let (
@@ -312,7 +312,7 @@ let handle_append_entries_request state request now =
           (* Leader info about the receiver last log index is matching
            * perfectly, we can append the logs.  *)
           let log, log_diff = 
-            Log.add_log_entries ~rev_log_entries state.Types.log 
+            Log.add_log_entries ~log_entries state.Types.log 
           in
           let receiver_last_log_index = Log.last_log_index log in
           let state =
@@ -373,7 +373,7 @@ let handle_append_entries_request state request now =
              * of the follower. *)
 
           | log, log_diff ->
-            let log, log_diff' = Log.add_log_entries ~rev_log_entries log in
+            let log, log_diff' = Log.add_log_entries ~log_entries log in
             let log_diff = Log.merge_diff log_diff log_diff' in 
             let receiver_last_log_index = Log.last_log_index log in
             let state =
@@ -468,8 +468,8 @@ let handle_append_entries_response state response now =
 
     end (* match result *)
 
-let make_initial_state ~configuration ~now ~server_id () =
-  Follower.create ~configuration ~now ~server_id ()
+let init ~configuration ~now ~server_id () =
+  Follower.make ~configuration ~now ~server_id ()
 
 let handle_message state message now =
   let state', msgs_to_send, log_diff =
@@ -499,8 +499,8 @@ let handle_message state message now =
       (state, msgs, Log.empty_diff) 
 
   in
-  let leader_change = Helper.leader_change state state' in 
-  let committed_logs = Helper.committed_logs state state' in
+  let leader_change = Helper.Diff.leader_change state state' in 
+  let committed_logs = Helper.Diff.committed_logs state state' in
   let {Log.added_logs; deleted_logs} = log_diff in 
   make_result ~msgs_to_send ?leader_change ~added_logs 
               ~deleted_logs ~committed_logs state'
@@ -531,8 +531,8 @@ let handle_new_election_timeout state now =
       (Types.Request_vote_request request, server_id) :: acc
     ) [] state'
   in
-  let leader_change = Helper.leader_change state state' in 
-  let committed_logs = Helper.committed_logs state state' in
+  let leader_change = Helper.Diff.leader_change state state' in 
+  let committed_logs = Helper.Diff.committed_logs state state' in
   make_result ~msgs_to_send ?leader_change ~committed_logs state'
 
 let handle_heartbeat_timeout state now =
@@ -580,7 +580,7 @@ let handle_add_log_entries state datas now =
     let {Log.added_logs; deleted_logs} = log_diff in 
     Appended (make_result ~msgs_to_send ~added_logs ~deleted_logs state')
 
-let next_timeout_event = Timeout_event.next
+let next_timeout_event state now = Timeout_event.next ~now state 
 
 let committed_entries_since ~since {Types.commit_index; log; _} = 
   let max = commit_index - since in  

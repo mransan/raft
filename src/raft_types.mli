@@ -49,7 +49,7 @@ type append_entries_request = {
   leader_id : server_id;
   prev_log_index : int;
   prev_log_term : int;
-  rev_log_entries : Raft_log.log_entry list;
+  log_entries : Raft_log.log_entry list;
   leader_commit : int;
 }
 

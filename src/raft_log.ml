@@ -79,7 +79,7 @@ let log_entries_since ~since ~max log =
     in
 
     let log_entries, _ = 
-      try IntMap.fold (fun index log_entry (log_entries, sum) -> 
+      try IntMap.fold (fun _ log_entry (log_entries, sum) -> 
         let sum' = add max sum log_entry in
         if has_reach_max max sum'
         then raise (Done (log_entries, sum))
@@ -145,8 +145,8 @@ let add_log_datas current_term datas log =
 
   ({log with recent_entries}, log_diff)
 
-let add_log_entries ~rev_log_entries log =
-  let log = truncate (List.length rev_log_entries) log in 
+let add_log_entries ~log_entries log =
+  let log = truncate (List.length log_entries) log in 
   let rec aux recent_entries = function
     | [] ->
       {log with recent_entries}
@@ -157,11 +157,11 @@ let add_log_entries ~rev_log_entries log =
   in
 
   let log_diff = {
-    added_logs = rev_log_entries; 
+    added_logs = log_entries; 
     deleted_logs = []; 
   } in 
 
-  (aux log.recent_entries rev_log_entries, log_diff) 
+  (aux log.recent_entries log_entries, log_diff) 
 
 let remove_log_since ~prev_log_index ~prev_log_term log =
   let {recent_entries; max_log_size = _ } = log in 

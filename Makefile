@@ -12,7 +12,7 @@ test:
 	$(OCB) test.native
 	export OCAMLRUNPARAM="b" && ./test.native 
 
-doc:
+doc-gen:
 	$(OCB) src/$(LIB_NAME).docdir/index.html
 
 ## Generic library makefile ## 
