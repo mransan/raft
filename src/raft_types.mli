@@ -1,4 +1,4 @@
-(** RAFT Server state Utilities, agnostic of the role the server has *)
+(** Protocol Types: State, Message and Events *) 
 
 (** {2 Common types } *)
 
@@ -163,7 +163,6 @@ val is_leader : state -> bool
 
 val current_leader: state -> int option
 (** [current_leader state] return the current leader for the current term.
-
     If no leader is known then [None] is returned.
   *)
 

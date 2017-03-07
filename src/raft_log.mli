@@ -1,4 +1,4 @@
-(** All Log related logic *)
+(** Log Data Structure and related logic*)
 
 (** {2 Types} *)
 
