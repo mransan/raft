@@ -10,6 +10,9 @@ end (* Configuration *)
 module Follower : sig
 
   val make :
+    ?log:Raft_log.t ->
+    ?commit_index:int -> 
+    ?current_term:int -> 
     configuration:Raft_types.configuration ->
     now:float ->
     server_id:int ->

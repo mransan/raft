@@ -16,13 +16,29 @@ end
 
 module Follower = struct
 
-  let make ~configuration ~now ~server_id () =
+  let make ?log ?commit_index ?current_term ~configuration ~now ~server_id () =
+
+    let current_term = match current_term with
+      | None -> 0 
+      | Some current_term -> current_term 
+    in 
+
+    let log = match log with
+      | None -> Log.empty configuration.Types.max_log_size 
+      | Some log -> log 
+    in 
+
+    let commit_index = match commit_index with
+      | None -> 0 
+      | Some commit_index -> commit_index
+    in 
+
     let timeout = Configuration.election_timeout configuration in
     {
-      Types.current_term = 0;
+      Types.current_term;
       server_id;
-      log = Log.empty configuration.Types.max_log_size;
-      commit_index = 0;
+      log;
+      commit_index;
       role = Types.(Follower {
         voted_for = None;
         current_leader = None;

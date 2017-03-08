@@ -3,14 +3,12 @@
 open Raft_types
 open Raft_log
 
-module Types = Raft_types
 module Candidate = Raft_helper.Candidate
 module Follower = Raft_helper.Follower
 module Leader = Raft_helper.Leader
 module Timeout_event = Raft_helper.Timeout_event
-module Log = Raft_log
 
-module Logic = Raft_logic
+module Protocol = Raft_protocol
 
 let default_configuration = {
   nb_of_server = 3;
@@ -34,7 +32,7 @@ let recent_log_hd {log = {recent_entries; _ }; _ } =
 
 let initial_state ~now server_id  =
   let configuration = default_configuration in 
-  Raft_logic.init ~configuration ~now ~server_id ()
+  Protocol.init ~configuration ~now ~server_id ()
 
 let now = 0.
 
@@ -67,7 +65,7 @@ let election_1 {server0; server1; server2} now =
 
   (* All of those severs should have an election timeout randomly
    * generated between [election_timeout +/- election_timeout_range/2]. *)
-  let next_event = Raft_logic.next_timeout_event server0 now in
+  let next_event = Protocol.next_timeout_event server0 now in
   assert(next_event.timeout = default_configuration.election_timeout);
   assert(next_event.timeout_type = New_leader_election);
 
@@ -83,11 +81,11 @@ let election_1 {server0; server1; server2} now =
    *)
 
   let {
-    Logic.state = server0;
+    state = server0;
     messages_to_send = msgs; 
-    leader_change; _} = Raft_logic.handle_new_election_timeout server0 now in
+    leader_change; _} = Protocol.handle_new_election_timeout server0 now in
 
-  assert(Types.is_candidate server0);
+  assert(is_candidate server0);
     (* When an election timeout happens the server starts a new election
      * and become a [Candidate].  *)
 
@@ -121,11 +119,11 @@ let election_1 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -185,11 +183,11 @@ let election_1 {server0; server1; server2} now =
   
   let res = 
     let msg = msg_for_server msgs 0 in
-    Raft_logic.handle_message server0 msg now
+    Protocol.handle_message server0 msg now
   in
 
   let {
-    Logic.state = server0; 
+    state = server0; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -197,7 +195,7 @@ let election_1 {server0; server1; server2} now =
     deleted_logs;
   } = res in
   
-  assert(Types.is_leader server0);
+  assert(is_leader server0);
   assert(Some (New_leader 0) = leader_change);
     (* Because a single vote is enough to reach a majority in a 3-server 
      * cluster, server0 becomes a [Leader].  *)
@@ -254,11 +252,11 @@ let election_1 {server0; server1; server2} now =
   let now = now +. 0.001 in
   let res = 
     let msg = msg_for_server msgs 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -324,12 +322,12 @@ let failed_election_1 {server0; server1; server2} now =
    *)
 
   let {
-    Logic.state = server2; 
+    state = server2; 
     messages_to_send = request_vote_msgs; 
     leader_change; 
     committed_logs;
     added_logs; 
-    deleted_logs; } = Raft_logic.handle_new_election_timeout server2 now
+    deleted_logs; } = Protocol.handle_new_election_timeout server2 now
   in
 
   assert(None = leader_change);
@@ -337,7 +335,7 @@ let failed_election_1 {server0; server1; server2} now =
   assert(added_logs = []);
   assert(deleted_logs = []);
 
-  assert(Types.is_candidate server2);
+  assert(is_candidate server2);
     (* Server2 never got an [Append_entries] request which would have
      * established server0 leadership. Therefore as far as server2 is
      * concerned there were no leaders.  *)
@@ -363,11 +361,11 @@ let failed_election_1 {server0; server1; server2} now =
   let now = now +. 0.001 in
   let res = 
     let msg = msg_for_server request_vote_msgs 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -411,11 +409,11 @@ let failed_election_1 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 2 in
-    Raft_logic.handle_message server2 msg now
+    Protocol.handle_message server2 msg now
   in
 
   let {
-    Logic.state = server2; 
+    state = server2; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -423,7 +421,7 @@ let failed_election_1 {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_candidate server2);
+  assert(is_candidate server2);
   assert(None = leader_change);
     (* Despite the vote not being granted by server1, server2
      * should continue to be a [Candidate] until either
@@ -456,11 +454,11 @@ let failed_election_1 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server request_vote_msgs 0 in
-    Raft_logic.handle_message server0 msg now
+    Protocol.handle_message server0 msg now
   in
 
   let {
-    Logic.state = server0; 
+    state = server0; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -468,7 +466,7 @@ let failed_election_1 {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_leader server0);
+  assert(is_leader server0);
   assert(None = leader_change);
     (* Server0 is still a [Leader] and should not be affected
      * by a Candidate for the same term.
@@ -502,11 +500,11 @@ let failed_election_1 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 2 in
-    Raft_logic.handle_message server2 msg now
+    Protocol.handle_message server2 msg now
   in
 
   let {
-    Logic.state = server2; 
+    state = server2; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -515,7 +513,7 @@ let failed_election_1 {server0; server1; server2} now =
   } = res in
 
   assert(deleted_logs = []);
-  assert(Types.is_candidate server2);
+  assert(is_candidate server2);
     (* Yes despite all other server denying their vote, server2
      * is still a [Candidate]. It should not take any further
      * action until its election timeout has elapsed.  *)
@@ -552,8 +550,8 @@ let leader_heartbeat_1 {server0; server1; server2} now =
    * trigger new messages.
    *)
 
-  let {Logic.state = server0; messages_to_send = msgs; _ } =
-    Raft_logic.handle_heartbeat_timeout server0 now 
+  let {state = server0; messages_to_send = msgs; _ } =
+    Protocol.handle_heartbeat_timeout server0 now 
   in
 
   assert([] = msgs);
@@ -563,8 +561,8 @@ let leader_heartbeat_1 {server0; server1; server2} now =
 
   let now = now +. default_configuration.hearbeat_timeout in
 
-  let {Logic.state = server0; messages_to_send = hb_msgs; _ } =
-      Raft_logic.handle_heartbeat_timeout server0 now 
+  let {state = server0; messages_to_send = hb_msgs; _ } =
+      Protocol.handle_heartbeat_timeout server0 now 
   in
 
   assert(2 = List.length hb_msgs);
@@ -594,11 +592,11 @@ let leader_heartbeat_1 {server0; server1; server2} now =
   let now = now +. 0.001 in
   let res = 
     let msg = msg_for_server hb_msgs 2 in
-    Raft_logic.handle_message server2 msg now
+    Protocol.handle_message server2 msg now
   in
 
   let {
-    Logic.state = server2; 
+    state = server2; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -606,7 +604,7 @@ let leader_heartbeat_1 {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_follower server2);
+  assert(is_follower server2);
   assert(1 = server2.current_term);
   assert(Some (New_leader 0)= leader_change);
   assert([] = committed_logs);
@@ -651,11 +649,11 @@ let leader_heartbeat_1 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 0 in
-    Raft_logic.handle_message server0 msg now
+    Protocol.handle_message server0 msg now
   in
 
   let {
-    Logic.state = server0; 
+    state = server0; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -675,11 +673,11 @@ let leader_heartbeat_1 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server hb_msgs 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -687,7 +685,7 @@ let leader_heartbeat_1 {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_follower server1);
+  assert(is_follower server1);
    (* No change in the role, server0 is a valid [Leader],
     * server1 stays a [Follower]. *)
 
@@ -731,11 +729,11 @@ let leader_heartbeat_1 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 0 in
-    Raft_logic.handle_message server0 msg now
+    Protocol.handle_message server0 msg now
   in
 
   let {
-    Logic.state = server0; 
+    state = server0; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -743,7 +741,7 @@ let leader_heartbeat_1 {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_leader server0);
+  assert(is_leader server0);
   assert(None = leader_change);
   assert([] = committed_logs);
   assert(added_logs = []);
@@ -769,15 +767,15 @@ let add_first_log {server0; server1; server2} now =
    * the corresponding [Append_entries] requests to the other servers.  *)
   let new_log_result =
     let data = Bytes.of_string "Message01" in
-    Raft_logic.handle_add_log_entries server0 [(data, "01")] now
+    Protocol.handle_add_log_entries server0 [(data, "01")] now
   in
 
   let server0, data1_msgs =
-    let open Raft_logic in
+    let open Protocol in
     match new_log_result with
     | Appended result -> 
         let {
-          Logic.state; 
+          state; 
           messages_to_send; 
           committed_logs; 
           added_logs;deleted_logs;_} = result in 
@@ -840,11 +838,11 @@ let add_first_log {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server data1_msgs 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -852,7 +850,7 @@ let add_first_log {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_follower server1);
+  assert(is_follower server1);
     (* No change of role for server1, [Append_entries] only
      * re-inforce that server0 is the [Leader].  *)
 
@@ -894,11 +892,11 @@ let add_first_log {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 0 in
-    Raft_logic.handle_message server0 msg now
+    Protocol.handle_message server0 msg now
   in
 
   let {
-    Logic.state = server0; 
+    state = server0; 
     messages_to_send = _; 
     leader_change;
     committed_logs; 
@@ -906,7 +904,7 @@ let add_first_log {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_leader server0);
+  assert(is_leader server0);
   assert(1 = server0.commit_index);
   assert(None = leader_change);
   assert(deleted_logs = []);
@@ -936,14 +934,14 @@ let add_second_log {server0; server1; server2} now =
 
   let new_log_result =
     let data = Bytes.of_string "Message02" in
-    Raft_logic.handle_add_log_entries server0 [(data,"02")] now
+    Protocol.handle_add_log_entries server0 [(data,"02")] now
   in
 
   let server0, data2_msg =
-    let open Raft_logic in
+    let open Protocol in
     match new_log_result with
     | Delay | Forward_to_leader _ -> assert(false)
-    | Appended {Logic.state; messages_to_send; added_logs; _ } -> begin 
+    | Appended {state; messages_to_send; added_logs; _ } -> begin 
       begin match added_logs with
       | [{id = "02"; index = 2; term = 1; _}] -> ()
       | _ -> assert(false)
@@ -952,7 +950,7 @@ let add_second_log {server0; server1; server2} now =
     end 
   in
 
-  assert(Types.is_leader server0);
+  assert(is_leader server0);
 
   assert(2 = recent_log_length server0);
     (* The second log entry should have been appended to the
@@ -1002,11 +1000,11 @@ let add_second_log {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server data2_msg 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -1014,7 +1012,7 @@ let add_second_log {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_follower server1);
+  assert(is_follower server1);
 
   assert(2 = recent_log_length server1);
     (* server1 should have correctly replicated the log
@@ -1063,11 +1061,11 @@ let add_second_log {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 0 in
-    Raft_logic.handle_message server0 msg now
+    Protocol.handle_message server0 msg now
   in
 
   let {
-    Logic.state = server0; 
+    state = server0; 
     messages_to_send = _; 
     leader_change;
     committed_logs; 
@@ -1075,7 +1073,7 @@ let add_second_log {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_leader server0);
+  assert(is_leader server0);
 
   assert(None = leader_change);
   
@@ -1105,8 +1103,8 @@ let leader_heartbeat_2 {server0; server1; server2} now =
   
   let now = now +. default_configuration.hearbeat_timeout in
 
-  let {Logic.state = server0; messages_to_send = msgs; added_logs; _ } =
-    Raft_logic.handle_heartbeat_timeout server0 now 
+  let {state = server0; messages_to_send = msgs; added_logs; _ } =
+    Protocol.handle_heartbeat_timeout server0 now 
   in
 
   assert(added_logs = []);
@@ -1152,11 +1150,11 @@ let leader_heartbeat_2 {server0; server1; server2} now =
    *)
   let res = 
     let msg = msg_for_server msgs 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = server1_response; 
     leader_change;
     committed_logs; 
@@ -1164,7 +1162,7 @@ let leader_heartbeat_2 {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_follower server1);
+  assert(is_follower server1);
   assert(None = leader_change);
 
   begin match committed_logs with
@@ -1190,11 +1188,11 @@ let leader_heartbeat_2 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 2 in
-    Raft_logic.handle_message server2 msg now
+    Protocol.handle_message server2 msg now
   in
 
   let {
-    Logic.state = server2; 
+    state = server2; 
     messages_to_send = server2_response; 
     leader_change;
     committed_logs; 
@@ -1202,7 +1200,7 @@ let leader_heartbeat_2 {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_follower server2);
+  assert(is_follower server2);
   begin match committed_logs with
   | {id = "01"; _ }::{id = "02"; _}::[] -> ()
   | _ -> assert(false)
@@ -1241,11 +1239,11 @@ let leader_heartbeat_2 {server0; server1; server2} now =
   let res = 
     let res = 
       let msg = msg_for_server server1_response 0 in
-      Raft_logic.handle_message server0 msg now
+      Protocol.handle_message server0 msg now
     in
 
     let {
-      Logic.state = server0; 
+      state = server0; 
       messages_to_send; 
       leader_change;
       committed_logs; 
@@ -1262,11 +1260,11 @@ let leader_heartbeat_2 {server0; server1; server2} now =
        * left.  *)
 
     let msg = msg_for_server server2_response 0  in
-    Raft_logic.handle_message server0 msg now
+    Protocol.handle_message server0 msg now
   in
 
   let {
-    Logic.state = server0; 
+    state = server0; 
     messages_to_send; 
     leader_change;
     committed_logs; 
@@ -1274,7 +1272,7 @@ let leader_heartbeat_2 {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_leader server0);
+  assert(is_leader server0);
   assert(2 = server0.commit_index);
   assert(2 = recent_log_length server0);
   assert(None = leader_change);
@@ -1314,12 +1312,12 @@ let add_third_log {server0; server1; server2} now =
 
   let new_log_result =
     let data = Bytes.of_string "Message03" in
-    Raft_logic.handle_add_log_entries server0 [(data, "03") ] now
+    Protocol.handle_add_log_entries server0 [(data, "03") ] now
   in
 
   let server0, msgs =
     match new_log_result with
-    | Logic.Appended {Logic.state; messages_to_send; added_logs; _ } -> 
+    | Protocol.Appended {state; messages_to_send; added_logs; _ } -> 
         begin match added_logs with
         | {id = "03"; index = 3; term = 1; _ } :: [] -> () 
         | _ -> assert(false)
@@ -1327,7 +1325,7 @@ let add_third_log {server0; server1; server2} now =
         (state, messages_to_send)
     | _ -> assert(false)
   in
-  assert(Types.is_leader server0);
+  assert(is_leader server0);
   assert(3 = recent_log_length server0);
     (* Correctly added log since server0 is a [Leader].  *)
 
@@ -1342,11 +1340,11 @@ let add_third_log {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = _; 
     leader_change;
     committed_logs; 
@@ -1354,7 +1352,7 @@ let add_third_log {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_follower server1);
+  assert(is_follower server1);
   assert(3 = recent_log_length server1);
     (* * The 3rd [log_entry] is correctly replicated.  *)
 
@@ -1390,16 +1388,16 @@ let failed_election_2 {server0; server1; server2} now =
   let now = now +. default_configuration.election_timeout  in
 
   let {
-    Logic.state = server2; 
+    state = server2; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs;
     added_logs; 
-    deleted_logs} = Raft_logic.handle_new_election_timeout server2 now
+    deleted_logs} = Protocol.handle_new_election_timeout server2 now
   in
 
   assert(deleted_logs = []);
-  assert(Types.is_candidate server2);
+  assert(is_candidate server2);
     (* Server2 started a new election. *)
 
   assert(Some No_leader = leader_change);
@@ -1436,11 +1434,11 @@ let failed_election_2 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -1448,7 +1446,7 @@ let failed_election_2 {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_follower server1);
+  assert(is_follower server1);
   assert(2 = server1.current_term);
     (* The sender (ie server2) term was greater than the current
      * term of server1, it should then
@@ -1507,12 +1505,12 @@ let election_2 {server0; server1; server2} now =
   let now = now +. default_configuration.election_timeout in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change; 
     committed_logs; 
     added_logs; 
-    deleted_logs} = Raft_logic.handle_new_election_timeout server1 now
+    deleted_logs} = Protocol.handle_new_election_timeout server1 now
   in
 
   assert(None = leader_change);
@@ -1520,7 +1518,7 @@ let election_2 {server0; server1; server2} now =
   assert(added_logs = []);
   assert(deleted_logs = []);
 
-  assert(Types.is_candidate server1);
+  assert(is_candidate server1);
   assert(3 = server1.current_term);
   assert(2 =  List.length msgs);
 
@@ -1543,11 +1541,11 @@ let election_2 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 2 in
-    Raft_logic.handle_message server2 msg now
+    Protocol.handle_message server2 msg now
   in
 
   let {
-    Logic.state = server2; 
+    state = server2; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -1555,7 +1553,7 @@ let election_2 {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_follower server2);
+  assert(is_follower server2);
     (* server1 [current_term] is greater than the one
      * in server2 (3 versus 2).
      *
@@ -1593,11 +1591,11 @@ let election_2 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -1609,7 +1607,7 @@ let election_2 {server0; server1; server2} now =
   assert([] = committed_logs);
   assert(added_logs = []);
   assert(deleted_logs = []);
-  assert(Types.is_leader server1);
+  assert(is_leader server1);
     (* One vote is enough to become a [Leader].  *)
 
   assert(3 = server1.current_term);
@@ -1644,11 +1642,11 @@ let election_2 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 2 in
-    Raft_logic.handle_message server2 msg now
+    Protocol.handle_message server2 msg now
   in
 
   let {
-    Logic.state = server2; 
+    state = server2; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -1659,7 +1657,7 @@ let election_2 {server0; server1; server2} now =
   assert(deleted_logs = []);
   assert(Some (New_leader 1) = leader_change);
   assert([] = committed_logs);
-  assert(Types.is_follower server2);
+  assert(is_follower server2);
   assert(3 = server2.current_term);
   assert(added_logs = []);
     (* See explanation below as to why the 3rd log entry was not replicated *)
@@ -1689,11 +1687,11 @@ let election_2 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -1702,7 +1700,7 @@ let election_2 {server0; server1; server2} now =
   } = res in
 
   assert(deleted_logs = []);
-  assert(Types.is_leader server1);
+  assert(is_leader server1);
   assert(3 = server1.current_term);
 
   assert(None = leader_change);
@@ -1738,11 +1736,11 @@ let election_2 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 2 in
-    Raft_logic.handle_message server2 msg now
+    Protocol.handle_message server2 msg now
   in
 
   let {
-    Logic.state = server2; 
+    state = server2; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -1750,7 +1748,7 @@ let election_2 {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_follower server2);
+  assert(is_follower server2);
   assert(3 = server2.current_term);
 
   assert(3 = recent_log_length server2);
@@ -1790,11 +1788,11 @@ let election_2 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -1802,7 +1800,7 @@ let election_2 {server0; server1; server2} now =
     deleted_logs;
   } = res in
 
-  assert(Types.is_leader server1);
+  assert(is_leader server1);
   assert(3 = server1.current_term);
 
   assert(deleted_logs = []);
@@ -1833,13 +1831,13 @@ let add_4_and_5_logs {server0; server1; server2} now =
       (Bytes.of_string "Message04", "04");
       (Bytes.of_string "Message05", "05");
     ] in
-    Raft_logic.handle_add_log_entries server1 datas now
+    Protocol.handle_add_log_entries server1 datas now
   in
 
   let server1, data45_msgs =
-    let open Raft_logic in
+    let open Protocol in
     match new_log_result with
-    | Appended {Logic.state; messages_to_send; added_logs; _ } -> 
+    | Appended {state; messages_to_send; added_logs; _ } -> 
       begin 
         assert(2 = List.length added_logs); 
         (state, messages_to_send)
@@ -1848,7 +1846,7 @@ let add_4_and_5_logs {server0; server1; server2} now =
   in
 
   assert(5 = recent_log_length server1);
-  assert(5 = Log.last_log_index server1.log);
+  assert(5 = last_log_index server1.log);
 
   assert(3 = server1.commit_index);
     (* The 2 logs have not been committed.  *)
@@ -1889,11 +1887,11 @@ let add_4_and_5_logs {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server data45_msgs 2 in
-    Raft_logic.handle_message server2 msg now
+    Protocol.handle_message server2 msg now
   in
 
   let {
-    Logic.state = server2; 
+    state = server2; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -1902,7 +1900,7 @@ let add_4_and_5_logs {server0; server1; server2} now =
   } = res in
 
   assert(deleted_logs = []);
-  assert(Types.is_follower server2);
+  assert(is_follower server2);
   assert(3 = server2.current_term);
 
   assert(2 = List.length added_logs);
@@ -1949,11 +1947,11 @@ let add_4_and_5_logs {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
 
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -1983,15 +1981,15 @@ let add_4_and_5_logs {server0; server1; server2} now =
 let add_log_to_outdated_leader {server0; server1; server2} now = 
   let new_log_result =
     let data = Bytes.of_string "NeverCommitted" in
-    Raft_logic.handle_add_log_entries server0 [(data, "NC")] now
+    Protocol.handle_add_log_entries server0 [(data, "NC")] now
   in
 
   let server0, msgs =
-    let open Raft_logic in
+    let open Protocol in
     match new_log_result with
     | Appended result -> 
         let {
-          Logic.state; 
+          state; 
           messages_to_send; 
           committed_logs; 
           added_logs;deleted_logs; _} = result in 
@@ -2045,8 +2043,8 @@ let add_log_to_outdated_leader {server0; server1; server2} now =
 let leader_heartbeat_3 {server0; server1; server2} now = 
   let now = now +. default_configuration.hearbeat_timeout in
   
-  let {Logic.state = server1; messages_to_send = msgs; added_logs; _ } =
-    Raft_logic.handle_heartbeat_timeout server1 now 
+  let {state = server1; messages_to_send = msgs; added_logs; _ } =
+    Protocol.handle_heartbeat_timeout server1 now 
   in
 
   assert(added_logs = []);
@@ -2088,11 +2086,11 @@ let leader_heartbeat_3 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server msgs 0 in
-    Raft_logic.handle_message server0 msg now
+    Protocol.handle_message server0 msg now
   in
 
   let {
-    Logic.state = server0; 
+    state = server0; 
     messages_to_send = server0_response; 
     leader_change;
     committed_logs; 
@@ -2108,7 +2106,7 @@ let leader_heartbeat_3 {server0; server1; server2} now =
      * it was never replicated anywher and server1 is now the leader
      * in a later term *)
 
-  assert(Types.is_follower server0); 
+  assert(is_follower server0); 
   assert(3 = server0.current_term); 
   assert(5 = recent_log_length server0);
   begin match committed_logs with
@@ -2135,11 +2133,11 @@ let leader_heartbeat_3 {server0; server1; server2} now =
   
   let res = 
     let msg = msg_for_server msgs 2 in
-    Raft_logic.handle_message server2 msg now
+    Protocol.handle_message server2 msg now
   in
 
   let {
-    Logic.state = server2; 
+    state = server2; 
     messages_to_send = server2_response; 
     leader_change;
     committed_logs; 
@@ -2148,7 +2146,7 @@ let leader_heartbeat_3 {server0; server1; server2} now =
   } = res in
 
   assert(deleted_logs = []);
-  assert(Types.is_follower server2); 
+  assert(is_follower server2); 
   assert(3 = server2.current_term); 
   assert(5 = recent_log_length server2);
   begin match committed_logs with
@@ -2176,10 +2174,10 @@ let leader_heartbeat_3 {server0; server1; server2} now =
 
   let res = 
     let msg = msg_for_server server0_response 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -2199,10 +2197,10 @@ let leader_heartbeat_3 {server0; server1; server2} now =
   
   let res = 
     let msg = msg_for_server server2_response 1 in
-    Raft_logic.handle_message server1 msg now
+    Protocol.handle_message server1 msg now
   in
   let {
-    Logic.state = server1; 
+    state = server1; 
     messages_to_send = msgs; 
     leader_change;
     committed_logs; 
@@ -2234,13 +2232,13 @@ let enforce_log_size ({server0; server1; _} as servers) now =
       (Bytes.of_string "Message07", "07");
       (Bytes.of_string "Message08", "08");
     ] in
-    Raft_logic.handle_add_log_entries server1 datas now
+    Protocol.handle_add_log_entries server1 datas now
   in
   
   let min_max_index server = 
     (
-      fst @@ Log.IntMap.min_binding server.log.Log.recent_entries, 
-      fst @@ Log.IntMap.max_binding server.log.Log.recent_entries
+      fst @@ IntMap.min_binding server.log.recent_entries, 
+      fst @@ IntMap.max_binding server.log.recent_entries
     ) 
   in
 
@@ -2249,9 +2247,9 @@ let enforce_log_size ({server0; server1; _} as servers) now =
   assert(5 = max_index); 
 
   let server1, msgs =
-    let open Raft_logic in
+    let open Protocol in
     match new_log_result with
-    | Appended {Logic.state; messages_to_send; added_logs; _ } -> 
+    | Appended {state; messages_to_send; added_logs; _ } -> 
       begin 
         assert(3 = List.length added_logs); 
         (state, messages_to_send)
@@ -2270,11 +2268,11 @@ let enforce_log_size ({server0; server1; _} as servers) now =
 
   let res = 
     let msg = msg_for_server msgs 0 in
-    Raft_logic.handle_message server0 msg now
+    Protocol.handle_message server0 msg now
   in
 
   let {
-    Logic.state = server0; _
+    state = server0; _
   } = res in
 
   let min_index, max_index = min_max_index server0 in 

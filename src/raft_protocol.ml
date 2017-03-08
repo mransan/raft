@@ -7,20 +7,9 @@ module Log = Raft_log
 module Timeout_event = Raft_helper.Timeout_event
 module Helper = Raft_helper
 
-type message_to_send = Types.message * Types.server_id
-
-type result = {
-  state : Raft_types.state;  
-  messages_to_send : message_to_send list; 
-  leader_change : Raft_types.leader_change option;
-  committed_logs : Raft_log.log_entry list;
-  added_logs : Raft_log.log_entry list; 
-  deleted_logs : Raft_log.log_entry list;
-}
-
 let make_result ?(msgs_to_send = []) ?leader_change ?(deleted_logs = []) 
                 ?(committed_logs = []) ?(added_logs = []) state = {
-  state;
+  Types.state;
   messages_to_send = msgs_to_send;
   leader_change; 
   committed_logs;
@@ -468,8 +457,9 @@ let handle_append_entries_response state response now =
 
     end (* match result *)
 
-let init ~configuration ~now ~server_id () =
-  Follower.make ~configuration ~now ~server_id ()
+let init ?log ?commit_index ?current_term ~configuration ~now ~server_id () =
+  Follower.make ?log ?commit_index ?current_term 
+                ~configuration ~now ~server_id ()
 
 let handle_message state message now =
   let state', msgs_to_send, log_diff =
@@ -547,7 +537,7 @@ let handle_heartbeat_timeout state now =
     make_result state
 
 type new_log_response =
-  | Appended of result 
+  | Appended of Types.result 
   | Forward_to_leader of int
   | Delay
 
